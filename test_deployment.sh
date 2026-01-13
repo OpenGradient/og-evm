@@ -31,7 +31,7 @@ set -e
 
 # ------------- Flags -------------
 install=false
-overwrite="n"
+overwrite=""
 BUILD_FOR_DEBUG=false
 ADDITIONAL_USERS=0
 MNEMONIC_FILE=""      # output file (defaults later to $CHAINDIR/mnemonics.yaml)
@@ -117,9 +117,13 @@ fi
 # and an existing local node configuration is found.
 if [[ $overwrite = "" ]]; then
   if [ -d "$CHAINDIR" ]; then
-    printf "\nAn existing folder at '%s' was found. You can choose to delete this folder and start a new local node with new keys from genesis. When declined, the existing local node is started. \n" "$CHAINDIR"
-    echo "Overwrite the existing configuration and start a new local node? [y/n]"
-    read -r overwrite
+    # check if chaindir/config/genesis.json exists or not
+    if [ -f "$CHAINDIR/config/genesis.json" ]; then
+      printf "\nAn existing folder at '%s' with genesis was found. You can choose to delete this folder and start a new local node with new keys from genesis. When declined, the existing local node is started. \n" "$CHAINDIR"
+      overwrite="n"
+    else
+      overwrite="y"
+    fi
   else
     overwrite="y"
   fi
