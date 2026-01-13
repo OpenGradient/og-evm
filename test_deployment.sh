@@ -325,4 +325,7 @@ evmd start "$TRACE" \
 	--evm.min-tip=0 \
 	--home "$CHAINDIR" \
 	--json-rpc.api eth,txpool,personal,net,debug,web3 \
+  --json-rpc.address 0.0.0.0:8545 \
+  --json-rpc.ws-address 0.0.0.0:8546 \
+  --rpc.laddr tcp://0.0.0.0:26657 \
 	--chain-id "$CHAINID"
