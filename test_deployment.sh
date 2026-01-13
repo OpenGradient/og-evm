@@ -31,7 +31,7 @@ set -e
 
 # ------------- Flags -------------
 install=false
-overwrite=""
+overwrite="n"
 BUILD_FOR_DEBUG=false
 ADDITIONAL_USERS=0
 MNEMONIC_FILE=""      # output file (defaults later to $CHAINDIR/mnemonics.yaml)
