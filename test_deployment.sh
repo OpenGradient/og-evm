@@ -173,8 +173,6 @@ add_genesis_funds() {
 
 # Setup local node if overwrite is set to Yes, otherwise skip setup
 if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
-  rm -rf "$CHAINDIR"
-
   evmd config set client chain-id "$CHAINID" --home "$CHAINDIR"
   evmd config set client keyring-backend "$KEYRING" --home "$CHAINDIR"
 
