@@ -12,7 +12,7 @@ jobs:
     env:
       ECS_CLUSTER: MemChat
       ECS_SERVICE: memchat-evm-devnet
-      ECR_REPOSITORY: memchat/memchat/og-evm-devnet
+      ECR_REPOSITORY: memchat/og-evm-devnet
       IMAGE_TAG: latest
       AWS_REGION: us-east-2
 
