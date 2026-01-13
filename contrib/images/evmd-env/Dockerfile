@@ -2,7 +2,7 @@
 ARG IMG_TAG=latest
 
 # Compile the evmd binary
-FROM golang:1.24-alpine AS evmd-builder
+FROM golang:1.25-alpine AS evmd-builder
 WORKDIR /work
 ENV PACKAGES="curl build-base git bash file linux-headers eudev-dev"
 RUN apk add --no-cache $PACKAGES
@@ -29,14 +29,15 @@ WORKDIR /evmd
 
 # Copy the wrapper script and binary to expected locations
 COPY contrib/images/evmd-env/wrapper.sh /usr/bin/wrapper.sh
+COPY test_deployment.sh /usr/bin/test_deployment.sh
 COPY --from=evmd-builder /work/build/evmd /evmd/
 COPY --from=evmd-builder /work/build/evmd /usr/local/bin/
 
 # Set proper ownership and permissions before switching to nonroot user
 RUN chown nonroot:nonroot /usr/bin/wrapper.sh && chmod +x /usr/bin/wrapper.sh
+RUN chown nonroot:nonroot /usr/bin/test_deployment.sh && chmod +x /usr/bin/test_deployment.sh
 RUN chown -R nonroot:nonroot /evmd
 
 USER nonroot
 
-ENTRYPOINT ["/usr/bin/wrapper.sh"]
-CMD ["start", "--log_format", "plain", "--minimum-gas-prices", "0.0001atest", "--json-rpc.enable", "true", "--json-rpc.api", "eth,txpool,personal,net,debug,web3", "--chain-id", "local-4221"]
+ENTRYPOINT ["/usr/bin/test_deployment.sh"]
