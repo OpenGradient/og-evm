@@ -1,0 +1,353 @@
+package tee
+
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/sha512"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"math/big"
+
+	"github.com/fxamacker/cbor/v2"
+)
+
+// =============================================================================
+// AWS Nitro Attestation Verification
+// Reference: Python implementation (verify.py) from nitro-enclave-python-demo
+// TODO: khalifa Different Improvement should be done later
+// =============================================================================
+// AttestationDocument represents the decoded AWS Nitro attestation payload
+type AttestationDocument struct {
+	ModuleID    string         `cbor:"module_id"`
+	Timestamp   uint64         `cbor:"timestamp"`
+	Digest      string         `cbor:"digest"`
+	PCRs        map[int][]byte `cbor:"pcrs"`
+	Certificate []byte         `cbor:"certificate"`
+	CABundle    [][]byte       `cbor:"cabundle"`
+	PublicKey   []byte         `cbor:"public_key,omitempty"`
+	UserData    []byte         `cbor:"user_data,omitempty"`
+	Nonce       []byte         `cbor:"nonce,omitempty"`
+}
+
+// COSESign1Message represents a COSE Sign1 structure
+type COSESign1Message struct {
+	ProtectedHeader   []byte
+	UnprotectedHeader map[any]any
+	Payload           []byte
+	Signature         []byte
+}
+
+// PCRValues384 holds PCR values for verification
+// Can be 48 bytes (full SHA-384) or 32 bytes (truncated)
+type PCRValues384 struct {
+	PCR0 []byte
+	PCR1 []byte
+	PCR2 []byte
+}
+
+// AttestationResult contains the verification outcome
+type AttestationResult struct {
+	Valid        bool
+	PublicKey    []byte
+	UserData     []byte
+	ErrorMessage string
+}
+
+// Constants
+const (
+	SHA384HashLength    = 48
+	SHA256HashLength    = 32
+	P384SignatureLength = 96
+)
+
+// AWSNitroRootCertPEM is the AWS Nitro Attestation PKI root certificate
+var AWSNitroRootCertPEM = []byte(`-----BEGIN CERTIFICATE-----
+MIICETCCAZagAwIBAgIRAPkxdWgbkK/hHUbMtOTn+FYwCgYIKoZIzj0EAwMwSTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoMBkFtYXpvbjEMMAoGA1UECwwDQVdTMRswGQYD
+VQQDDBJhd3Mubml0cm8tZW5jbGF2ZXMwHhcNMTkxMDI4MTMyODA1WhcNNDkxMDI4
+MTQyODA1WjBJMQswCQYDVQQGEwJVUzEPMA0GA1UECgwGQW1hem9uMQwwCgYDVQQL
+DANBV1MxGzAZBgNVBAMMEmF3cy5uaXRyby1lbmNsYXZlczB2MBAGByqGSM49AgEG
+BSuBBAAiA2IABPwCVOumCMHzaHDimtqQvkY4MpJzbolL//Zy2YlES1BR5TSksfbb
+48C8WBoyt7F2Bw7eEtaaP+ohG2bnUs990d0JX28TcPQXCEPZ3BABIeTPYwEoCWZE
+h8l5YoQwTcU/9KNCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUkCW1DdkF
+R+eWw5b6cp3PmanfS5YwDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMDA2kAMGYC
+MQCjfy+Rocm9Xue4YnwWmNJVA44fA0P5W2OpYow9OYCVRaEevL8uO1XYru5xtMPW
+rfMCMQCi85sWBbJwKKXdS6BptQFuZbT73o/gBh1qUxl/nNr12UO8Yfwr6wPLb+6N
+IwLz3/Y=
+-----END CERTIFICATE-----`)
+
+// ============================================================================
+// VERIFICATION FUNCTIONS
+// ============================================================================
+
+// VerifyAttestationDocument performs full attestation verification with 48-byte PCRs
+func VerifyAttestationDocument(
+	attestationBase64 string,
+	expectedPCRs PCRValues384,
+	expectedNonce []byte,
+) (*AttestationResult, error) {
+	return verifyAttestation(attestationBase64, expectedPCRs, expectedNonce, false)
+}
+
+// VerifyAttestationDocumentTruncated verifies attestation comparing first 32 bytes of PCRs
+func VerifyAttestationDocumentTruncated(
+	attestationBase64 string,
+	expectedPCRs PCRValues384,
+	expectedNonce []byte,
+) (*AttestationResult, error) {
+	return verifyAttestation(attestationBase64, expectedPCRs, expectedNonce, true)
+}
+
+// verifyAttestation is the internal verification function
+func verifyAttestation(
+	attestationBase64 string,
+	expectedPCRs PCRValues384,
+	expectedNonce []byte,
+	truncated bool,
+) (*AttestationResult, error) {
+	result := &AttestationResult{Valid: false}
+
+	// Step 1: Decode base64
+	attestationBytes, err := base64.StdEncoding.DecodeString(attestationBase64)
+	if err != nil {
+		result.ErrorMessage = fmt.Sprintf("base64 decode failed: %v", err)
+		return result, err
+	}
+
+	// Step 2: Decode COSE Sign1
+	coseMsg, err := decodeCOSESign1(attestationBytes)
+	if err != nil {
+		result.ErrorMessage = fmt.Sprintf("COSE decode failed: %v", err)
+		return result, err
+	}
+
+	// Step 3: Decode attestation document from payload
+	var attestDoc AttestationDocument
+	if err := cbor.Unmarshal(coseMsg.Payload, &attestDoc); err != nil {
+		result.ErrorMessage = fmt.Sprintf("attestation decode failed: %v", err)
+		return result, err
+	}
+
+	// Step 4: Validate PCRs
+	var pcrErr error
+	if truncated {
+		pcrErr = validatePCRsTruncated(attestDoc.PCRs, expectedPCRs)
+	} else {
+		pcrErr = validatePCRs384(attestDoc.PCRs, expectedPCRs)
+	}
+	if pcrErr != nil {
+		result.ErrorMessage = fmt.Sprintf("PCR validation failed: %v", pcrErr)
+		return result, pcrErr
+	}
+
+	// Step 5: Validate nonce (optional)
+	if len(expectedNonce) > 0 {
+		if err := validateNonce(attestDoc.Nonce, expectedNonce); err != nil {
+			result.ErrorMessage = fmt.Sprintf("nonce validation failed: %v", err)
+			return result, err
+		}
+	}
+
+	// Step 6: Verify COSE signature
+	signingCert, err := x509.ParseCertificate(attestDoc.Certificate)
+	if err != nil {
+		result.ErrorMessage = fmt.Sprintf("cert parse failed: %v", err)
+		return result, err
+	}
+
+	if err := verifyCOSESignatureES384(coseMsg, signingCert); err != nil {
+		result.ErrorMessage = fmt.Sprintf("signature verification failed: %v", err)
+		return result, err
+	}
+
+	// Step 7: Validate certificate chain
+	if err := validateCertificateChain(signingCert, attestDoc.CABundle); err != nil {
+		result.ErrorMessage = fmt.Sprintf("cert chain validation failed: %v", err)
+		return result, err
+	}
+
+	// Success
+	result.Valid = true
+	result.PublicKey = attestDoc.PublicKey
+	result.UserData = attestDoc.UserData
+	return result, nil
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+// decodeCOSESign1 decodes COSE Sign1 structure
+func decodeCOSESign1(data []byte) (*COSESign1Message, error) {
+	var raw []cbor.RawMessage
+	if err := cbor.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("COSE unmarshal: %w", err)
+	}
+	if len(raw) != 4 {
+		return nil, fmt.Errorf("invalid COSE: expected 4 elements, got %d", len(raw))
+	}
+
+	msg := &COSESign1Message{}
+
+	if err := cbor.Unmarshal(raw[0], &msg.ProtectedHeader); err != nil {
+		return nil, fmt.Errorf("unmarshal protected header: %w", err)
+	}
+	if err := cbor.Unmarshal(raw[1], &msg.UnprotectedHeader); err != nil {
+		return nil, fmt.Errorf("unmarshal unprotected header: %w", err)
+	}
+	if err := cbor.Unmarshal(raw[2], &msg.Payload); err != nil {
+		return nil, fmt.Errorf("unmarshal payload: %w", err)
+	}
+	if err := cbor.Unmarshal(raw[3], &msg.Signature); err != nil {
+		return nil, fmt.Errorf("unmarshal signature: %w", err)
+	}
+
+	return msg, nil
+}
+
+// validatePCRs384 validates PCR values (full SHA-384, 48 bytes each)
+func validatePCRs384(docPCRs map[int][]byte, expected PCRValues384) error {
+	expectedMap := map[int][]byte{
+		0: expected.PCR0,
+		1: expected.PCR1,
+		2: expected.PCR2,
+	}
+
+	for idx, expectedPCR := range expectedMap {
+		if len(expectedPCR) == 0 {
+			continue
+		}
+
+		docPCR, exists := docPCRs[idx]
+		if !exists || docPCR == nil {
+			return fmt.Errorf("PCR%d not found", idx)
+		}
+		if len(docPCR) != SHA384HashLength {
+			return fmt.Errorf("PCR%d invalid length: %d", idx, len(docPCR))
+		}
+		if !constantTimeEqual(docPCR, expectedPCR) {
+			return fmt.Errorf("PCR%d mismatch: got %s", idx, hex.EncodeToString(docPCR))
+		}
+	}
+	return nil
+}
+
+// validatePCRsTruncated validates PCR values (first N bytes where N = len(expected))
+func validatePCRsTruncated(docPCRs map[int][]byte, expected PCRValues384) error {
+	expectedMap := map[int][]byte{
+		0: expected.PCR0,
+		1: expected.PCR1,
+		2: expected.PCR2,
+	}
+
+	for idx, expectedPCR := range expectedMap {
+		if len(expectedPCR) == 0 {
+			continue
+		}
+
+		docPCR, exists := docPCRs[idx]
+		if !exists || docPCR == nil {
+			return fmt.Errorf("PCR%d not found", idx)
+		}
+		if len(docPCR) < len(expectedPCR) {
+			return fmt.Errorf("PCR%d too short: got %d, need %d", idx, len(docPCR), len(expectedPCR))
+		}
+		if !constantTimeEqual(docPCR[:len(expectedPCR)], expectedPCR) {
+			return fmt.Errorf("PCR%d mismatch: got %s", idx, hex.EncodeToString(docPCR[:len(expectedPCR)]))
+		}
+	}
+	return nil
+}
+
+// validateNonce checks nonce for replay protection
+func validateNonce(docNonce, expectedNonce []byte) error {
+	if len(expectedNonce) == 0 {
+		return nil
+	}
+	if len(docNonce) == 0 {
+		return errors.New("missing nonce in attestation")
+	}
+	if !constantTimeEqual(docNonce, expectedNonce) {
+		return errors.New("nonce mismatch")
+	}
+	return nil
+}
+
+// verifyCOSESignatureES384 verifies COSE Sign1 with ES384 (ECDSA P-384)
+func verifyCOSESignatureES384(msg *COSESign1Message, cert *x509.Certificate) error {
+	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return errors.New("certificate does not contain ECDSA key")
+	}
+	if pubKey.Curve != elliptic.P384() {
+		return errors.New("certificate key is not P-384 curve")
+	}
+
+	// Construct Sig_structure: ["Signature1", protected, external_aad, payload]
+	sigStructure := []any{"Signature1", msg.ProtectedHeader, []byte{}, msg.Payload}
+	sigStructureBytes, err := cbor.Marshal(sigStructure)
+	if err != nil {
+		return fmt.Errorf("marshal sig_structure: %w", err)
+	}
+
+	// Hash with SHA-384
+	hash := sha512.Sum384(sigStructureBytes)
+
+	// Parse signature (r || s, each 48 bytes)
+	if len(msg.Signature) != P384SignatureLength {
+		return fmt.Errorf("invalid signature length: got %d, expected %d", len(msg.Signature), P384SignatureLength)
+	}
+
+	r := new(big.Int).SetBytes(msg.Signature[:48])
+	s := new(big.Int).SetBytes(msg.Signature[48:])
+
+	if !ecdsa.Verify(pubKey, hash[:], r, s) {
+		return errors.New("ECDSA signature verification failed")
+	}
+	return nil
+}
+
+// validateCertificateChain validates the signing certificate against AWS Nitro root
+func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte) error {
+	// Parse AWS Nitro root certificate
+	rootPool := x509.NewCertPool()
+	if !rootPool.AppendCertsFromPEM(AWSNitroRootCertPEM) {
+		return errors.New("failed to parse AWS Nitro root certificate")
+	}
+
+	// Build intermediate certificate pool
+	intermediatePool := x509.NewCertPool()
+	for i, certDER := range caBundle {
+		cert, err := x509.ParseCertificate(certDER)
+		if err != nil {
+			return fmt.Errorf("parse CA bundle cert %d: %w", i, err)
+		}
+		intermediatePool.AddCert(cert)
+	}
+
+	// Verify certificate chain
+	_, err := signingCert.Verify(x509.VerifyOptions{
+		Roots:         rootPool,
+		Intermediates: intermediatePool,
+	})
+	if err != nil {
+		return fmt.Errorf("certificate chain verification: %w", err)
+	}
+
+	return nil
+}
+
+// constantTimeEqual performs constant-time byte comparison (prevents timing attacks)
+func constantTimeEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var result byte
+	for i := range a {
+		result |= a[i] ^ b[i]
+	}
+	return result == 0
+}
