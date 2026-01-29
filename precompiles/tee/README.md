@@ -223,3 +223,30 @@ precompiles/tee/
 ├── abi.go              # ABI definition
 └── precompile_test.go  # Tests
 ```
+
+## TODO: Integration Tasks
+
+### Blockchain 
+
+- [ ] Add event emission (`TEERegistered`, `SettlementVerified`)
+- [ ] Unit tests matching project patterns
+- [ ] complete and test `registerTEEWithAttestation` with real AWS attestation
+- [ ] Solidity interface file for external contracts
+- [ ] Gas optimization review
+
+### LLM Server
+
+- [ ] Implement `/admin/register` endpoint
+- [ ] Store TEE ID after registration
+
+### Facilitator (x402)
+
+- [ ] Call `verifySignature()` or `verifySettlement()`
+- [ ] Handle verification result (payment release / score decrease) Not yet decided
+- [ ] Decide settlement timing (Op1 vs Op2)
+
+
+### Documentation
+
+- [ ] Update the design document with the new elements
+- [ ] Security audit checklist
