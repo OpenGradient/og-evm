@@ -18,7 +18,10 @@ import (
 // AWS Nitro Attestation Verification
 // Reference: Python implementation (verify.py) from nitro-enclave-python-demo
 // TODO: khalifa Different Improvement should be done later
+// TODO: the registration from TEE directly (msg binary)
+// TODO: Private request to investigate.
 // =============================================================================
+
 // AttestationDocument represents the decoded AWS Nitro attestation payload
 type AttestationDocument struct {
 	ModuleID    string         `cbor:"module_id"`
@@ -40,8 +43,7 @@ type COSESign1Message struct {
 	Signature         []byte
 }
 
-// PCRValues384 holds PCR values for verification
-// Can be 48 bytes (full SHA-384) or 32 bytes (truncated)
+// PCRValues384 holds PCR values for verification (48 bytes each for SHA-384)
 type PCRValues384 struct {
 	PCR0 []byte
 	PCR1 []byte
@@ -53,6 +55,7 @@ type AttestationResult struct {
 	Valid        bool
 	PublicKey    []byte
 	UserData     []byte
+	PCRs         PCRValues384
 	ErrorMessage string
 }
 
@@ -63,8 +66,9 @@ const (
 	P384SignatureLength = 96
 )
 
-// AWSNitroRootCertPEM is the AWS Nitro Attestation PKI root certificate
-var AWSNitroRootCertPEM = []byte(`-----BEGIN CERTIFICATE-----
+// DefaultAWSNitroRootCertPEM is the AWS Nitro Attestation PKI root certificate
+// This is used as fallback if no certificate is stored on-chain
+var DefaultAWSNitroRootCertPEM = []byte(`-----BEGIN CERTIFICATE-----
 MIICETCCAZagAwIBAgIRAPkxdWgbkK/hHUbMtOTn+FYwCgYIKoZIzj0EAwMwSTEL
 MAkGA1UEBhMCVVMxDzANBgNVBAoMBkFtYXpvbjEMMAoGA1UECwwDQVdTMRswGQYD
 VQQDDBJhd3Mubml0cm8tZW5jbGF2ZXMwHhcNMTkxMDI4MTMyODA1WhcNNDkxMDI4
@@ -83,32 +87,18 @@ IwLz3/Y=
 // VERIFICATION FUNCTIONS
 // ============================================================================
 
-// VerifyAttestationDocument performs full attestation verification with 48-byte PCRs
+// VerifyAttestationDocument performs full attestation verification using provided root cert
 func VerifyAttestationDocument(
 	attestationBase64 string,
-	expectedPCRs PCRValues384,
+	rootCertPEM []byte,
 	expectedNonce []byte,
-) (*AttestationResult, error) {
-	return verifyAttestation(attestationBase64, expectedPCRs, expectedNonce, false)
-}
-
-// VerifyAttestationDocumentTruncated verifies attestation comparing first 32 bytes of PCRs
-func VerifyAttestationDocumentTruncated(
-	attestationBase64 string,
-	expectedPCRs PCRValues384,
-	expectedNonce []byte,
-) (*AttestationResult, error) {
-	return verifyAttestation(attestationBase64, expectedPCRs, expectedNonce, true)
-}
-
-// verifyAttestation is the internal verification function
-func verifyAttestation(
-	attestationBase64 string,
-	expectedPCRs PCRValues384,
-	expectedNonce []byte,
-	truncated bool,
 ) (*AttestationResult, error) {
 	result := &AttestationResult{Valid: false}
+
+	// Use default cert if none provided
+	if len(rootCertPEM) == 0 {
+		rootCertPEM = DefaultAWSNitroRootCertPEM
+	}
 
 	// Step 1: Decode base64
 	attestationBytes, err := base64.StdEncoding.DecodeString(attestationBase64)
@@ -131,16 +121,11 @@ func verifyAttestation(
 		return result, err
 	}
 
-	// Step 4: Validate PCRs
-	var pcrErr error
-	if truncated {
-		pcrErr = validatePCRsTruncated(attestDoc.PCRs, expectedPCRs)
-	} else {
-		pcrErr = validatePCRs384(attestDoc.PCRs, expectedPCRs)
-	}
-	if pcrErr != nil {
-		result.ErrorMessage = fmt.Sprintf("PCR validation failed: %v", pcrErr)
-		return result, pcrErr
+	// Step 4: Extract PCRs
+	result.PCRs = PCRValues384{
+		PCR0: attestDoc.PCRs[0],
+		PCR1: attestDoc.PCRs[1],
+		PCR2: attestDoc.PCRs[2],
 	}
 
 	// Step 5: Validate nonce (optional)
@@ -163,8 +148,8 @@ func verifyAttestation(
 		return result, err
 	}
 
-	// Step 7: Validate certificate chain
-	if err := validateCertificateChain(signingCert, attestDoc.CABundle); err != nil {
+	// Step 7: Validate certificate chain using provided root cert
+	if err := validateCertificateChain(signingCert, attestDoc.CABundle, rootCertPEM); err != nil {
 		result.ErrorMessage = fmt.Sprintf("cert chain validation failed: %v", err)
 		return result, err
 	}
@@ -174,6 +159,54 @@ func verifyAttestation(
 	result.PublicKey = attestDoc.PublicKey
 	result.UserData = attestDoc.UserData
 	return result, nil
+}
+
+// VerifyAttestationWithPCRCheck verifies attestation and checks PCRs against expected values
+func VerifyAttestationWithPCRCheck(
+	attestationBase64 string,
+	rootCertPEM []byte,
+	expectedPCRs PCRValues384,
+	expectedNonce []byte,
+) (*AttestationResult, error) {
+	// First verify attestation
+	result, err := VerifyAttestationDocument(attestationBase64, rootCertPEM, expectedNonce)
+	if err != nil {
+		return result, err
+	}
+	if !result.Valid {
+		return result, errors.New(result.ErrorMessage)
+	}
+
+	// Then check PCRs match
+	if err := comparePCRs(result.PCRs, expectedPCRs); err != nil {
+		result.Valid = false
+		result.ErrorMessage = fmt.Sprintf("PCR validation failed: %v", err)
+		return result, err
+	}
+
+	return result, nil
+}
+
+// VerifyAttestationWithDefaultCert verifies using the default AWS root certificate
+func VerifyAttestationWithDefaultCert(
+	attestationBase64 string,
+	expectedNonce []byte,
+) (*AttestationResult, error) {
+	return VerifyAttestationDocument(attestationBase64, DefaultAWSNitroRootCertPEM, expectedNonce)
+}
+
+// ValidateRootCertificate checks if a certificate is valid PEM format
+func ValidateRootCertificate(certPEM []byte) error {
+	if len(certPEM) == 0 {
+		return ErrInvalidCertificate
+	}
+
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(certPEM) {
+		return ErrInvalidCertificate
+	}
+
+	return nil
 }
 
 // ============================================================================
@@ -208,55 +241,21 @@ func decodeCOSESign1(data []byte) (*COSESign1Message, error) {
 	return msg, nil
 }
 
-// validatePCRs384 validates PCR values (full SHA-384, 48 bytes each)
-func validatePCRs384(docPCRs map[int][]byte, expected PCRValues384) error {
-	expectedMap := map[int][]byte{
-		0: expected.PCR0,
-		1: expected.PCR1,
-		2: expected.PCR2,
-	}
-
-	for idx, expectedPCR := range expectedMap {
-		if len(expectedPCR) == 0 {
-			continue
-		}
-
-		docPCR, exists := docPCRs[idx]
-		if !exists || docPCR == nil {
-			return fmt.Errorf("PCR%d not found", idx)
-		}
-		if len(docPCR) != SHA384HashLength {
-			return fmt.Errorf("PCR%d invalid length: %d", idx, len(docPCR))
-		}
-		if !constantTimeEqual(docPCR, expectedPCR) {
-			return fmt.Errorf("PCR%d mismatch: got %s", idx, hex.EncodeToString(docPCR))
+// comparePCRs compares extracted PCRs with expected values
+func comparePCRs(extracted, expected PCRValues384) error {
+	if len(expected.PCR0) > 0 {
+		if !constantTimeEqual(extracted.PCR0, expected.PCR0) {
+			return fmt.Errorf("PCR0 mismatch: got %s", hex.EncodeToString(extracted.PCR0))
 		}
 	}
-	return nil
-}
-
-// validatePCRsTruncated validates PCR values (first N bytes where N = len(expected))
-func validatePCRsTruncated(docPCRs map[int][]byte, expected PCRValues384) error {
-	expectedMap := map[int][]byte{
-		0: expected.PCR0,
-		1: expected.PCR1,
-		2: expected.PCR2,
+	if len(expected.PCR1) > 0 {
+		if !constantTimeEqual(extracted.PCR1, expected.PCR1) {
+			return fmt.Errorf("PCR1 mismatch: got %s", hex.EncodeToString(extracted.PCR1))
+		}
 	}
-
-	for idx, expectedPCR := range expectedMap {
-		if len(expectedPCR) == 0 {
-			continue
-		}
-
-		docPCR, exists := docPCRs[idx]
-		if !exists || docPCR == nil {
-			return fmt.Errorf("PCR%d not found", idx)
-		}
-		if len(docPCR) < len(expectedPCR) {
-			return fmt.Errorf("PCR%d too short: got %d, need %d", idx, len(docPCR), len(expectedPCR))
-		}
-		if !constantTimeEqual(docPCR[:len(expectedPCR)], expectedPCR) {
-			return fmt.Errorf("PCR%d mismatch: got %s", idx, hex.EncodeToString(docPCR[:len(expectedPCR)]))
+	if len(expected.PCR2) > 0 {
+		if !constantTimeEqual(extracted.PCR2, expected.PCR2) {
+			return fmt.Errorf("PCR2 mismatch: got %s", hex.EncodeToString(extracted.PCR2))
 		}
 	}
 	return nil
@@ -310,12 +309,12 @@ func verifyCOSESignatureES384(msg *COSESign1Message, cert *x509.Certificate) err
 	return nil
 }
 
-// validateCertificateChain validates the signing certificate against AWS Nitro root
-func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte) error {
-	// Parse AWS Nitro root certificate
+// validateCertificateChain validates the signing certificate against provided root
+func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte, rootCertPEM []byte) error {
+	// Parse root certificate
 	rootPool := x509.NewCertPool()
-	if !rootPool.AppendCertsFromPEM(AWSNitroRootCertPEM) {
-		return errors.New("failed to parse AWS Nitro root certificate")
+	if !rootPool.AppendCertsFromPEM(rootCertPEM) {
+		return errors.New("failed to parse root certificate")
 	}
 
 	// Build intermediate certificate pool
@@ -340,7 +339,7 @@ func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte) 
 	return nil
 }
 
-// constantTimeEqual performs constant-time byte comparison (prevents timing attacks)
+// constantTimeEqual performs constant-time byte comparison
 func constantTimeEqual(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false

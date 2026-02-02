@@ -3,21 +3,43 @@ package tee
 import "errors"
 
 var (
-	// Registration errors
+	// ============ Registration Errors ============
 	ErrTEENotFound      = errors.New("tee: not found")
 	ErrTEEAlreadyExists = errors.New("tee: already exists")
 	ErrTEENotActive     = errors.New("tee: not active")
 	ErrNotTEEOwner      = errors.New("tee: caller is not owner")
 
-	// Attestation errors
-	ErrAttestationInvalid = errors.New("tee: invalid attestation")
-	ErrPCRMismatch        = errors.New("tee: PCR mismatch")
+	// ============ Admin Errors ============
+	ErrNotAdmin              = errors.New("tee: caller is not admin")
+	ErrAdminAlreadyExists    = errors.New("tee: admin already exists")
+	ErrAdminNotFound         = errors.New("tee: admin not found")
+	ErrCannotRemoveLastAdmin = errors.New("tee: cannot remove last admin")
 
-	// Signature errors
+	// ============ PCR Registry Errors ============
+	ErrPCRNotApproved = errors.New("tee: PCR not in approved list")
+	ErrPCRExpired     = errors.New("tee: PCR has expired")
+	ErrPCRNotFound    = errors.New("tee: PCR not found")
+
+	// ============ TEE Type Errors ============
+	ErrInvalidTEEType  = errors.New("tee: invalid or inactive TEE type")
+	ErrTEETypeExists   = errors.New("tee: TEE type already exists")
+	ErrTEETypeNotFound = errors.New("tee: TEE type not found")
+
+	// ============ Attestation Errors ============
+	ErrAttestationInvalid    = errors.New("tee: invalid attestation")
+	ErrPCRMismatch           = errors.New("tee: PCR mismatch")
+	ErrRootCertificateNotSet = errors.New("tee: AWS root certificate not set")
+	ErrInvalidCertificate    = errors.New("tee: invalid certificate format")
+
+	// ============ Signature Errors ============
 	ErrInvalidSignature = errors.New("tee: invalid signature")
 	ErrInvalidPublicKey = errors.New("tee: invalid public key")
 
-	// Input errors
+	// ============ Settlement Errors ============
+	ErrSettlementAlreadyUsed = errors.New("tee: settlement already verified")
+	ErrTimestampTooOld       = errors.New("tee: timestamp too old")
+	ErrTimestampInFuture     = errors.New("tee: timestamp in future")
+	// ============ Input Errors ============
 	ErrInvalidInput    = errors.New("tee: invalid input")
 	ErrMethodNotFound  = errors.New("tee: method not found")
 	ErrWriteProtection = errors.New("tee: write protection")
