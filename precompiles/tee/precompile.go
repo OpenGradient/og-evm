@@ -21,7 +21,7 @@ import (
 const (
 	AddressHex = "0x0000000000000000000000000000000000000900"
 
-	// TOD khalifa Gas costs to be reviewedd
+	// Gas costs
 	GasAdmin              uint64 = 50000
 	GasRegisterWithAttest uint64 = 600000
 	GasVerifySignature    uint64 = 20000
@@ -29,6 +29,7 @@ const (
 	GasSetActive          uint64 = 10000
 	GasPCRManagement      uint64 = 50000
 	GasTEETypeManagement  uint64 = 30000
+	GasCertManagement     uint64 = 100000
 	GasQuery              uint64 = 1000
 	GasQueryList          uint64 = 5000
 )
@@ -129,8 +130,10 @@ func (p *Precompile) RequiredGas(input []byte) uint64 {
 		return GasVerifySettlement
 	case MethodDeactivateTEE, MethodActivateTEE:
 		return GasSetActive
-	case MethodApprovePCR, MethodRevokePCR, MethodSetAWSRootCertificate:
+	case MethodApprovePCR, MethodRevokePCR:
 		return GasPCRManagement
+	case MethodSetAWSRootCertificate:
+		return GasCertManagement
 	case MethodAddTEEType, MethodDeactivateTEEType:
 		return GasTEETypeManagement
 	case MethodGetActiveTEEs, MethodGetTEEsByType, MethodGetTEEsByOwner, MethodGetAdmins, MethodGetTEETypes, MethodGetActivePCRs:
@@ -482,8 +485,14 @@ func (p *Precompile) setAWSRootCertificate(ctx *callContext, args []interface{})
 		return nil, ErrNotAdmin
 	}
 
-	//certHash := crypto.Keccak256Hash(certificate)
+	// Validate certificate format
+	if err := ValidateRootCertificate(certificate); err != nil {
+		return nil, err
+	}
+
+	// Store full certificate bytes
 	ctx.storage.SetAWSRootCertificate(certificate)
+
 	return nil, nil
 }
 
@@ -512,13 +521,17 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 		return nil, ErrInvalidTEEType
 	}
 
+	// Get root certificate from storage (or use default)
+	rootCert := ctx.storage.GetAWSRootCertificate()
+	if len(rootCert) == 0 {
+		rootCert = DefaultAWSNitroRootCertPEM
+	}
+
 	// Convert attestation to base64
 	attestationBase64 := base64.StdEncoding.EncodeToString(attestationBytes)
 
-	// Verify attestation and extract PCRs
-	rootCertPEM := ctx.storage.GetAWSRootCertificate()
-	result, err := VerifyAttestationDocument(attestationBase64, rootCertPEM, nil)
-
+	// Verify attestation and extract PCRs using stored/default cert
+	result, err := VerifyAttestationDocument(attestationBase64, rootCert, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrAttestationInvalid, err)
 	}
@@ -625,6 +638,12 @@ func (p *Precompile) verifySignature(ctx *callContext, args []interface{}) ([]by
 	})
 
 	teeId := common.BytesToHash(request.TeeId[:])
+
+	// Validate timestamp bounds
+	if err := p.validateTimestamp(ctx, request.Timestamp); err != nil {
+		return ctx.method.Outputs.Pack(false)
+	}
+
 	valid := p.doVerifySignature(ctx.storage, teeId, request.RequestHash, request.ResponseHash, request.Timestamp, request.Signature)
 
 	return ctx.method.Outputs.Pack(valid)
@@ -638,11 +657,48 @@ func (p *Precompile) verifySettlement(ctx *callContext, args []interface{}) ([]b
 	timestamp := args[3].(*big.Int)
 	signature := args[4].([]byte)
 
+	// Validate timestamp bounds
+	if err := p.validateTimestamp(ctx, timestamp); err != nil {
+		return nil, err
+	}
+
+	// Compute settlement hash for replay protection
+	settlementHash := ComputeSettlementHash(teeId, inputHash, outputHash, timestamp)
+
+	// Check replay protection
+	if ctx.storage.IsSettlementUsed(settlementHash) {
+		return nil, ErrSettlementAlreadyUsed
+	}
+
+	// Verify signature
 	valid := p.doVerifySignature(ctx.storage, teeId, inputHash, outputHash, timestamp, signature)
 
-	// TODO: Emit SettlementVerified event if valid
+	if valid {
+		// Mark settlement as used (replay protection)
+		ctx.storage.MarkSettlementUsed(settlementHash)
+
+		// TODO: Emit SettlementVerified event
+		// Events require EVM log support which depends on your chain implementation
+	}
 
 	return ctx.method.Outputs.Pack(valid)
+}
+
+func (p *Precompile) validateTimestamp(ctx *callContext, timestamp *big.Int) error {
+	now := ctx.timestamp().Uint64()
+	ts := timestamp.Uint64()
+
+	// Check not too far in future
+	if ts > now+FutureTimeTolerance {
+		return ErrTimestampInFuture
+	}
+
+	// Check not too old
+	if ts < now-MaxSettlementAge {
+		return ErrTimestampTooOld
+	}
+
+	return nil
 }
 
 func (p *Precompile) doVerifySignature(
@@ -814,13 +870,8 @@ func verifyRSASignature(publicKeyDER []byte, messageHash []byte, signature []byt
 		Hash:       gcrypto.SHA256,
 	}
 
-	var hash []byte
-	if len(messageHash) == 32 {
-		hash = messageHash
-	} else {
-		h := sha256.Sum256(messageHash)
-		hash = h[:]
-	}
+	// Hash the message hash with SHA256 for RSA-PSS
+	h := sha256.Sum256(messageHash)
 
-	return rsa.VerifyPSS(rsaPub, gcrypto.SHA256, hash, signature, opts)
+	return rsa.VerifyPSS(rsaPub, gcrypto.SHA256, h[:], signature, opts)
 }
