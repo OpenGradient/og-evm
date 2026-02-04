@@ -171,6 +171,7 @@ const ABI = `[
 		"stateMutability": "nonpayable",
 		"inputs": [
 			{"name": "attestationDocument", "type": "bytes"},
+			{"name": "publicKey", "type": "bytes"},
 			{"name": "paymentAddress", "type": "address"},
 			{"name": "endpoint", "type": "string"},
 			{"name": "teeType", "type": "uint8"}

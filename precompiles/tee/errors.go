@@ -31,6 +31,9 @@ var (
 	ErrRootCertificateNotSet = errors.New("tee: AWS root certificate not set")
 	ErrInvalidCertificate    = errors.New("tee: invalid certificate format")
 
+	// ============ Public Key Binding Errors ============
+	ErrPublicKeyBindingFailed = errors.New("tee: public key does not match attestation binding")
+
 	// ============ Signature Errors ============
 	ErrInvalidSignature = errors.New("tee: invalid signature")
 	ErrInvalidPublicKey = errors.New("tee: invalid public key")
@@ -39,6 +42,7 @@ var (
 	ErrSettlementAlreadyUsed = errors.New("tee: settlement already verified")
 	ErrTimestampTooOld       = errors.New("tee: timestamp too old")
 	ErrTimestampInFuture     = errors.New("tee: timestamp in future")
+
 	// ============ Input Errors ============
 	ErrInvalidInput    = errors.New("tee: invalid input")
 	ErrMethodNotFound  = errors.New("tee: method not found")

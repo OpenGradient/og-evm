@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,6 +27,13 @@ import (
 const (
 	RPC_URL     = "http://localhost:8545"
 	TEE_ADDRESS = "0x0000000000000000000000000000000000000900"
+
+	// Enclave configuration
+	//ENCLAVE_URL = "https://3.133.152.176/enclave/attestation"
+	ENCLAVE_URL = "https://13.59.207.188/enclave/attestation"
+
+	// Path to measurements file (from enclave build)
+	MEASUREMENTS_PATH = "measurements.txt"
 )
 
 // Method selectors (compute with keccak256)
@@ -39,11 +48,25 @@ var (
 	SEL_IS_ACTIVE         = crypto.Keccak256([]byte("isActive(bytes32)"))[:4]
 	SEL_VERIFY_SETTLEMENT = crypto.Keccak256([]byte("verifySettlement(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
 	SEL_GET_ACTIVE_TEES   = crypto.Keccak256([]byte("getActiveTEEs()"))[:4]
+	SEL_GET_TEE_INFO      = crypto.Keccak256([]byte("getTEEInfo(bytes32)"))[:4]
 )
+
+// PCRMeasurements holds the expected PCR values
+type PCRMeasurements struct {
+	PCR0 string `json:"PCR0"`
+	PCR1 string `json:"PCR1"`
+	PCR2 string `json:"PCR2"`
+}
+
+// MeasurementsFile represents the measurements.txt structure
+type MeasurementsFile struct {
+	Measurements PCRMeasurements `json:"Measurements"`
+}
 
 func main() {
 	fmt.Println("==========================================")
 	fmt.Println("  TEE Registry Integration Test")
+	fmt.Println("  (With Real Attestation Support)")
 	fmt.Println("==========================================")
 	fmt.Println()
 
@@ -55,19 +78,23 @@ func main() {
 	}
 	fmt.Printf("📍 Using account: %s\n\n", account)
 
-	// Generate test RSA key pair
-	privateKey, publicKeyDER := generateKeyPair()
-	teeId := crypto.Keccak256Hash(publicKeyDER)
-	fmt.Printf("🔑 Generated RSA key pair\n")
-	fmt.Printf("   TEE ID: %s\n\n", teeId.Hex())
-
-	// Generate test PCRs (48 bytes each)
-	pcr0 := make([]byte, 48)
-	pcr1 := make([]byte, 48)
-	pcr2 := make([]byte, 48)
-	rand.Read(pcr0)
-	rand.Read(pcr1)
-	rand.Read(pcr2)
+	// Load PCR measurements from file
+	pcr0, pcr1, pcr2, err := loadPCRMeasurements()
+	if err != nil {
+		fmt.Printf("⚠️  Failed to load measurements.txt: %v\n", err)
+		fmt.Println("   Using random PCRs for testing (won't work with real attestation)")
+		pcr0 = make([]byte, 48)
+		pcr1 = make([]byte, 48)
+		pcr2 = make([]byte, 48)
+		rand.Read(pcr0)
+		rand.Read(pcr1)
+		rand.Read(pcr2)
+	} else {
+		fmt.Println("✅ Loaded PCR measurements from file")
+		fmt.Printf("   PCR0: %s...\n", hex.EncodeToString(pcr0)[:32])
+		fmt.Printf("   PCR1: %s...\n", hex.EncodeToString(pcr1)[:32])
+		fmt.Printf("   PCR2: %s...\n\n", hex.EncodeToString(pcr2)[:32])
+	}
 
 	// ==========================================
 	// Step 1: Setup Admin
@@ -76,7 +103,6 @@ func main() {
 	fmt.Println("Step 1: Setup Admin")
 	fmt.Println("------------------------------------------")
 
-	// First call to addAdmin should succeed (first admin setup)
 	txHash, err := callAddAdmin(account, account)
 	if err != nil {
 		fmt.Printf("⚠️  addAdmin failed (may already be admin): %v\n", err)
@@ -85,7 +111,6 @@ func main() {
 		waitForTx(txHash)
 	}
 
-	// Check if admin
 	isAdmin, err := callIsAdmin(account)
 	if err != nil {
 		fmt.Printf("❌ isAdmin failed: %v\n", err)
@@ -108,7 +133,6 @@ func main() {
 		waitForTx(txHash)
 	}
 
-	// Check if valid
 	isValid, err := callIsValidTEEType(0)
 	if err != nil {
 		fmt.Printf("❌ isValidTEEType failed: %v\n", err)
@@ -131,7 +155,6 @@ func main() {
 	fmt.Printf("📤 approvePCR tx: %s\n", txHash)
 	waitForTx(txHash)
 
-	// Check if approved
 	approved, err := callIsPCRApproved(pcr0, pcr1, pcr2)
 	if err != nil {
 		fmt.Printf("❌ isPCRApproved failed: %v\n", err)
@@ -140,24 +163,58 @@ func main() {
 	}
 
 	// ==========================================
-	// Step 4: Register TEE (Simulated - No Real Attestation)
+	// Step 4: Register TEE with Real Attestation
 	// ==========================================
 	fmt.Println("------------------------------------------")
-	fmt.Println("Step 4: Register TEE (Trusted Mode)")
+	fmt.Println("Step 4: Register TEE (Real Attestation)")
 	fmt.Println("------------------------------------------")
-	fmt.Println("⚠️  Note: Using trusted registration for testing")
-	fmt.Println("   Real registration requires fresh AWS attestation")
-	fmt.Println()
 
-	// For integration test without real attestation, we'll test the other flows
-	// and simulate a registered TEE by directly storing
+	// Generate fresh nonce (40 hex chars = 20 bytes)
+	nonce := generateNonce()
+	fmt.Printf("🎲 Generated nonce: %s\n", nonce)
+
+	// Fetch attestation from running enclave
+	fmt.Printf("📡 Fetching attestation from enclave at %s...\n", ENCLAVE_URL)
+	attestationDoc, err := getAttestation(nonce)
+	if err != nil {
+		fmt.Printf("❌ Failed to get attestation: %v\n", err)
+		fmt.Println("   ⚠️  Make sure the enclave is running!")
+		fmt.Println("   Skipping TEE registration...")
+	} else {
+		fmt.Printf("✅ Got attestation document (%d bytes base64)\n", len(attestationDoc))
+
+		// Decode base64 attestation
+		attestationBytes, err := base64.StdEncoding.DecodeString(attestationDoc)
+		if err != nil {
+			fmt.Printf("❌ Failed to decode attestation: %v\n", err)
+		} else {
+			fmt.Printf("   Decoded attestation: %d bytes\n", len(attestationBytes))
+
+			// Register TEE with attestation
+			txHash, err = callRegisterTEE(account, attestationBytes, account, "llm-proxy-001", 0)
+			if err != nil {
+				fmt.Printf("❌ registerTEE failed: %v\n", err)
+			} else {
+				fmt.Printf("📤 registerTEE tx: %s\n", txHash)
+				if waitForTx(txHash) {
+					fmt.Println("✅ TEE registered successfully with real attestation!")
+				}
+			}
+		}
+	}
 
 	// ==========================================
 	// Step 5: Signature Verification Test
 	// ==========================================
-	fmt.Println("------------------------------------------")
+	fmt.Println("\n------------------------------------------")
 	fmt.Println("Step 5: Signature Verification Test")
 	fmt.Println("------------------------------------------")
+
+	// Generate test RSA key pair for signature testing
+	privateKey, publicKeyDER := generateKeyPair()
+	teeId := crypto.Keccak256Hash(publicKeyDER)
+	fmt.Printf("🔑 Generated test RSA key pair\n")
+	fmt.Printf("   TEE ID (from pubkey): %s\n", teeId.Hex())
 
 	// Create test data
 	inputHash := sha256.Sum256([]byte(`{"prompt": "Hello, world!"}`))
@@ -175,7 +232,7 @@ func main() {
 	signature := signMessage(privateKey, messageHash[:])
 	fmt.Printf("   Signature:    %d bytes\n\n", len(signature))
 
-	// Verify signature locally (without blockchain)
+	// Verify signature locally
 	err = verifySignatureLocal(publicKeyDER, messageHash[:], signature)
 	if err != nil {
 		fmt.Printf("❌ Local signature verification failed: %v\n", err)
@@ -200,6 +257,9 @@ func main() {
 		}
 	}
 
+	// ==========================================
+	// Summary
+	// ==========================================
 	fmt.Println("\n==========================================")
 	fmt.Println("  Integration Test Complete")
 	fmt.Println("==========================================")
@@ -209,11 +269,89 @@ func main() {
 	fmt.Println("  ✅ TEE type management")
 	fmt.Println("  ✅ PCR approval")
 	fmt.Println("  ✅ Signature verification (local)")
-	fmt.Println("  ⚠️  Full registration requires real attestation")
+	if attestationDoc != "" {
+		fmt.Println("  ✅ Real attestation fetched")
+		fmt.Println("  ✅ TEE registration attempted")
+	} else {
+		fmt.Println("  ⚠️  Attestation fetch skipped (enclave not available)")
+	}
 }
 
 // ============================================================================
-// KEY GENERATION
+// ATTESTATION FUNCTIONS
+// ============================================================================
+
+// generateNonce creates a random 40-character hex nonce
+func generateNonce() string {
+	nonce := make([]byte, 20)
+	rand.Read(nonce)
+	return hex.EncodeToString(nonce)
+}
+
+// getAttestation fetches attestation document from enclave
+func getAttestation(nonce string) (string, error) {
+	// Skip TLS verification for self-signed cert
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   30 * time.Second,
+	}
+
+	url := fmt.Sprintf("%s?nonce=%s", ENCLAVE_URL, nonce)
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %v", err)
+	}
+
+	// Trim any whitespace/newlines
+	return string(bytes.TrimSpace(body)), nil
+}
+
+// loadPCRMeasurements loads expected PCR values from measurements.txt
+func loadPCRMeasurements() (pcr0, pcr1, pcr2 []byte, err error) {
+	data, err := os.ReadFile(MEASUREMENTS_PATH)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read file: %v", err)
+	}
+
+	var measurements MeasurementsFile
+	if err := json.Unmarshal(data, &measurements); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	pcr0, err = hex.DecodeString(measurements.Measurements.PCR0)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to decode PCR0: %v", err)
+	}
+
+	pcr1, err = hex.DecodeString(measurements.Measurements.PCR1)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to decode PCR1: %v", err)
+	}
+
+	pcr2, err = hex.DecodeString(measurements.Measurements.PCR2)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to decode PCR2: %v", err)
+	}
+
+	return pcr0, pcr1, pcr2, nil
+}
+
+// ============================================================================
+// KEY GENERATION & SIGNING
 // ============================================================================
 
 func generateKeyPair() (*rsa.PrivateKey, []byte) {
@@ -310,7 +448,6 @@ func callIsValidTEEType(typeId uint8) (bool, error) {
 }
 
 func callApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string) (string, error) {
-	// Build tuple for PCRMeasurements
 	tupleType, _ := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "pcr0", Type: "bytes"},
 		{Name: "pcr1", Type: "bytes"},
@@ -371,13 +508,69 @@ func callIsPCRApproved(pcr0, pcr1, pcr2 []byte) (bool, error) {
 	return result[31] == 1, nil
 }
 
+func callRegisterTEE(from string, attestationDoc []byte, operator string, identifier string, teeType uint8) (string, error) {
+	bytesType, _ := abi.NewType("bytes", "", nil)
+	addrType, _ := abi.NewType("address", "", nil)
+	stringType, _ := abi.NewType("string", "", nil)
+	uint8Type, _ := abi.NewType("uint8", "", nil)
+
+	args := abi.Arguments{
+		{Type: bytesType},  // attestationDoc
+		{Type: addrType},   // operator
+		{Type: stringType}, // identifier
+		{Type: uint8Type},  // teeType
+	}
+
+	encoded, err := args.Pack(attestationDoc, common.HexToAddress(operator), identifier, teeType)
+	if err != nil {
+		return "", err
+	}
+
+	return sendTx(from, append(SEL_REGISTER_TEE, encoded...))
+}
+
+func callIsActive(teeId [32]byte) (bool, error) {
+	bytes32Type, _ := abi.NewType("bytes32", "", nil)
+	args := abi.Arguments{{Type: bytes32Type}}
+	encoded, _ := args.Pack(teeId)
+
+	result, err := ethCall(append(SEL_IS_ACTIVE, encoded...))
+	if err != nil {
+		return false, err
+	}
+	if len(result) < 32 {
+		return false, nil
+	}
+	return result[31] == 1, nil
+}
+
+func callVerifySettlement(from string, teeId, inputHash, outputHash [32]byte, timestamp *big.Int, signature []byte) (string, error) {
+	bytes32Type, _ := abi.NewType("bytes32", "", nil)
+	uint256Type, _ := abi.NewType("uint256", "", nil)
+	bytesType, _ := abi.NewType("bytes", "", nil)
+
+	args := abi.Arguments{
+		{Type: bytes32Type}, // teeId
+		{Type: bytes32Type}, // inputHash
+		{Type: bytes32Type}, // outputHash
+		{Type: uint256Type}, // timestamp
+		{Type: bytesType},   // signature
+	}
+
+	encoded, err := args.Pack(teeId, inputHash, outputHash, timestamp, signature)
+	if err != nil {
+		return "", err
+	}
+
+	return sendTx(from, append(SEL_VERIFY_SETTLEMENT, encoded...))
+}
+
 func callGetActiveTEEs() ([]string, error) {
 	result, err := ethCall(SEL_GET_ACTIVE_TEES)
 	if err != nil {
 		return nil, err
 	}
 
-	// Decode bytes32[]
 	if len(result) < 64 {
 		return []string{}, nil
 	}

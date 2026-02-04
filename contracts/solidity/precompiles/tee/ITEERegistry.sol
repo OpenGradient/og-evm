@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 /// @title ITEERegistry - Interface for TEE Registry Precompile
 /// @notice Manages TEE registration and signature verification for X402 settlements
 /// @dev Precompile deployed at 0x0000000000000000000000000000000000000900
+/// @dev Supports Nitriding framework where attestation contains SHA256(publicKey) binding
 interface ITEERegistry {
     
     // ============ Errors ============
@@ -27,6 +28,7 @@ interface ITEERegistry {
     error AdminAlreadyExists(address admin);
     error AdminNotFound(address admin);
     error CannotRemoveLastAdmin();
+    error PublicKeyBindingFailed();
     
     // ============ Structs ============
     
@@ -127,7 +129,22 @@ interface ITEERegistry {
 
     // ============ TEE Registration ============
     
-    function registerTEEWithAttestation(bytes calldata attestationDocument, address paymentAddress, string calldata endpoint, uint8 teeType) external returns (bytes32 teeId);
+    /// @notice Register a TEE with AWS Nitro attestation
+    /// @dev Supports Nitriding framework where attestation.public_key contains SHA256(publicKey)
+    /// @param attestationDocument Raw CBOR-encoded AWS Nitro attestation document
+    /// @param publicKey DER-encoded RSA public key (verified against attestation binding)
+    /// @param paymentAddress Address to receive payments for this TEE
+    /// @param endpoint HTTP(S) endpoint for the TEE service
+    /// @param teeType Type identifier (must be pre-approved)
+    /// @return teeId Unique identifier for the registered TEE (keccak256 of publicKey)
+    function registerTEEWithAttestation(
+        bytes calldata attestationDocument,
+        bytes calldata publicKey,
+        address paymentAddress,
+        string calldata endpoint,
+        uint8 teeType
+    ) external returns (bytes32 teeId);
+    
     function deactivateTEE(bytes32 teeId) external;
     function activateTEE(bytes32 teeId) external;
 

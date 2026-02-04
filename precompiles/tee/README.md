@@ -4,7 +4,8 @@ EVM precompile at `0x0000000000000000000000000000000000000900` for TEE registrat
 
 ## Version
 
-v1.1.0 - Includes:
+v1.2.0 - Includes:
+- **Nitriding framework support** (SHA256 public key binding)
 - Dynamic AWS root certificate management
 - Settlement replay protection
 - Timestamp validation
@@ -14,6 +15,7 @@ v1.1.0 - Includes:
 
 Enables:
 - Admin-controlled TEE registration with AWS Nitro attestation
+- **Support for Nitriding TLS termination framework**
 - Global PCR registry with versioning and grace periods
 - On-chain signature verification for inference settlement
 - TEE type management for different service categories
@@ -24,7 +26,8 @@ Enables:
 ┌──────────┐     ┌───────────────┐     ┌─────────────┐     ┌────────────┐
 │ Operator │────►│  LLM Server   │────►│ Facilitator │────►│ Blockchain │
 └──────────┘     │  (TEE)        │     │ (x402)      │     │ (0x900)    │
-                 └───────────────┘     └─────────────┘     └────────────┘
+                 │  [Nitriding]  │     └─────────────┘     └────────────┘
+                 └───────────────┘
 ```
 
 ## Key Features
@@ -33,7 +36,6 @@ Enables:
 - First caller automatically becomes initial admin (bootstrap)
 - Multiple admins supported
 - Cannot remove last admin
-- Possible improvements can be studied here
 - Admin required for all management operations
 
 ### 2. Global PCR Registry
@@ -47,20 +49,40 @@ Enables:
 - Initial type: `0 = LLMProxy`
 - Types can be deactivated (no new registrations)
 
-### 4. Registration Flow
+### 4. Registration Flow (Nitriding Support)
+
+The precompile supports the [Nitriding framework](https://github.com/brave/nitriding) which enables TLS termination inside AWS Nitro Enclaves. With Nitriding, the attestation document contains a SHA256 hash of the public key rather than the full key.
+
+**Why Nitriding?**
+- Enables HTTP/TLS for applications inside Nitro Enclaves
+- Hides information from the parent EC2 instance
+- Avoids dependency on AWS KMS (keys stay decentralized)
+
+**Registration Steps:**
 
 ```
 1. First caller becomes admin (bootstrap)
 2. Admin approves PCR configuration
 3. Admin adds TEE type (if new)
-4. TEE operator provides attestation to admin
-5. Admin calls registerTEEWithAttestation()
-6. Precompile verifies:
-   - AWS signature chain
-   - PCR matches approved list
+4. TEE operator generates RSA keypair inside enclave
+5. TEE requests attestation with SHA256(publicKey) in public_key field
+6. TEE operator provides attestation + actual public key to admin
+7. Admin calls registerTEEWithAttestation(attestation, publicKey, ...)
+8. Precompile verifies:
+   - AWS signature chain (attestation authenticity)
+   - SHA256(providedPublicKey) == attestation.public_key (key binding)
+   - PCR matches approved list (enclave integrity)
    - TEE type is valid
-7. TEE registered with teeId = keccak256(publicKey)
+9. TEE registered with teeId = keccak256(publicKey)
 ```
+
+**Public Key Binding Modes:**
+
+| Mode | attestation.public_key | Verification |
+|------|------------------------|--------------|
+| Nitriding | SHA256(pubKey) - 32 bytes | SHA256(provided) == attestation |
+| Standard | Full DER key | provided == attestation |
+| Empty | Not present | Accept provided key |
 
 ### 5. Verification Flow
 
@@ -108,9 +130,10 @@ tee.addTEEType(0, "LLMProxy");
 PCRMeasurements memory pcrs = PCRMeasurements(pcr0, pcr1, pcr2);
 tee.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
 
-// 4. Register TEE (requires valid attestation)
+// 4. Register TEE (requires valid attestation + public key)
 bytes32 teeId = tee.registerTEEWithAttestation(
     attestationDocument,
+    publicKeyDER,           // Actual RSA public key (DER-encoded)
     paymentAddress,
     "https://tee.example.com",
     0 // LLMProxy
@@ -165,7 +188,7 @@ bool valid = tee.verifySettlement(
 
 | Function | Description |
 |----------|-------------|
-| `registerTEEWithAttestation(...)` | Register TEE with attestation |
+| `registerTEEWithAttestation(attestation, publicKey, ...)` | Register TEE with attestation and public key |
 | `deactivateTEE(bytes32)` | Deactivate TEE (owner or admin) |
 | `activateTEE(bytes32)` | Reactivate TEE (owner or admin) |
 
@@ -216,7 +239,7 @@ struct TEEInfo {
     address owner;
     address paymentAddress;
     string endpoint;
-    bytes publicKey;
+    bytes publicKey;      // Full DER-encoded RSA public key
     bytes32 pcrHash;
     uint8 teeType;
     bool active;
@@ -246,6 +269,51 @@ Parameters:
 - Hash algorithm: SHA-256
 - Salt length: Hash length (32 bytes)
 - Key size: Minimum 2048 bits
+
+## Nitriding Integration Guide
+
+### TEE Side (Inside Enclave)
+
+```go
+// 1. Generate RSA keypair
+privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+publicKeyDER, _ := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+
+// 2. Compute hash for attestation
+pubKeyHash := sha256.Sum256(publicKeyDER)
+
+// 3. Request attestation with hash in public_key field
+// (Nitriding handles this automatically)
+attestation := nitriding.GetAttestation(pubKeyHash[:])
+
+// 4. Export attestation + public key for registration
+// Send both to admin for on-chain registration
+```
+
+### Admin Side (Registration)
+
+```go
+// Receive from TEE operator
+attestationDoc := /* raw CBOR attestation */
+publicKeyDER := /* DER-encoded RSA public key */
+
+// Call precompile
+teeId, err := teeRegistry.RegisterTEEWithAttestation(
+    attestationDoc,
+    publicKeyDER,
+    paymentAddress,
+    endpoint,
+    teeType,
+)
+```
+
+### Verification Flow
+
+The precompile automatically detects Nitriding mode:
+1. If `attestation.public_key` is 32 bytes → Nitriding mode
+2. Computes `SHA256(providedPublicKey)`
+3. Verifies hash matches attestation binding
+4. Stores full public key for signature verification
 
 ## PCR Upgrade Flow
 
@@ -284,6 +352,7 @@ Day 37: PCR v1.0 auto-expires
 | `tee: TEE type already exists` | Duplicate type ID |
 | `tee: TEE type not found` | Type does not exist |
 | `tee: invalid attestation` | Attestation verification failed |
+| `tee: public key does not match attestation binding` | **Nitriding hash mismatch** |
 | `tee: invalid signature` | Signature verification failed |
 | `tee: invalid public key` | Public key format invalid |
 | `tee: invalid input` | Malformed input data |
@@ -356,13 +425,17 @@ Test 4: PCR Management
    ✅ Get Active PCRs
    ✅ Unapproved PCR Returns False
 
-Test 5: Signature Verification (Local)
+Test 5: Nitriding Public Key Binding
+   ✅ SHA256 hash binding verified
+   ✅ Wrong public key rejected
+
+Test 6: Signature Verification (Local)
    ✅ Local Signature Verification
    ✅ Wrong Key Rejected
    ✅ Tampered Message Rejected
 
 ==========================================
-Results: 12 passed, 0 failed
+Results: 14 passed, 0 failed
 ✅ All tests passed!
 ```
 
@@ -370,10 +443,11 @@ Results: 12 passed, 0 failed
 
 1. **Admin Bootstrap**: First caller becomes admin - ensure controlled deployment
 2. **Attestation**: Verify against stored or default AWS Nitro root certificate
-3. **PCR Management**: Use grace periods for smooth upgrades
-4. **Replay Protection**: Settlements are tracked to prevent double-verification
-5. **Timestamp Bounds**: Settlements must be within 1 hour age and 5 minutes future tolerance
-6. **Key Security**: TEE private keys must never leave the enclave
+3. **Public Key Binding**: Nitriding uses SHA256 hash binding - cryptographically secure
+4. **PCR Management**: Use grace periods for smooth upgrades
+5. **Replay Protection**: Settlements are tracked to prevent double-verification
+6. **Timestamp Bounds**: Settlements must be within 1 hour age and 5 minutes future tolerance
+7. **Key Security**: TEE private keys must never leave the enclave
 
 ## Certificate Management
 
@@ -403,7 +477,7 @@ Each settlement can only be verified once:
 bool valid1 = tee.verifySettlement(teeId, input, output, ts, sig); // true
 
 // Second call with same parameters - reverts
-bool valid2 = tee.verifySettlement(teeId, input, output, ts, sig); // reverts with ErrSettlementAlreadyUsed
+bool valid2 = tee.verifySettlement(teeId, input, output, ts, sig); // reverts
 ```
 
 ### Timestamp Validation
@@ -411,11 +485,6 @@ bool valid2 = tee.verifySettlement(teeId, input, output, ts, sig); // reverts wi
 Settlements are validated against timestamp bounds:
 - **Max Age**: 3600 seconds (1 hour)
 - **Future Tolerance**: 300 seconds (5 minutes)
-
-```solidity
-// Timestamp too old (> 1 hour ago) - returns error
-// Timestamp too far in future (> 5 min) - returns error
-```
 
 ### verifySignature vs verifySettlement
 
@@ -431,6 +500,7 @@ Settlements are validated against timestamp bounds:
 - ✅ Timestamp validation
 - ✅ Dynamic certificate management
 - ✅ Storage slot collision fixes
+- ✅ **Nitriding framework support (v1.2.0)**
 
 ## TODO
 
@@ -442,6 +512,7 @@ Settlements are validated against timestamp bounds:
 ### LLM Server
 - [ ] Implement `/admin/register` endpoint
 - [ ] Store TEE ID after registration
+- [ ] Export public key for registration
 
 ### Facilitator (x402)
 - [ ] Call `verifySettlement()` before payment

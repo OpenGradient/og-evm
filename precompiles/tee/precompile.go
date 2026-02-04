@@ -1,6 +1,7 @@
 package tee
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -507,9 +508,10 @@ func (p *Precompile) getAWSRootCertificateHash(ctx *callContext, args []interfac
 
 func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interface{}) ([]byte, error) {
 	attestationBytes := args[0].([]byte)
-	paymentAddress := args[1].(common.Address)
-	endpoint := args[2].(string)
-	teeType := args[3].(uint8)
+	publicKeyDER := args[1].([]byte) // Public key should be provided by operator
+	paymentAddress := args[2].(common.Address)
+	endpoint := args[3].(string)
+	teeType := args[4].(uint8)
 
 	// Check caller is admin
 	if !ctx.storage.IsAdmin(ctx.caller()) {
@@ -519,6 +521,11 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 	// Check TEE type is valid
 	if !ctx.storage.IsValidTEEType(teeType) {
 		return nil, ErrInvalidTEEType
+	}
+
+	// Validate the provided public key format FIRST
+	if err := validatePublicKey(publicKeyDER); err != nil {
+		return nil, err
 	}
 
 	// Get root certificate from storage (or use default)
@@ -539,6 +546,15 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 		return nil, fmt.Errorf("%w: %s", ErrAttestationInvalid, result.ErrorMessage)
 	}
 
+	// =========================================================================
+	// Verify public key binding (Nitriding framework support)
+	// =========================================================================
+	// Nitriding puts SHA256(publicKey) in the attestation's public_key field
+	// We verify the provided public key matches this binding
+	if err := verifyPublicKeyBinding(result.PublicKey, publicKeyDER); err != nil {
+		return nil, err
+	}
+
 	// Compute PCR hash from extracted PCRs
 	pcrHash := computePCRHashInternal(result.PCRs.PCR0, result.PCRs.PCR1, result.PCRs.PCR2)
 
@@ -547,27 +563,22 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 		return nil, ErrPCRNotApproved
 	}
 
-	// Validate public key
-	if err := validatePublicKey(result.PublicKey); err != nil {
-		return nil, err
-	}
-
-	// Compute TEE ID
-	teeId := crypto.Keccak256Hash(result.PublicKey)
+	// Compute TEE ID from the actual public key
+	teeId := crypto.Keccak256Hash(publicKeyDER)
 
 	// Check if already exists
 	if ctx.storage.Exists(teeId) {
 		return nil, ErrTEEAlreadyExists
 	}
 
-	// Store TEE
+	// Store TEE with the actual public key
 	now := ctx.timestamp()
 	ctx.storage.StoreTEE(TEEInfo{
 		TEEId:          teeId,
 		Owner:          ctx.caller(),
 		PaymentAddress: paymentAddress,
 		Endpoint:       endpoint,
-		PublicKey:      result.PublicKey,
+		PublicKey:      publicKeyDER,
 		PCRHash:        pcrHash,
 		TEEType:        teeType,
 		Active:         true,
@@ -576,6 +587,32 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 	})
 
 	return ctx.method.Outputs.Pack(teeId)
+}
+
+// verifyPublicKeyBinding verifies that the provided public key matches the attestation binding
+// Supports both Nitriding mode (hash binding) and standard mode (full key)
+func verifyPublicKeyBinding(attestationPubKey, providedPubKey []byte) error {
+	if len(attestationPubKey) == 0 {
+		// No public key in attestation - accept provided key
+		// This allows for configurations that don't include public key in attestation
+		return nil
+	}
+
+	if len(attestationPubKey) == sha256.Size {
+		// Nitriding mode: attestation contains SHA256 hash of public key
+		expectedHash := sha256.Sum256(providedPubKey)
+		if !bytes.Equal(attestationPubKey, expectedHash[:]) {
+			return ErrPublicKeyBindingFailed
+		}
+		return nil
+	}
+
+	// Standard mode: attestation contains full public key
+	if !bytes.Equal(attestationPubKey, providedPubKey) {
+		return ErrPublicKeyBindingFailed
+	}
+
+	return nil
 }
 
 // ============================================================================
