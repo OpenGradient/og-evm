@@ -42,7 +42,8 @@ type TEEInfo struct {
 	Owner          common.Address
 	PaymentAddress common.Address
 	Endpoint       string
-	PublicKey      []byte
+	PublicKey      []byte      // RSA signing key for settlement verification
+	TLSCertificate []byte      // TLS certificate for HTTPS (from Nitriding)
 	PCRHash        common.Hash // Reference to approved PCR
 	TEEType        uint8
 	Active         bool
@@ -105,6 +106,7 @@ type ABITEEInfo struct {
 	PaymentAddress common.Address `abi:"paymentAddress"`
 	Endpoint       string         `abi:"endpoint"`
 	PublicKey      []byte         `abi:"publicKey"`
+	TlsCertificate []byte         `abi:"tlsCertificate"`
 	PcrHash        [32]byte       `abi:"pcrHash"`
 	TeeType        uint8          `abi:"teeType"`
 	Active         bool           `abi:"active"`
@@ -131,6 +133,7 @@ func (t *TEEInfo) ToABI() ABITEEInfo {
 		PaymentAddress: t.PaymentAddress,
 		Endpoint:       t.Endpoint,
 		PublicKey:      t.PublicKey,
+		TlsCertificate: t.TLSCertificate,
 		PcrHash:        t.PCRHash,
 		TeeType:        t.TEEType,
 		Active:         t.Active,

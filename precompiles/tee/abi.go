@@ -171,7 +171,8 @@ const ABI = `[
 		"stateMutability": "nonpayable",
 		"inputs": [
 			{"name": "attestationDocument", "type": "bytes"},
-			{"name": "publicKey", "type": "bytes"},
+			{"name": "signingPublicKey", "type": "bytes"},
+			{"name": "tlsCertificate", "type": "bytes"},
 			{"name": "paymentAddress", "type": "address"},
 			{"name": "endpoint", "type": "string"},
 			{"name": "teeType", "type": "uint8"}
@@ -236,6 +237,7 @@ const ABI = `[
 				{"name": "paymentAddress", "type": "address"},
 				{"name": "endpoint", "type": "string"},
 				{"name": "publicKey", "type": "bytes"},
+				{"name": "tlsCertificate", "type": "bytes"},
 				{"name": "pcrHash", "type": "bytes32"},
 				{"name": "teeType", "type": "uint8"},
 				{"name": "active", "type": "bool"},
@@ -267,6 +269,13 @@ const ABI = `[
 	},
 	{
 		"name": "getPublicKey",
+		"type": "function",
+		"stateMutability": "view",
+		"inputs": [{"name": "teeId", "type": "bytes32"}],
+		"outputs": [{"name": "", "type": "bytes"}]
+	},
+	{
+		"name": "getTLSCertificate",
 		"type": "function",
 		"stateMutability": "view",
 		"inputs": [{"name": "teeId", "type": "bytes32"}],

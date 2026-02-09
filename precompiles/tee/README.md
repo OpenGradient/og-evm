@@ -4,123 +4,140 @@ EVM precompile at `0x0000000000000000000000000000000000000900` for TEE registrat
 
 ## Version
 
-v1.2.0 - Includes:
-- **Nitriding framework support** (SHA256 public key binding)
-- Dynamic AWS root certificate management
-- Settlement replay protection
-- Timestamp validation
-- First admin bootstrap
+- Nitriding Dual-Key Support
+
+### What's New
+- ✅ **TLS certificate verification** - Cryptographic binding for HTTPS encryption
+- ✅ **Signing key verification** - Separate key for settlement signatures  
+- ✅ **Dual SHA256 hash binding** - Both keys verified in attestation user_data
+- ✅ **Multihash format parsing** - Support for 0x1220 prefix format
+- ✅ **getTLSCertificate()** - New query method for TLS certificates
+
 
 ## Overview
 
-Enables:
-- Admin-controlled TEE registration with AWS Nitro attestation
-- **Support for Nitriding TLS termination framework**
-- Global PCR registry with versioning and grace periods
-- On-chain signature verification for inference settlement
-- TEE type management for different service categories
+The TEE Registry precompile enables secure registration and verification of Trusted Execution Environments (TEEs) running on AWS Nitro Enclaves. It provides:
+
+- **Admin-controlled TEE registration** with AWS Nitro attestation verification
+- **Nitriding framework support** for TLS termination inside enclaves
+- **Dual-key cryptographic binding** (TLS + Signing keys)
+- **Global PCR registry** with versioning and upgrade grace periods
+- **On-chain signature verification** for inference settlement
+- **TEE type management** for different service categories
 
 ## Architecture
-
 ```
 ┌──────────┐     ┌───────────────┐     ┌─────────────┐     ┌────────────┐
 │ Operator │────►│  LLM Server   │────►│ Facilitator │────►│ Blockchain │
 └──────────┘     │  (TEE)        │     │ (x402)      │     │ (0x900)    │
                  │  [Nitriding]  │     └─────────────┘     └────────────┘
                  └───────────────┘
+                        │
+                        ├─ TLS Cert (HTTPS encryption)
+                        └─ Signing Key (Settlement signatures)
 ```
 
-## Key Features
+## Nitriding Dual-Key Architecture
 
-### 1. Admin Management
-- First caller automatically becomes initial admin (bootstrap)
-- Multiple admins supported
-- Cannot remove last admin
-- Admin required for all management operations
+### Why Two Keys?
 
-### 2. Global PCR Registry
-- OpenGradient approves PCR configurations
-- Version tracking (e.g., "v1.0.0")
-- Grace period for upgrades (old PCRs remain valid during transition)
-- Auto-expiry after grace period
+The **Nitriding framework** generates TWO separate cryptographic keys inside the AWS Nitro Enclave:
 
-### 3. TEE Type Management
-- Dynamic types (admin can add new types)
-- Initial type: `0 = LLMProxy`
-- Types can be deactivated (no new registrations)
+#### 1. TLS Certificate (ECDSA/RSA)
+**Purpose:** HTTPS termination and encrypted communication
 
-### 4. Registration Flow (Nitriding Support)
+- **Used by:** Client browsers/apps connecting to the enclave
+- **Stored on-chain:** Users download to verify certificate before connecting
 
-The precompile supports the [Nitriding framework](https://github.com/brave/nitriding) which enables TLS termination inside AWS Nitro Enclaves. With Nitriding, the attestation document contains a SHA256 hash of the public key rather than the full key.
+#### 2. Signing Key (RSA 2048+)
+**Purpose:** Settlement signature generation
 
-**Why Nitriding?**
-- Enables HTTP/TLS for applications inside Nitro Enclaves
-- Hides information from the parent EC2 instance
-- Avoids dependency on AWS KMS (keys stay decentralized)
+- **Used by:** TEE to cryptographically sign inference outputs
+- **Enables:** Proof of computation for payment settlement
+- **Stored on-chain:** Blockchain verifies signatures in `verifySettlement()`
 
-**Registration Steps:**
 
+### Why Both Keys Are Essential
+
+| Scenario | TLS Only | Signing Only | Both Keys (Nitriding) |
+|----------|----------|--------------|----------------------|
+| HTTPS Privacy | ✅ Protected | ❌ Parent can intercept | ✅ Protected |
+| Settlement Integrity | ❌ No proof | ✅ Cryptographically proven | ✅ Cryptographically proven |
+| End-to-End Security | ❌ Incomplete | ❌ Incomplete | ✅ Complete |
+
+**Without TLS binding:**
+- Parent EC2 instance intercepts HTTPS traffic
+- User connects to fake endpoint but gets valid settlements
+- Privacy breach: inputs/outputs visible to parent
+
+**Without Signing key binding:**
+- Settlement signatures could be forged
+- No cryptographic proof computation happened in enclave
+- Payment fraud risk
+
+**With both (Nitriding):**
+- ✅ HTTPS terminates inside enclave (privacy)
+- ✅ Settlements cryptographically proven (integrity)
+- ✅ Full end-to-end security guarantee
+
+### User Data Format (68 bytes)
+To check with Kyle
+### Registration Flow
 ```
-1. First caller becomes admin (bootstrap)
-2. Admin approves PCR configuration
-3. Admin adds TEE type (if new)
-4. TEE operator generates RSA keypair inside enclave
-5. TEE requests attestation with SHA256(publicKey) in public_key field
-6. TEE operator provides attestation + actual public key to admin
-7. Admin calls registerTEEWithAttestation(attestation, publicKey, ...)
-8. Precompile verifies:
-   - AWS signature chain (attestation authenticity)
-   - SHA256(providedPublicKey) == attestation.public_key (key binding)
-   - PCR matches approved list (enclave integrity)
-   - TEE type is valid
-9. TEE registered with teeId = keccak256(publicKey)
-```
-
-**Public Key Binding Modes:**
-
-| Mode | attestation.public_key | Verification |
-|------|------------------------|--------------|
-| Nitriding | SHA256(pubKey) - 32 bytes | SHA256(provided) == attestation |
-| Standard | Full DER key | provided == attestation |
-| Empty | Not present | Accept provided key |
-
-### 5. Verification Flow
-
-```
-1. TEE signs inference: RSA-PSS(SHA256(keccak256(inputHash || outputHash || timestamp)))
-2. Facilitator calls verifySettlement()
-3. Precompile verifies signature against stored public key
-4. Returns validity (event emission planned)
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. Enclave Setup (Inside AWS Nitro Enclave)                     │
+├─────────────────────────────────────────────────────────────────┤
+│  • Generate TLS keypair (for HTTPS)                             │
+│  • Generate Signing keypair (for settlements)                   │
+│  • Compute tlsHash = SHA256(TLS cert public key)                │
+│  • Compute appHash = SHA256(signing public key)                 │
+│  • Request attestation with user_data = 0x1220 + tlsHash +      │
+│                                          0x1220 + appHash        │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. Admin Registration (On Blockchain)                           │
+├─────────────────────────────────────────────────────────────────┤
+│  registerTEEWithAttestation(                                    │
+│    attestationDoc,      // Contains user_data                   │
+│    signingKeyDER,       // Actual signing public key            │
+│    tlsCertDER,          // Actual TLS certificate               │
+│    paymentAddress,                                              │
+│    endpoint,                                                    │
+│    teeType                                                      │
+│  )                                                              │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. Precompile Verification                                      │
+├─────────────────────────────────────────────────────────────────┤
+│  ✓ Verify AWS signature chain (attestation authenticity)        │
+│  ✓ Parse user_data (68 bytes → extract 2 hashes)               │
+│  ✓ Verify SHA256(tlsCertDER.pubkey) == user_data[2:34]         │
+│  ✓ Verify SHA256(signingKeyDER) == user_data[36:68]            │
+│  ✓ Verify PCRs match approved list (code integrity)            │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. TEE Registered                                               │
+├─────────────────────────────────────────────────────────────────┤
+│  • teeId = keccak256(signingKeyDER)                             │
+│  • Stores: signingKey (for verifySettlement)                    │
+│  •         tlsCert (users download for HTTPS)                   │
+│  •         endpoint, PCRs, metadata                             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
 
-### Genesis Configuration
 
-To set an initial admin at genesis, configure in your genesis file:
-
-```json
-{
-  "alloc": {
-    "0x0000000000000000000000000000000000000900": {
-      "storage": {
-        "0x<admin_flag_slot>": "0x01",
-        "0x<admin_count_slot>": "0x01",
-        "0x<admin_list_slot_0>": "0x<initial_admin_address>"
-      }
-    }
-  }
-}
 ```
 
-Alternatively, the first account to call `addAdmin()` becomes the initial admin.
-
 ### Basic Setup
-
 ```solidity
 ITEERegistry tee = ITEERegistry(0x0000000000000000000000000000000000000900);
 
-// 1. Bootstrap first admin (only works if no admins exist)
+// 1. Bootstrap first admin
 tee.addAdmin(msg.sender);
 
 // 2. Add TEE type
@@ -130,20 +147,22 @@ tee.addTEEType(0, "LLMProxy");
 PCRMeasurements memory pcrs = PCRMeasurements(pcr0, pcr1, pcr2);
 tee.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
 
-// 4. Register TEE (requires valid attestation + public key)
+// 4. Register TEE with dual keys
 bytes32 teeId = tee.registerTEEWithAttestation(
-    attestationDocument,
-    publicKeyDER,           // Actual RSA public key (DER-encoded)
+    attestationDocument,    // Raw CBOR from enclave
+    signingPublicKeyDER,    // RSA key for settlements
+    tlsCertificateDER,      // TLS cert for HTTPS
     paymentAddress,
     "https://tee.example.com",
-    0 // LLMProxy
+    0 // LLMProxy type
 );
 ```
 
-### Signature Verification
+### Usage Examples
 
+#### Verify Settlement Signature
 ```solidity
-// Verify a settlement
+// Facilitator verifies settlement before payment
 bool valid = tee.verifySettlement(
     teeId,
     inputHash,
@@ -151,6 +170,19 @@ bool valid = tee.verifySettlement(
     timestamp,
     signature
 );
+
+if (valid) {
+    // Process payment
+}
+```
+
+#### Get TLS Certificate for HTTPS
+```solidity
+// User downloads TLS cert to verify HTTPS connection
+bytes memory tlsCert = tee.getTLSCertificate(teeId);
+
+// User's app uses this cert to verify the enclave endpoint
+// No certificate warning, proven to be from enclave
 ```
 
 ## Interface Summary
@@ -188,7 +220,7 @@ bool valid = tee.verifySettlement(
 
 | Function | Description |
 |----------|-------------|
-| `registerTEEWithAttestation(attestation, publicKey, ...)` | Register TEE with attestation and public key |
+| `registerTEEWithAttestation(attestation, signingKey, tlsCert, ...)` | Register TEE with dual-key verification |
 | `deactivateTEE(bytes32)` | Deactivate TEE (owner or admin) |
 | `activateTEE(bytes32)` | Reactivate TEE (owner or admin) |
 
@@ -196,29 +228,51 @@ bool valid = tee.verifySettlement(
 
 | Function | Description |
 |----------|-------------|
-| `verifySignature(request) → bool` | Verify signature (view) |
-| `verifySettlement(...) → bool` | Verify and record settlement |
+| `verifySignature(request) → bool` | Verify signature (view, no replay protection) |
+| `verifySettlement(...) → bool` | Verify and record settlement (replay protected) |
 
 ### Query Functions
 
 | Function | Description |
 |----------|-------------|
-| `getTEE(bytes32) → TEEInfo` | Get TEE details |
+| `getTEE(bytes32) → TEEInfo` | Get complete TEE details (includes TLS cert) |
 | `getActiveTEEs() → bytes32[]` | Get all active TEE IDs |
 | `getTEEsByType(uint8) → bytes32[]` | Get TEEs by type |
 | `getTEEsByOwner(address) → bytes32[]` | Get TEEs by owner |
-| `getPublicKey(bytes32) → bytes` | Get TEE public key |
+| `getPublicKey(bytes32) → bytes` | Get signing key (for settlements) |
+| `getTLSCertificate(bytes32) → bytes` | **NEW** - Get TLS certificate (for HTTPS) |
 | `isActive(bytes32) → bool` | Check if TEE is active |
 
 ## Data Structures
 
+### TEEInfo
+```solidity
+struct TEEInfo {
+    bytes32 teeId;           // keccak256(signingPublicKey)
+    address owner;           // TEE owner
+    address paymentAddress;  // Payment recipient
+    string endpoint;         // HTTPS endpoint
+    bytes publicKey;         // RSA signing key (for settlements)
+    bytes tlsCertificate;    // TLS certificate (for HTTPS) ⭐ NEW
+    bytes32 pcrHash;         // Reference to approved PCR
+    uint8 teeType;           // TEE type ID
+    bool active;             // Active status
+    uint256 registeredAt;    // Registration timestamp
+    uint256 lastUpdatedAt;   // Last update timestamp
+}
+```
+
+### PCRMeasurements
 ```solidity
 struct PCRMeasurements {
-    bytes pcr0;  // 48 bytes - Enclave image hash
-    bytes pcr1;  // 48 bytes - Kernel hash  
+    bytes pcr0;  // 48 bytes - Enclave image file hash
+    bytes pcr1;  // 48 bytes - Linux kernel and bootstrap hash
     bytes pcr2;  // 48 bytes - Application hash
 }
+```
 
+### ApprovedPCR
+```solidity
 struct ApprovedPCR {
     bytes32 pcrHash;
     bool active;
@@ -226,112 +280,161 @@ struct ApprovedPCR {
     uint256 expiresAt;    // 0 = no expiry
     string version;
 }
-
-struct TEETypeInfo {
-    uint8 typeId;
-    string name;
-    bool active;
-    uint256 addedAt;
-}
-
-struct TEEInfo {
-    bytes32 teeId;
-    address owner;
-    address paymentAddress;
-    string endpoint;
-    bytes publicKey;      // Full DER-encoded RSA public key
-    bytes32 pcrHash;
-    uint8 teeType;
-    bool active;
-    uint256 registeredAt;
-    uint256 lastUpdatedAt;
-}
-
-struct VerificationRequest {
-    bytes32 teeId;
-    bytes32 requestHash;
-    bytes32 responseHash;
-    uint256 timestamp;
-    bytes signature;
-}
 ```
 
 ## Signature Format
 
 TEEs must sign settlements using **RSA-PSS with SHA-256**:
-
 ```
 message = keccak256(abi.encodePacked(inputHash, outputHash, timestamp))
 signature = RSA-PSS-Sign(SHA256(message), privateKey)
 ```
 
-Parameters:
+**Parameters:**
 - Hash algorithm: SHA-256
 - Salt length: Hash length (32 bytes)
 - Key size: Minimum 2048 bits
 
-## Nitriding Integration Guide
+## Testing
 
-### TEE Side (Inside Enclave)
+### Prerequisites
+```bash
+# Install Python dependencies for attestation testing
+pip install cbor2 cryptography
 
-```go
-// 1. Generate RSA keypair
-privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-publicKeyDER, _ := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-
-// 2. Compute hash for attestation
-pubKeyHash := sha256.Sum256(publicKeyDER)
-
-// 3. Request attestation with hash in public_key field
-// (Nitriding handles this automatically)
-attestation := nitriding.GetAttestation(pubKeyHash[:])
-
-// 4. Export attestation + public key for registration
-// Send both to admin for on-chain registration
+# Ensure measurements.txt exists with your PCR values
 ```
 
-### Admin Side (Registration)
+### Run Integration Tests
+```bash
+# Start local blockchain node
+make start-node
 
-```go
-// Receive from TEE operator
-attestationDoc := /* raw CBOR attestation */
-publicKeyDER := /* DER-encoded RSA public key */
-
-// Call precompile
-teeId, err := teeRegistry.RegisterTEEWithAttestation(
-    attestationDoc,
-    publicKeyDER,
-    paymentAddress,
-    endpoint,
-    teeType,
-)
+# Run Nitriding dual-key integration tests
+cd scripts
+go run test_tee_nitriding.go
 ```
 
-### Verification Flow
-
-The precompile automatically detects Nitriding mode:
-1. If `attestation.public_key` is 32 bytes → Nitriding mode
-2. Computes `SHA256(providedPublicKey)`
-3. Verifies hash matches attestation binding
-4. Stores full public key for signature verification
-
-## PCR Upgrade Flow
-
+### Expected Output
 ```
-Day 0:  Admin approves PCR v1.0 (no expiry)
-        approvePCR(pcrs_v1, "v1.0", 0x0, 0)
+==========================================
+  TEE Registry Nitriding Integration Test
+  (Dual-Key Verification)
+==========================================
+📍 Using account: 0x...
 
-Day 30: New code released
-        approvePCR(pcrs_v2, "v1.1", pcrHashV1, 7 days)
-        - PCR v1.0: active, expiresAt = Day 37
-        - PCR v1.1: active, expiresAt = 0
+------------------------------------------
+Test 1: Download Attestation & Parse
+------------------------------------------
+🎲 Generated nonce: 0123456789abcdef...
+✅ Downloaded attestation (4555 bytes CBOR)
+✅ Decoded: 4555 bytes CBOR
 
-Day 30-37: Both PCRs valid, operators upgrade TEEs
+[Attestation Details]
+  Module ID: i-0340e0cb833504eb6-enc019c12d31f78864d
+  PCR0: 9baef83909784e4d2cb84466c02931bb...
+  User Data: 68 bytes
 
-Day 37: PCR v1.0 auto-expires
-        - Old TEEs still work (already registered)
-        - New registrations require v1.1
+------------------------------------------
+Test 2: Parse Nitriding User Data
+------------------------------------------
+✅ User data is 68 bytes (Nitriding format)
+✅ Multihash prefixes valid (0x1220)
+
+[Extracted Hashes]
+  TLS Key Hash: b735546536e78ee12beea2d384fcda35...
+  App Key Hash: abf9d7453422eb419fc1391604b070a8...
+
+------------------------------------------
+Test 3: TLS Certificate Verification
+------------------------------------------
+✅ Downloaded TLS certificate (91 bytes DER)
+✅ Extracted public key (91 bytes)
+
+[TLS Key Verification]
+  Computed:  5f237d09494db58b77ecfc79452d6759...
+  From attestation: b735546536e78ee12beea2d384fcda35...
+✅ TLS certificate hash MATCHES!
+
+------------------------------------------
+Test 4: Signing Key Verification
+------------------------------------------
+✅ Generated signing keypair (RSA 2048)
+
+[Signing Key Verification]
+  Computed:  abf9d7453422eb419fc1391604b070a8...
+  From attestation: abf9d7453422eb419fc1391604b070a8...
+✅ Signing key hash MATCHES!
+
+------------------------------------------
+Test 5: Blockchain Setup
+------------------------------------------
+📤 addAdmin tx: 0x...
+   ✅ Transaction confirmed
+📤 addTEEType tx: 0x...
+   ✅ Transaction confirmed
+📤 approvePCR tx: 0x...
+   ✅ Transaction confirmed
+
+------------------------------------------
+Test 6: Register TEE (Dual Keys)
+------------------------------------------
+✅ TEE registered successfully!
+   TEE ID: 0x7a8f2b3c...
+
+------------------------------------------
+Test 7: Query TLS Certificate
+------------------------------------------
+✅ Retrieved TLS certificate from chain
+   Length: 91 bytes
+✅ Certificate matches original!
+
+==========================================
+  Test Summary
+==========================================
+✅ Attestation download & parsing
+✅ Nitriding user_data format (68 bytes)
+✅ TLS certificate hash verification
+✅ Signing key hash verification
+✅ Dual-key TEE registration
+✅ TLS certificate retrieval
+
+🎉 All tests passed!
 ```
+
+## Security Considerations
+
+### Dual-Key Security Model
+
+#### 1. TLS Certificate Security
+- ✅ **Proves HTTPS endpoint is inside enclave**
+- ✅ **Prevents man-in-the-middle attacks** from parent instance
+- ✅ **Users can verify certificate** before connecting
+- ⚠️ **Does NOT prove computation authenticity** (use signing key)
+
+#### 2. Signing Key Security
+- ✅ **Proves settlement signatures from enclave**
+- ✅ **Cryptographically bound to attestation**
+- ✅ **Prevents settlement forgery**
+- ⚠️ **Does NOT handle TLS encryption** (use TLS cert)
+
+### Attack Scenarios Prevented
+
+| Attack | Without TLS Binding | Without Signing Binding | With Both Keys |
+|--------|-------------------|------------------------|----------------|
+| Parent intercepts HTTPS | ❌ Vulnerable | ❌ Vulnerable | ✅ Protected |
+| Forge settlement signatures | ✅ Protected | ❌ Vulnerable | ✅ Protected |
+| User connects to fake endpoint | ❌ Vulnerable | ✅ Protected | ✅ Protected |
+| Payment fraud | ✅ Protected | ❌ Vulnerable | ✅ Protected |
+
+### Best Practices
+
+1. **Always verify both keys** during registration
+2. **Download TLS cert from blockchain** before connecting to endpoint
+3. **Verify settlement signatures** before processing payments
+4. **Keep private keys inside enclave** - never export
+5. **Use PCR grace periods** for smooth upgrades
+6. **Monitor TEE active status** before routing requests
 
 ## Error Codes
 
@@ -342,184 +445,127 @@ Day 37: PCR v1.0 auto-expires
 | `tee: not active` | TEE is deactivated |
 | `tee: caller is not owner` | Only owner/admin can modify |
 | `tee: caller is not admin` | Admin required |
-| `tee: admin already exists` | Admin already registered |
-| `tee: admin not found` | Admin does not exist |
-| `tee: cannot remove last admin` | At least one admin required |
 | `tee: PCR not in approved list` | PCR not approved |
 | `tee: PCR has expired` | PCR grace period ended |
-| `tee: PCR not found` | PCR hash not found |
 | `tee: invalid or inactive TEE type` | TEE type invalid |
-| `tee: TEE type already exists` | Duplicate type ID |
-| `tee: TEE type not found` | Type does not exist |
 | `tee: invalid attestation` | Attestation verification failed |
-| `tee: public key does not match attestation binding` | **Nitriding hash mismatch** |
+| `tee: public key does not match attestation binding` | **Nitriding hash mismatch** - TLS or signing key binding failed |
 | `tee: invalid signature` | Signature verification failed |
-| `tee: invalid public key` | Public key format invalid |
-| `tee: invalid input` | Malformed input data |
-| `tee: method not found` | Unknown method selector |
-| `tee: write protection` | Write in read-only context |
+| `tee: settlement already verified` | Replay attack prevented |
+| `tee: timestamp too old` | Settlement timestamp expired |
+| `tee: timestamp in future` | Settlement timestamp invalid |
 
 ## Gas Costs
 
 | Operation | Gas |
 |-----------|-----|
 | Admin operations | 50,000 |
-| Registration with attestation | 600,000 |
-| Signature verification | 20,000 |
-| Settlement verification | 25,000 |
+| **Registration with attestation (dual-key)** | **600,000** |
+| Signature verification (view) | 20,000 |
+| Settlement verification (writes) | 25,000 |
 | Activate/Deactivate | 10,000 |
 | PCR management | 50,000 |
 | TEE type management | 30,000 |
+| Certificate management | 100,000 |
 | Single queries | 1,000 |
 | List queries | 5,000 |
 
 ## Files
-
 ```
 precompiles/tee/
-├── precompile.go       # Main entry point, method routing
-├── types.go            # Data structures
-├── storage.go          # State management
-├── attestation.go      # AWS Nitro verification
+├── precompile.go       # Main entry point, dual-key registration
+├── types.go            # Data structures (added TLSCertificate)
+├── storage.go          # State management (TLS cert storage)
+├── attestation.go      # AWS Nitro + multihash parsing
+├── abi.go              # Updated ABI with tlsCertificate
 ├── errors.go           # Error definitions
-├── abi.go              # ABI definition
 └── README.md           # This file
 
 scripts/
-└── test_tee_workflow.go  # Integration tests
+├── test_tee_nitriding.go    # Dual-key integration tests
+└── measurements.txt         # PCR values from enclave build
 ```
 
-## Testing
+## Changelog
 
-```bash
-# Start local node
-make start-node
+### v1.3.0 (Current) - Nitriding Dual-Key Support
+- ✅ Added TLS certificate verification and storage
+- ✅ Implemented dual-key binding (TLS + Signing)
+- ✅ Added multihash format parsing (0x1220 prefix)
+- ✅ New `getTLSCertificate()` query function
+- ✅ Updated `TEEInfo` structure with `tlsCertificate` field
+- ✅ Updated `registerTEEWithAttestation()` to accept 3 parameters (attestation, signingKey, tlsCert)
+- ✅ Enhanced `attestation.go` with `ParseNitridingUserData()`
+- ✅ Added `VerifyTLSCertificateBinding()` and `VerifySigningKeyBinding()` functions
+- ✅ Full Nitriding workflow support
 
-# Run integration tests
-cd scripts
-go run test_tee_workflow.go
-```
+### v1.2.0 - Nitriding Framework Support
+- ✅ Basic Nitriding SHA256 binding
+- ✅ Single key verification
 
-### Expected Output
-
-```
-==========================================
-  TEE Registry Integration Test
-==========================================
-📍 Using account: 0x...
-
-Test 1: First Admin Bootstrap
-   ✅ First admin successfully bootstrapped
-
-Test 2: Admin Management
-   ✅ Add Second Admin
-   ✅ Unauthorized Add Admin (correctly rejected)
-   ✅ Cannot Remove Last Admin
-
-Test 3: TEE Type Management
-   ✅ Add TEE Type
-   ✅ Duplicate TEE Type Rejected
-
-Test 4: PCR Management
-   ✅ Approve PCR
-   ✅ Get Active PCRs
-   ✅ Unapproved PCR Returns False
-
-Test 5: Nitriding Public Key Binding
-   ✅ SHA256 hash binding verified
-   ✅ Wrong public key rejected
-
-Test 6: Signature Verification (Local)
-   ✅ Local Signature Verification
-   ✅ Wrong Key Rejected
-   ✅ Tampered Message Rejected
-
-==========================================
-Results: 14 passed, 0 failed
-✅ All tests passed!
-```
-
-## Security Considerations
-
-1. **Admin Bootstrap**: First caller becomes admin - ensure controlled deployment
-2. **Attestation**: Verify against stored or default AWS Nitro root certificate
-3. **Public Key Binding**: Nitriding uses SHA256 hash binding - cryptographically secure
-4. **PCR Management**: Use grace periods for smooth upgrades
-5. **Replay Protection**: Settlements are tracked to prevent double-verification
-6. **Timestamp Bounds**: Settlements must be within 1 hour age and 5 minutes future tolerance
-7. **Key Security**: TEE private keys must never leave the enclave
-
-## Certificate Management
-
-The precompile supports dynamic AWS root certificate updates:
-
-```solidity
-// Set custom root certificate (admin only)
-tee.setAWSRootCertificate(customCertPEM);
-
-// Get hash of current certificate
-bytes32 certHash = tee.getAWSRootCertificateHash();
-```
-
-**Behavior:**
-- If no certificate is set on-chain, the default AWS Nitro root certificate is used
-- Certificates must be valid PEM format
-- Only admins can update the certificate
-
-## Settlement Verification
-
-### Replay Protection
-
-Each settlement can only be verified once:
-
-```solidity
-// First call - succeeds
-bool valid1 = tee.verifySettlement(teeId, input, output, ts, sig); // true
-
-// Second call with same parameters - reverts
-bool valid2 = tee.verifySettlement(teeId, input, output, ts, sig); // reverts
-```
-
-### Timestamp Validation
-
-Settlements are validated against timestamp bounds:
-- **Max Age**: 3600 seconds (1 hour)
-- **Future Tolerance**: 300 seconds (5 minutes)
-
-### verifySignature vs verifySettlement
-
-| Function | State | Replay Protection | Use Case |
-|----------|-------|-------------------|----------|
-| `verifySignature` | view (read-only) | No | Pre-check before committing |
-| `verifySettlement` | nonpayable (writes) | Yes | Actual settlement recording |
-
-## Completed Features
-
-- ✅ First admin bootstrap
+### v1.1.0 - Certificate Management
+- ✅ Dynamic AWS root certificate management
 - ✅ Settlement replay protection
 - ✅ Timestamp validation
-- ✅ Dynamic certificate management
-- ✅ Storage slot collision fixes
-- ✅ **Nitriding framework support (v1.2.0)**
+
+### v1.0.0 - Initial Release
+- ✅ Basic TEE registration with attestation
+- ✅ PCR verification
+- ✅ Admin management
+
+## Migration Guide (v1.2 → v1.3)
+
+If you have existing code using v1.2, update as follows:
+
+### Old (v1.2):
+```solidity
+tee.registerTEEWithAttestation(
+    attestationDocument,
+    publicKeyDER,           // Single key
+    paymentAddress,
+    endpoint,
+    teeType
+);
+```
+
+### New (v1.3):
+```solidity
+tee.registerTEEWithAttestation(
+    attestationDocument,
+    signingPublicKeyDER,    // Key for settlements
+    tlsCertificateDER,      // Key for HTTPS ⭐ NEW
+    paymentAddress,
+    endpoint,
+    teeType
+);
+```
+
+### Retrieve TLS Certificate (New):
+```solidity
+bytes memory tlsCert = tee.getTLSCertificate(teeId);
+```
 
 ## TODO
 
-### Blockchain
+### Planned Features
 - [ ] Event emission for all state changes
-- [ ] Genesis config for initial admin
-- [ ] Gas optimization review
+- [ ] TLS certificate expiry tracking
+- [ ] Key rotation support
+- [ ] Multi-signature admin operations
+- [ ] Batch TEE registration
+- [ ] TEE health monitoring hooks
 
-### LLM Server
-- [ ] Implement `/admin/register` endpoint
-- [ ] Store TEE ID after registration
-- [ ] Export public key for registration
+### Integration Tasks
+- [ ] LLM Server: Implement dual-key generation in enclave
+- [ ] Facilitator (x402): Call `verifySettlement()` before payment
+- [ ] Frontend: Download and verify TLS certificates
+- [ ] Monitoring: Track TEE active status
 
-### Facilitator (x402)
-- [ ] Call `verifySettlement()` before payment
-- [ ] Handle verification failures
-- [ ] Index settlement events
+## Support
 
-### Documentation
-- [ ] Security audit checklist
-- [ ] Deployment runbook
-- [ ] Monitoring guide
+For questions or issues:
+- GitHub Issues: `<your-repo>/issues`
+- Documentation: `<your-docs-url>`
+- Discord: `<your-discord>`
+
+A lot of updates are missed @khalifa

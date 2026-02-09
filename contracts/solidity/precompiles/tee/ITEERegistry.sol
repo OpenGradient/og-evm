@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 /// @title ITEERegistry - Interface for TEE Registry Precompile
 /// @notice Manages TEE registration and signature verification for X402 settlements
 /// @dev Precompile deployed at 0x0000000000000000000000000000000000000900
-/// @dev Supports Nitriding framework where attestation contains SHA256(publicKey) binding
+/// @dev Supports Nitriding framework with dual-key verification (TLS + Signing)
 interface ITEERegistry {
     
     // ============ Errors ============
@@ -63,8 +63,9 @@ interface ITEERegistry {
         address owner;
         address paymentAddress;
         string endpoint;
-        bytes publicKey;
-        bytes32 pcrHash;          // Reference to approved PCR (not full PCRs)
+        bytes publicKey;          // RSA signing key for settlements
+        bytes tlsCertificate;     // TLS certificate for HTTPS 
+        bytes32 pcrHash;          // Reference to approved PCR
         uint8 teeType;
         bool active;
         uint256 registeredAt;
@@ -129,17 +130,19 @@ interface ITEERegistry {
 
     // ============ TEE Registration ============
     
-    /// @notice Register a TEE with AWS Nitro attestation
-    /// @dev Supports Nitriding framework where attestation.public_key contains SHA256(publicKey)
-    /// @param attestationDocument Raw CBOR-encoded AWS Nitro attestation document
-    /// @param publicKey DER-encoded RSA public key (verified against attestation binding)
+    /// @notice Register a TEE with AWS Nitro attestation and dual-key verification
+    /// @dev Supports Nitriding framework where attestation.user_data contains SHA256 hashes of both keys
+    /// @param attestationDocument Raw CBOR-encoded AWS Nitro attestation document (base64 decoded)
+    /// @param signingPublicKey DER-encoded RSA public key for settlement signatures
+    /// @param tlsCertificate DER-encoded TLS certificate for HTTPS (NEW in v1.3)
     /// @param paymentAddress Address to receive payments for this TEE
-    /// @param endpoint HTTP(S) endpoint for the TEE service
+    /// @param endpoint HTTPS endpoint for the TEE service
     /// @param teeType Type identifier (must be pre-approved)
-    /// @return teeId Unique identifier for the registered TEE (keccak256 of publicKey)
+    /// @return teeId Unique identifier for the registered TEE (keccak256 of signingPublicKey)
     function registerTEEWithAttestation(
         bytes calldata attestationDocument,
-        bytes calldata publicKey,
+        bytes calldata signingPublicKey,
+        bytes calldata tlsCertificate,
         address paymentAddress,
         string calldata endpoint,
         uint8 teeType
@@ -160,6 +163,13 @@ interface ITEERegistry {
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory);
     function getTEEsByOwner(address owner) external view returns (bytes32[] memory);
     function getPublicKey(bytes32 teeId) external view returns (bytes memory);
+    
+    /// @notice Get TLS certificate for a registered TEE 
+    /// @dev Users download this to verify HTTPS connections to the enclave
+    /// @param teeId The TEE identifier
+    /// @return TLS certificate in DER format
+    function getTLSCertificate(bytes32 teeId) external view returns (bytes memory);
+    
     function isActive(bytes32 teeId) external view returns (bool);
 
     // ============ Utilities ============

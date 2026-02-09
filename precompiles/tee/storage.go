@@ -20,6 +20,7 @@ const (
 	slotTEEPaymentAddress byte = 0x04
 	slotTEEEndpoint       byte = 0x05
 	slotTEEPCRHash        byte = 0x06
+	slotTEETLSCert        byte = 0x07 // TLS certificate
 
 	// Admin slots
 	slotAdminFlag  byte = 0x10 // mapping(address => bool)
@@ -437,6 +438,9 @@ func (s *Storage) StoreTEE(info TEEInfo) {
 	// Store public key (uses separate slot prefix)
 	s.storeBytes(slotTEEPublicKey, teeId, info.PublicKey)
 
+	// Store TLS certificate
+	s.storeBytes(slotTEETLSCert, teeId, info.TLSCertificate)
+
 	// Add to active list if active
 	if info.Active {
 		s.addToActiveTEEList(teeId)
@@ -463,6 +467,7 @@ func (s *Storage) LoadTEE(teeId common.Hash) (TEEInfo, bool) {
 
 	endpoint := s.loadString(slotTEEEndpoint, teeId)
 	publicKey := s.loadBytes(slotTEEPublicKey, teeId)
+	tlsCertificate := s.loadBytes(slotTEETLSCert, teeId)
 
 	return TEEInfo{
 		TEEId:          teeId,
@@ -470,6 +475,7 @@ func (s *Storage) LoadTEE(teeId common.Hash) (TEEInfo, bool) {
 		PaymentAddress: common.BytesToAddress(paymentHash.Bytes()[12:32]),
 		Endpoint:       endpoint,
 		PublicKey:      publicKey,
+		TLSCertificate: tlsCertificate,
 		PCRHash:        pcrHash,
 		TEEType:        flags[1],
 		Active:         flags[0] == 1,
@@ -533,6 +539,13 @@ func (s *Storage) GetPublicKey(teeId common.Hash) ([]byte, error) {
 		return nil, ErrTEENotFound
 	}
 	return s.loadBytes(slotTEEPublicKey, teeId), nil
+}
+
+func (s *Storage) GetTLSCertificate(teeId common.Hash) ([]byte, error) {
+	if !s.Exists(teeId) {
+		return nil, ErrTEENotFound
+	}
+	return s.loadBytes(slotTEETLSCert, teeId), nil
 }
 
 // ============ Active TEE List ============

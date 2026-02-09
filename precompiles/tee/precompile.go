@@ -1,11 +1,11 @@
 package tee
 
 import (
-	"bytes"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -73,12 +73,13 @@ const (
 	MethodVerifySettlement = "verifySettlement"
 
 	// Queries
-	MethodGetTEE         = "getTEE"
-	MethodGetActiveTEEs  = "getActiveTEEs"
-	MethodGetTEEsByType  = "getTEEsByType"
-	MethodGetTEEsByOwner = "getTEEsByOwner"
-	MethodGetPublicKey   = "getPublicKey"
-	MethodIsActive       = "isActive"
+	MethodGetTEE            = "getTEE"
+	MethodGetActiveTEEs     = "getActiveTEEs"
+	MethodGetTEEsByType     = "getTEEsByType"
+	MethodGetTEEsByOwner    = "getTEEsByOwner"
+	MethodGetPublicKey      = "getPublicKey"
+	MethodGetTLSCertificate = "getTLSCertificate"
+	MethodIsActive          = "isActive"
 
 	// Utilities
 	MethodComputeTEEId       = "computeTEEId"
@@ -241,6 +242,8 @@ func (p *Precompile) Run(evm *vm.EVM, contract *vm.Contract, readOnly bool) ([]b
 		return p.getTEEsByOwner(ctx, args)
 	case MethodGetPublicKey:
 		return p.getPublicKey(ctx, args)
+	case MethodGetTLSCertificate:
+		return p.getTLSCertificate(ctx, args)
 	case MethodIsActive:
 		return p.isActive(ctx, args)
 
@@ -508,10 +511,11 @@ func (p *Precompile) getAWSRootCertificateHash(ctx *callContext, args []interfac
 
 func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interface{}) ([]byte, error) {
 	attestationBytes := args[0].([]byte)
-	publicKeyDER := args[1].([]byte) // Public key should be provided by operator
-	paymentAddress := args[2].(common.Address)
-	endpoint := args[3].(string)
-	teeType := args[4].(uint8)
+	signingPublicKeyDER := args[1].([]byte)
+	tlsCertificateDER := args[2].([]byte)
+	paymentAddress := args[3].(common.Address)
+	endpoint := args[4].(string)
+	teeType := args[5].(uint8)
 
 	// Check caller is admin
 	if !ctx.storage.IsAdmin(ctx.caller()) {
@@ -523,9 +527,14 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 		return nil, ErrInvalidTEEType
 	}
 
-	// Validate the provided public key format FIRST
-	if err := validatePublicKey(publicKeyDER); err != nil {
-		return nil, err
+	// Validate the signing public key format
+	if err := validatePublicKey(signingPublicKeyDER); err != nil {
+		return nil, fmt.Errorf("invalid signing key: %w", err)
+	}
+
+	// Validate TLS certificate format
+	if err := validateTLSCertificate(tlsCertificateDER); err != nil {
+		return nil, fmt.Errorf("invalid TLS certificate: %w", err)
 	}
 
 	// Get root certificate from storage (or use default)
@@ -547,12 +556,17 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 	}
 
 	// =========================================================================
-	// Verify public key binding (Nitriding framework support)
+	// Verify Nitriding dual-key binding (TLS certificate + Signing key)
 	// =========================================================================
-	// Nitriding puts SHA256(publicKey) in the attestation's public_key field
-	// We verify the provided public key matches this binding
-	if err := verifyPublicKeyBinding(result.PublicKey, publicKeyDER); err != nil {
-		return nil, err
+
+	// Verify TLS certificate binding
+	if err := VerifyTLSCertificateBinding(tlsCertificateDER, result.UserData); err != nil {
+		return nil, fmt.Errorf("%w: TLS certificate binding failed: %v", ErrPublicKeyBindingFailed, err)
+	}
+
+	// Verify signing key binding
+	if err := VerifySigningKeyBinding(signingPublicKeyDER, result.UserData); err != nil {
+		return nil, fmt.Errorf("%w: signing key binding failed: %v", ErrPublicKeyBindingFailed, err)
 	}
 
 	// Compute PCR hash from extracted PCRs
@@ -563,22 +577,23 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 		return nil, ErrPCRNotApproved
 	}
 
-	// Compute TEE ID from the actual public key
-	teeId := crypto.Keccak256Hash(publicKeyDER)
+	// Compute TEE ID from the signing public key
+	teeId := crypto.Keccak256Hash(signingPublicKeyDER)
 
 	// Check if already exists
 	if ctx.storage.Exists(teeId) {
 		return nil, ErrTEEAlreadyExists
 	}
 
-	// Store TEE with the actual public key
+	// Store TEE with both signing key and TLS certificate
 	now := ctx.timestamp()
 	ctx.storage.StoreTEE(TEEInfo{
 		TEEId:          teeId,
 		Owner:          ctx.caller(),
 		PaymentAddress: paymentAddress,
 		Endpoint:       endpoint,
-		PublicKey:      publicKeyDER,
+		PublicKey:      signingPublicKeyDER,
+		TLSCertificate: tlsCertificateDER,
 		PCRHash:        pcrHash,
 		TEEType:        teeType,
 		Active:         true,
@@ -589,27 +604,20 @@ func (p *Precompile) registerTEEWithAttestation(ctx *callContext, args []interfa
 	return ctx.method.Outputs.Pack(teeId)
 }
 
-// verifyPublicKeyBinding verifies that the provided public key matches the attestation binding
-// Supports both Nitriding mode (hash binding) and standard mode (full key)
-func verifyPublicKeyBinding(attestationPubKey, providedPubKey []byte) error {
-	if len(attestationPubKey) == 0 {
-		// No public key in attestation - accept provided key
-		// This allows for configurations that don't include public key in attestation
-		return nil
+// validateTLSCertificate validates TLS certificate format
+func validateTLSCertificate(certDER []byte) error {
+	if len(certDER) == 0 {
+		return errors.New("empty TLS certificate")
 	}
 
-	if len(attestationPubKey) == sha256.Size {
-		// Nitriding mode: attestation contains SHA256 hash of public key
-		expectedHash := sha256.Sum256(providedPubKey)
-		if !bytes.Equal(attestationPubKey, expectedHash[:]) {
-			return ErrPublicKeyBindingFailed
-		}
-		return nil
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return fmt.Errorf("invalid TLS certificate: %w", err)
 	}
 
-	// Standard mode: attestation contains full public key
-	if !bytes.Equal(attestationPubKey, providedPubKey) {
-		return ErrPublicKeyBindingFailed
+	// Verify it has a public key
+	if cert.PublicKey == nil {
+		return errors.New("TLS certificate has no public key")
 	}
 
 	return nil
@@ -713,9 +721,6 @@ func (p *Precompile) verifySettlement(ctx *callContext, args []interface{}) ([]b
 	if valid {
 		// Mark settlement as used (replay protection)
 		ctx.storage.MarkSettlementUsed(settlementHash)
-
-		// TODO: Emit SettlementVerified event
-		// Events require EVM log support which depends on your chain implementation
 	}
 
 	return ctx.method.Outputs.Pack(valid)
@@ -819,6 +824,18 @@ func (p *Precompile) getPublicKey(ctx *callContext, args []interface{}) ([]byte,
 	}
 
 	return ctx.method.Outputs.Pack(publicKey)
+}
+
+func (p *Precompile) getTLSCertificate(ctx *callContext, args []interface{}) ([]byte, error) {
+	teeIdArg := args[0].([32]byte)
+	teeId := common.BytesToHash(teeIdArg[:])
+
+	tlsCert, err := ctx.storage.GetTLSCertificate(teeId)
+	if err != nil {
+		return nil, err
+	}
+
+	return ctx.method.Outputs.Pack(tlsCert)
 }
 
 func (p *Precompile) isActive(ctx *callContext, args []interface{}) ([]byte, error) {
