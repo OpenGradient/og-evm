@@ -63,8 +63,8 @@ type AttestationResult struct {
 
 // NitridingKeyHashes contains the two SHA256 hashes from user_data
 type NitridingKeyHashes struct {
-	TLSKeyHash []byte // SHA256 of TLS certificate public key
-	AppKeyHash []byte // SHA256 of signing/application public key
+	TLSCertHash    []byte // SHA256 of entire TLS certificate DER
+	SigningKeyHash []byte // SHA256 of signing public key DER
 }
 
 // Constants
@@ -72,11 +72,11 @@ const (
 	SHA384HashLength    = 48
 	SHA256HashLength    = 32
 	P384SignatureLength = 96
-
-	// Nitriding user_data format To be validated with the real example
-	NitridingUserDataLength = 68 // 0x1220 + hash(32) + 0x1220 + hash(32)
-	MultihashSHA256Prefix   = 0x12
-	MultihashLength32       = 0x20
+	// TODo Kyle: is it alawys foloowing this format?
+	// Nitriding user_data format: 0x1220 + hash(32) + 0x1220 + hash(32) = 68 bytes
+	NitridingUserDataLength = 68
+	MultihashSHA256Prefix   = 0x12 // SHA256 identifier in multihash
+	MultihashLength32       = 0x20 // 32 bytes length indicator
 )
 
 // DefaultAWSNitroRootCertPEM is the AWS Nitro Attestation PKI root certificate
@@ -99,27 +99,27 @@ IwLz3/Y=
 // NITRIDING USER_DATA PARSING
 // ============================================================================
 
-// ParseNitridingUserData extracts TLS and App key hashes from Nitriding user_data
-// Format: 0x1220 + tlsKeyHash(32) + 0x1220 + appKeyHash(32) = 68 bytes total
+// ParseNitridingUserData extracts TLS cert and signing key hashes from Nitriding user_data
+// Format: 0x1220 + SHA256(tlsCertDER) + 0x1220 + SHA256(signingKeyDER) = 68 bytes total
 // 0x12 = SHA256 multihash type, 0x20 = 32 bytes length indicator
 func ParseNitridingUserData(userData []byte) (*NitridingKeyHashes, error) {
 	if len(userData) != NitridingUserDataLength {
 		return nil, fmt.Errorf("invalid user_data length: got %d, expected %d", len(userData), NitridingUserDataLength)
 	}
 
-	// Verify first multihash prefix (TLS key)
+	// Verify first multihash prefix (TLS certificate hash)
 	if userData[0] != MultihashSHA256Prefix || userData[1] != MultihashLength32 {
 		return nil, fmt.Errorf("invalid first multihash prefix: expected 0x1220, got 0x%02x%02x", userData[0], userData[1])
 	}
 
-	// Verify second multihash prefix (App key)
+	// Verify second multihash prefix (Signing key hash)
 	if userData[34] != MultihashSHA256Prefix || userData[35] != MultihashLength32 {
 		return nil, fmt.Errorf("invalid second multihash prefix: expected 0x1220, got 0x%02x%02x", userData[34], userData[35])
 	}
 
 	return &NitridingKeyHashes{
-		TLSKeyHash: userData[2:34],  // Skip 0x1220 prefix
-		AppKeyHash: userData[36:68], // Skip 0x1220 prefix
+		TLSCertHash:    userData[2:34],  // Skip 0x1220 prefix, get 32-byte hash
+		SigningKeyHash: userData[36:68], // Skip 0x1220 prefix, get 32-byte hash
 	}, nil
 }
 
@@ -244,6 +244,60 @@ func ValidateRootCertificate(certPEM []byte) error {
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(certPEM) {
 		return ErrInvalidCertificate
+	}
+
+	return nil
+}
+
+// ============================================================================
+// DUAL-KEY BINDING VERIFICATION (FIXED FOR NITRIDING FORMAT)
+// ============================================================================
+
+// VerifyTLSCertificateBinding verifies that TLS certificate hash matches attestation user_data
+// Nitriding stores SHA256(entire TLS certificate DER) in user_data[2:34]
+func VerifyTLSCertificateBinding(tlsCertDER []byte, userData []byte) error {
+	if len(tlsCertDER) == 0 {
+		return fmt.Errorf("empty TLS certificate")
+	}
+
+	// Parse user_data to get TLS cert hash
+	hashes, err := ParseNitridingUserData(userData)
+	if err != nil {
+		return fmt.Errorf("failed to parse user_data: %w", err)
+	}
+
+	// FIXED: Hash the ENTIRE TLS certificate DER (not just the public key)
+	expectedHash := sha256.Sum256(tlsCertDER)
+
+	// Verify match
+	if !bytes.Equal(hashes.TLSCertHash, expectedHash[:]) {
+		return fmt.Errorf("%w: TLS certificate hash mismatch (expected %x, got %x)",
+			ErrPublicKeyBindingFailed, expectedHash[:8], hashes.TLSCertHash[:8])
+	}
+
+	return nil
+}
+
+// VerifySigningKeyBinding verifies that signing key hash matches attestation user_data
+// Nitriding stores SHA256(signing public key DER) in user_data[36:68]
+func VerifySigningKeyBinding(signingKeyDER []byte, userData []byte) error {
+	if len(signingKeyDER) == 0 {
+		return fmt.Errorf("empty signing key")
+	}
+
+	// Parse user_data to get signing key hash
+	hashes, err := ParseNitridingUserData(userData)
+	if err != nil {
+		return fmt.Errorf("failed to parse user_data: %w", err)
+	}
+
+	// Hash the signing public key DER
+	expectedHash := sha256.Sum256(signingKeyDER)
+
+	// Verify match
+	if !bytes.Equal(hashes.SigningKeyHash, expectedHash[:]) {
+		return fmt.Errorf("%w: signing key hash mismatch (expected %x, got %x)",
+			ErrPublicKeyBindingFailed, expectedHash[:8], hashes.SigningKeyHash[:8])
 	}
 
 	return nil
@@ -389,53 +443,4 @@ func constantTimeEqual(a, b []byte) bool {
 		result |= a[i] ^ b[i]
 	}
 	return result == 0
-}
-
-// VerifyTLSCertificateBinding verifies that TLS certificate matches attestation user_data
-func VerifyTLSCertificateBinding(tlsCertDER []byte, userData []byte) error {
-	// Parse user_data to get TLS key hash
-	hashes, err := ParseNitridingUserData(userData)
-	if err != nil {
-		return fmt.Errorf("failed to parse user_data: %w", err)
-	}
-
-	// Parse TLS certificate
-	tlsCert, err := x509.ParseCertificate(tlsCertDER)
-	if err != nil {
-		return fmt.Errorf("failed to parse TLS certificate: %w", err)
-	}
-
-	// Extract and hash TLS public key
-	tlsPubKeyDER, err := x509.MarshalPKIXPublicKey(tlsCert.PublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to marshal TLS public key: %w", err)
-	}
-
-	expectedHash := sha256.Sum256(tlsPubKeyDER)
-
-	// Verify match
-	if !bytes.Equal(hashes.TLSKeyHash, expectedHash[:]) {
-		return fmt.Errorf("%w: TLS certificate", ErrPublicKeyBindingFailed)
-	}
-
-	return nil
-}
-
-// VerifySigningKeyBinding verifies that signing key matches attestation user_data
-func VerifySigningKeyBinding(signingKeyDER []byte, userData []byte) error {
-	// Parse user_data to get App key hash
-	hashes, err := ParseNitridingUserData(userData)
-	if err != nil {
-		return fmt.Errorf("failed to parse user_data: %w", err)
-	}
-
-	// Hash signing key
-	expectedHash := sha256.Sum256(signingKeyDER)
-
-	// Verify match
-	if !bytes.Equal(hashes.AppKeyHash, expectedHash[:]) {
-		return fmt.Errorf("%w: signing key", ErrPublicKeyBindingFailed)
-	}
-
-	return nil
 }
