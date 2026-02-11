@@ -3,8 +3,8 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./ITEERegistry.sol";
-import "./precompiles/attestation/IAttestationVerifier.sol";
-import "./precompiles/rsa/IRSAVerifier.sol";
+import "precompiles/attestation/IAttestationVerifier.sol";
+import "precompiles/rsa/IRSAVerifier.sol";
 
 /// @title TEERegistry - Trusted Execution Environment Registry
 /// @notice Manages TEE registration and signature verification for X402 settlements

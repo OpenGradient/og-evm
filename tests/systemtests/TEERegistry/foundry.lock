@@ -1,8 +1,38 @@
 {
+  "../../evm-tools-compatibility/foundry/lib/ds-test": {
+    "rev": "e282159d5170298eb2455a6c05280ab5a73a4ef0"
+  },
+  "../../evm-tools-compatibility/foundry/lib/forge-std": {
+    "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+  },
+  "../../evm-tools-compatibility/foundry/lib/openzeppelin-contracts": {
+    "rev": "101bbaf1a8e02f95392380586ba0fc5752c4204d"
+  },
+  "../../evm-tools-compatibility/foundry-uniswap-v3/lib/forge-std": {
+    "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+  },
+  "../../evm-tools-compatibility/foundry-uniswap-v3/lib/openzeppelin-contracts": {
+    "rev": "8e0296096449d9b1cd7c5631e917330635244c37"
+  },
+  "../../evm-tools-compatibility/foundry-uniswap-v3/lib/solidity-lib": {
+    "rev": "c01640b0f0f1d8a85cba8de378cc48469fcfd9a6"
+  },
+  "../../evm-tools-compatibility/foundry-uniswap-v3/lib/v3-core": {
+    "rev": "d8b1c635c275d2a9450bd6a78f3fa2484fef73eb"
+  },
+  "../../evm-tools-compatibility/foundry-uniswap-v3/lib/v3-periphery": {
+    "rev": "80f26c86c57b8a5e4b913f42844d4c8bd274d058"
+  },
+  "../Counter/lib/forge-std": {
+    "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.14.0",
       "rev": "1801b0541f4fda118a10798fd3486bb7051c5dd6"
     }
+  },
+  "lib/openzeppelin-contracts": {
+    "rev": "3c063fc49450f91899ab70388d7178f347d1028b"
   }
 }
