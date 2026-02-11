@@ -17,16 +17,18 @@ The TEE Registry uses a **hybrid architecture** that separates cryptographic pri
 │  - Settlement replay protection                              │
 │  - All query functions                                       │
 └─────────────────────┬───────────────────┬───────────────────┘
-                      │                   │
-                      ▼                   ▼
-        ┌─────────────────────┐ ┌─────────────────────┐
-        │ AttestationVerifier │ │    RSAVerifier      │
-        │   Precompile 0x901  │ │  Precompile 0x902   │
-        │                     │ │                     │
-        │ - AWS Nitro CBOR    │ │ - RSA-PSS verify    │
-        │ - X.509 chain       │ │ - SHA-256 hashing   │
-        │ - Nitriding binding │ │                     │
-        └─────────────────────┘ └─────────────────────┘
+                      │
+                      ▼
+        ┌─────────────────────┐
+        │    TEEPrecompile    │
+        │ Precompile 0x...0901│
+        │                     │
+        │ - AWS Nitro CBOR    │
+        │ - X.509 chain       │
+        │ - Nitriding binding │
+        │ - RSA-PSS verify    │
+        │ - SHA-256 hashing   │
+        └─────────────────────┘
 ```
 
 ## Component Breakdown
