@@ -10,7 +10,7 @@ The TEE Registry uses a **hybrid architecture** that separates cryptographic pri
 ┌─────────────────────────────────────────────────────────────┐
 │                     TEERegistry.sol                          │
 │                   (Business Logic Layer)                     │
-│  - Admin management                                          │
+│  - Role-based access control (Admin + Operator)              │
 │  - TEE type registry                                         │
 │  - PCR approval tracking                                     │
 │  - TEE storage and lifecycle                                 │
@@ -37,7 +37,9 @@ The TEE Registry uses a **hybrid architecture** that separates cryptographic pri
 **Purpose:** Main contract implementing all business logic
 
 **Responsibilities:**
-- ✅ Admin access control (using Solidity mappings)
+- ✅ Role-based access control (OpenZeppelin AccessControl)
+  - TEE_ADMIN_ROLE: Protocol admins (manage types, PCRs, certs, override TEE lifecycle)
+  - TEE_OPERATOR_ROLE: TEE operators (register and manage own TEEs)
 - ✅ TEE type management
 - ✅ PCR registry with versioning and grace periods
 - ✅ TEE registration workflow
@@ -99,10 +101,10 @@ function verifyRSAPSS(
 ## Registration Flow
 
 ```
-User calls TEERegistry.registerTEEWithAttestation()
+Operator or Admin calls TEERegistry.registerTEEWithAttestation()
   ↓
 Solidity checks:
-  - msg.sender is admin
+  - msg.sender has TEE_OPERATOR_ROLE or TEE_ADMIN_ROLE
   - TEE type is valid
   ↓
 Calls AttestationVerifier precompile (0x901)
@@ -113,7 +115,7 @@ Solidity checks:
   - PCR is approved (storage lookup)
   - TEE doesn't already exist
   ↓
-Solidity stores TEE info (standard storage)
+Solidity stores TEE info with owner = msg.sender
   ↓
 Emits TEERegistered event
 ```
@@ -145,14 +147,46 @@ Emits TEERegistered event
 | **Debugging** | Tenderly, Remix, standard block explorers |
 | **Maintainability** | Standard patterns, easy to understand |
 
+## Permission Model
+
+The contract uses OpenZeppelin's AccessControl for role-based permissions:
+
+### TEE_ADMIN_ROLE (Protocol Administrators)
+**Can do:**
+- ✅ Manage TEE types (`addTEEType`, `deactivateTEEType`)
+- ✅ Approve/revoke PCR measurements (`approvePCR`, `revokePCR`)
+- ✅ Set AWS root certificate (`setAWSRootCertificate`)
+- ✅ Register TEEs (becomes owner)
+- ✅ Deactivate/activate ANY TEE (even if not owner)
+
+**Use case:** Protocol-level control and emergency TEE management
+
+### TEE_OPERATOR_ROLE (TEE Operators)
+**Can do:**
+- ✅ Register TEEs (becomes owner)
+- ✅ Deactivate/activate only TEEs they own
+
+**Cannot do:**
+- ❌ Manage TEE types or PCRs
+- ❌ Override other operators' TEEs
+
+**Use case:** Enclave operators who run TEE services
+
+### Ownership Model
+- When someone registers a TEE, they become the `owner` (stored in TEEInfo)
+- Owners can manage their own TEE lifecycle (activate/deactivate)
+- Admins can override and manage any TEE regardless of ownership
+- TEE metadata is immutable - must deactivate + re-register to change
+
 ## Storage Layout
 
 The contract uses standard Solidity storage patterns:
 
 ```solidity
-// Admin access control
-mapping(address => bool) private _admins;
-address[] private _adminList;
+// Access control (OpenZeppelin AccessControl)
+// - TEE_ADMIN_ROLE: Protocol administrators
+// - TEE_OPERATOR_ROLE: TEE operators
+// Managed by AccessControl base contract
 
 // TEE type registry
 mapping(uint8 => TEETypeInfo) private _teeTypes;
@@ -166,6 +200,9 @@ bytes32[] private _pcrList;
 mapping(bytes32 => TEEInfo) private _tees;
 bytes32[] private _activeTEEList;
 mapping(bytes32 => uint256) private _activeTEEIndex;
+
+// TEE indexes
+mapping(uint8 => bytes32[]) private _teesByType;
 
 // Settlement replay protection
 mapping(bytes32 => bool) private _usedSettlements;
@@ -201,10 +238,12 @@ forge snapshot
 ```
 
 **Test Coverage:**
-- Admin management (add, remove, bootstrap)
+- Role-based access control (admin and operator permissions)
 - TEE type management (add, deactivate, query)
 - PCR registry (approve, revoke, grace periods)
+- TEE registration and ownership
 - Certificate management
+- Settlement verification and replay protection
 - Utility functions (hash computation, ID generation)
 
 ## Security Considerations
@@ -295,22 +334,31 @@ forge create TEERegistry \
 
 ```bash
 REGISTRY_ADDRESS="0x..."  # Your deployed contract
+TEE_ADMIN_ROLE="0x..."    # keccak256("TEE_ADMIN_ROLE")
+TEE_OPERATOR_ROLE="0x..." # keccak256("TEE_OPERATOR_ROLE")
 
-# Add first admin
+# Grant admin role to protocol administrator
 cast send $REGISTRY_ADDRESS \
-  "addAdmin(address)" \
-  $ADMIN_ADDRESS \
+  "grantRole(bytes32,address)" \
+  $TEE_ADMIN_ROLE $ADMIN_ADDRESS \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY
 
-# Add TEE types
+# Grant operator role to TEE operator
+cast send $REGISTRY_ADDRESS \
+  "grantRole(bytes32,address)" \
+  $TEE_OPERATOR_ROLE $OPERATOR_ADDRESS \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY
+
+# Add TEE types (admin only)
 cast send $REGISTRY_ADDRESS \
   "addTEEType(uint8,string)" \
   0 "LLMProxy" \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY
 
-# Approve PCRs
+# Approve PCRs (admin only)
 cast send $REGISTRY_ADDRESS \
   "approvePCR((bytes,bytes,bytes),string,bytes32,uint256)" \
   "($PCR0,$PCR1,$PCR2)" "v1.0.0" "0x0" 0 \
