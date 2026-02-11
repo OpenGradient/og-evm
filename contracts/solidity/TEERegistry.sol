@@ -19,8 +19,11 @@ contract TEERegistry is ITEERegistry, AccessControl {
 
     // ============ Access Control ============
 
-    /// @dev Role for TEE management operations
+    /// @dev Role for protocol-level TEE management operations
     bytes32 public constant TEE_ADMIN_ROLE = keccak256("TEE_ADMIN_ROLE");
+
+    /// @dev Role for TEE operators who can register and manage their own TEEs
+    bytes32 public constant TEE_OPERATOR_ROLE = keccak256("TEE_OPERATOR_ROLE");
 
     // ============ State Variables ============
 
@@ -70,6 +73,14 @@ contract TEERegistry is ITEERegistry, AccessControl {
         if (_tees[teeId].owner != msg.sender && !hasRole(TEE_ADMIN_ROLE, msg.sender)) {
             revert NotTEEOwner(teeId, msg.sender, _tees[teeId].owner);
         }
+        _;
+    }
+
+    modifier onlyOperatorOrAdmin() {
+        require(
+            hasRole(TEE_OPERATOR_ROLE, msg.sender) || hasRole(TEE_ADMIN_ROLE, msg.sender),
+            "Caller must be operator or admin"
+        );
         _;
     }
 
@@ -233,7 +244,7 @@ contract TEERegistry is ITEERegistry, AccessControl {
         address paymentAddress,
         string calldata endpoint,
         uint8 teeType
-    ) external onlyRole(TEE_ADMIN_ROLE) returns (bytes32 teeId) {
+    ) external onlyOperatorOrAdmin returns (bytes32 teeId) {
         // Validate TEE type
         if (!_teeTypes[teeType].active) {
             revert InvalidTEEType(teeType);
