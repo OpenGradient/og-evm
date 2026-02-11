@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title IAttestationVerifier
+/// @notice Interface for AWS Nitro Enclave attestation verification precompile
+/// @dev Precompile address: 0x0000000000000000000000000000000000000901
+interface IAttestationVerifier {
+    /// @notice Verify an AWS Nitro attestation document with Nitriding dual-key binding
+    /// @param attestationDocument CBOR-encoded AWS Nitro attestation document
+    /// @param signingPublicKey DER-encoded RSA public key for settlement signatures
+    /// @param tlsCertificate DER-encoded X.509 certificate for TLS connections
+    /// @param rootCertificate DER-encoded AWS root certificate for chain verification
+    /// @return valid True if attestation is valid and keys are bound correctly
+    /// @return pcrHash keccak256(pcr0 || pcr1 || pcr2) - hash of PCR measurements
+    function verifyAttestation(
+        bytes calldata attestationDocument,
+        bytes calldata signingPublicKey,
+        bytes calldata tlsCertificate,
+        bytes calldata rootCertificate
+    ) external view returns (bool valid, bytes32 pcrHash);
+}
