@@ -3,6 +3,8 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./ITEERegistry.sol";
+import "./precompiles/attestation/IAttestationVerifier.sol";
+import "./precompiles/rsa/IRSAVerifier.sol";
 
 /// @title TEERegistry - Trusted Execution Environment Registry
 /// @notice Manages TEE registration and signature verification for X402 settlements
@@ -251,22 +253,12 @@ contract TEERegistry is ITEERegistry, AccessControl {
         }
 
         // Call precompile to verify attestation and extract data
-        // Returns: (bool valid, bytes32 pcrHash)
-        (bool success, bytes memory result) = ATTESTATION_VERIFIER.staticcall(
-            abi.encodeWithSignature(
-                "verifyAttestation(bytes,bytes,bytes,bytes)",
-                attestationDocument,
-                signingPublicKey,
-                tlsCertificate,
-                _awsRootCertificate
-            )
+        (bool valid, bytes32 pcrHash) = IAttestationVerifier(ATTESTATION_VERIFIER).verifyAttestation(
+            attestationDocument,
+            signingPublicKey,
+            tlsCertificate,
+            _awsRootCertificate
         );
-
-        if (!success) {
-            revert InvalidAttestation();
-        }
-
-        (bool valid, bytes32 pcrHash) = abi.decode(result, (bool, bytes32));
 
         if (!valid) {
             revert InvalidAttestation();
@@ -361,20 +353,11 @@ contract TEERegistry is ITEERegistry, AccessControl {
         bytes32 messageHash = computeMessageHash(request.requestHash, request.responseHash, request.timestamp);
 
         // Call RSA verifier precompile
-        (bool success, bytes memory result) = RSA_VERIFIER.staticcall(
-            abi.encodeWithSignature(
-                "verifyRSAPSS(bytes,bytes32,bytes)",
-                _tees[request.teeId].publicKey,
-                messageHash,
-                request.signature
-            )
+        return IRSAVerifier(RSA_VERIFIER).verifyRSAPSS(
+            _tees[request.teeId].publicKey,
+            messageHash,
+            request.signature
         );
-
-        if (!success) {
-            return false;
-        }
-
-        return abi.decode(result, (bool));
     }
 
     /// @inheritdoc ITEERegistry
@@ -406,16 +389,13 @@ contract TEERegistry is ITEERegistry, AccessControl {
         bytes32 messageHash = computeMessageHash(inputHash, outputHash, timestamp);
 
         // Call RSA verifier precompile
-        (bool success, bytes memory result) = RSA_VERIFIER.staticcall(
-            abi.encodeWithSignature(
-                "verifyRSAPSS(bytes,bytes32,bytes)",
-                _tees[teeId].publicKey,
-                messageHash,
-                signature
-            )
+        bool valid = IRSAVerifier(RSA_VERIFIER).verifyRSAPSS(
+            _tees[teeId].publicKey,
+            messageHash,
+            signature
         );
 
-        if (!success || !abi.decode(result, (bool))) {
+        if (!valid) {
             revert InvalidSignature();
         }
 
