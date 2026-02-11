@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Precompile constants
@@ -203,5 +204,5 @@ func computePCRHash(pcr0, pcr1, pcr2 []byte) common.Hash {
 	data = append(data, pcr0...)
 	data = append(data, pcr1...)
 	data = append(data, pcr2...)
-	return common.BytesToHash(data)
+	return crypto.Keccak256Hash(data)
 }
