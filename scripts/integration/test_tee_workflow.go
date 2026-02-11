@@ -33,234 +33,248 @@ const (
 	ENCLAVE_HOST = "13.59.207.188"
 	ENCLAVE_PORT = "443"
 
-	// Path to measurements file (from enclave build)
+	// Path to measurements file
 	MEASUREMENTS_PATH = "measurements.txt"
 )
 
-// Method selectors (compute with keccak256)
+// Method selectors
 var (
-	SEL_ADD_ADMIN       = crypto.Keccak256([]byte("addAdmin(address)"))[:4]
-	SEL_IS_ADMIN        = crypto.Keccak256([]byte("isAdmin(address)"))[:4]
-	SEL_ADD_TEE_TYPE    = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
-	SEL_IS_VALID_TYPE   = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
+	// Admin
+	SEL_ADD_ADMIN    = crypto.Keccak256([]byte("addAdmin(address)"))[:4]
+	SEL_REMOVE_ADMIN = crypto.Keccak256([]byte("removeAdmin(address)"))[:4]
+	SEL_IS_ADMIN     = crypto.Keccak256([]byte("isAdmin(address)"))[:4]
+	SEL_GET_ADMINS   = crypto.Keccak256([]byte("getAdmins()"))[:4]
+
+	// TEE Type
+	SEL_ADD_TEE_TYPE  = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
+	SEL_IS_VALID_TYPE = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
+	SEL_GET_TEE_TYPES = crypto.Keccak256([]byte("getTEETypes()"))[:4]
+
+	// PCR
 	SEL_APPROVE_PCR     = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,bytes32,uint256)"))[:4]
 	SEL_IS_PCR_APPROVED = crypto.Keccak256([]byte("isPCRApproved((bytes,bytes,bytes))"))[:4]
-	// Updated signature: attestation, signingKey, tlsCert, paymentAddr, endpoint, teeType
-	SEL_REGISTER_TEE      = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
-	SEL_IS_ACTIVE         = crypto.Keccak256([]byte("isActive(bytes32)"))[:4]
-	SEL_VERIFY_SETTLEMENT = crypto.Keccak256([]byte("verifySettlement(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
+	SEL_GET_ACTIVE_PCRS = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
+
+	// Registration
+	SEL_REGISTER_TEE = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
+
+	// Management
+	SEL_DEACTIVATE_TEE = crypto.Keccak256([]byte("deactivateTEE(bytes32)"))[:4]
+	SEL_ACTIVATE_TEE   = crypto.Keccak256([]byte("activateTEE(bytes32)"))[:4]
+
+	// Queries
+	SEL_GET_TEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
 	SEL_GET_ACTIVE_TEES   = crypto.Keccak256([]byte("getActiveTEEs()"))[:4]
-	SEL_GET_TEE_INFO      = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
+	SEL_GET_TEES_BY_TYPE  = crypto.Keccak256([]byte("getTEEsByType(uint8)"))[:4]
+	SEL_GET_TEES_BY_OWNER = crypto.Keccak256([]byte("getTEEsByOwner(address)"))[:4]
 	SEL_GET_PUBLIC_KEY    = crypto.Keccak256([]byte("getPublicKey(bytes32)"))[:4]
 	SEL_GET_TLS_CERT      = crypto.Keccak256([]byte("getTLSCertificate(bytes32)"))[:4]
+	SEL_IS_ACTIVE         = crypto.Keccak256([]byte("isActive(bytes32)"))[:4]
+
+	// Verification
+	SEL_VERIFY_SIGNATURE  = crypto.Keccak256([]byte("verifySignature((bytes32,bytes32,bytes32,uint256,bytes))"))[:4]
+	SEL_VERIFY_SETTLEMENT = crypto.Keccak256([]byte("verifySettlement(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
+
+	// Utilities
+	SEL_COMPUTE_TEE_ID   = crypto.Keccak256([]byte("computeTEEId(bytes)"))[:4]
+	SEL_COMPUTE_MSG_HASH = crypto.Keccak256([]byte("computeMessageHash(bytes32,bytes32,uint256)"))[:4]
 )
 
-// PCRMeasurements holds the expected PCR values
+// Structs
 type PCRMeasurements struct {
 	PCR0 string `json:"PCR0"`
 	PCR1 string `json:"PCR1"`
 	PCR2 string `json:"PCR2"`
 }
 
-// MeasurementsFile represents the measurements.txt structure
 type MeasurementsFile struct {
 	Measurements PCRMeasurements `json:"Measurements"`
 }
 
-// AttestationResponse from /attestation endpoint
 type AttestationResponse struct {
-	PublicKey   string `json:"public_key"`
-	Timestamp   string `json:"timestamp"`
-	EnclaveInfo struct {
-		Platform     string `json:"platform"`
-		InstanceType string `json:"instance_type"`
-		Version      string `json:"version"`
-	} `json:"enclave_info"`
+	PublicKey string `json:"public_key"`
+}
+
+// Test results tracker
+type TestResults struct {
+	Passed int
+	Failed int
+	Tests  []TestResult
+}
+
+type TestResult struct {
+	Name    string
+	Passed  bool
+	Message string
+}
+
+func (tr *TestResults) Add(name string, passed bool, msg string) {
+	tr.Tests = append(tr.Tests, TestResult{name, passed, msg})
+	if passed {
+		tr.Passed++
+		fmt.Printf("  ✅ %s\n", name)
+	} else {
+		tr.Failed++
+		fmt.Printf("  ❌ %s: %s\n", name, msg)
+	}
 }
 
 func main() {
 	fmt.Println("==========================================")
-	fmt.Println("  TEE Registry Integration Test")
-	fmt.Println("  (Dual-Key Architecture)")
+	fmt.Println("  TEE Registry Full Integration Test")
 	fmt.Println("==========================================")
 	fmt.Println()
 
-	// Get account
+	results := &TestResults{}
+
+	// Get accounts
 	account, err := getFirstAccount()
 	if err != nil {
 		fmt.Printf("❌ Failed to get account: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("📍 Using account: %s\n\n", account)
+	fmt.Printf("📍 Primary account: %s\n\n", account)
 
-	// Load PCR measurements from file
+	// Load PCR measurements
 	pcr0, pcr1, pcr2, err := loadPCRMeasurements()
 	if err != nil {
 		fmt.Printf("⚠️  Failed to load measurements.txt: %v\n", err)
-		fmt.Println("   Using random PCRs for testing (won't work with real attestation)")
-		pcr0 = make([]byte, 48)
-		pcr1 = make([]byte, 48)
-		pcr2 = make([]byte, 48)
+		fmt.Println("   Using random PCRs for testing")
+		pcr0, pcr1, pcr2 = make([]byte, 48), make([]byte, 48), make([]byte, 48)
 		rand.Read(pcr0)
 		rand.Read(pcr1)
 		rand.Read(pcr2)
-	} else {
-		fmt.Println("✅ Loaded PCR measurements from file")
-		fmt.Printf("   PCR0: %s...\n", hex.EncodeToString(pcr0)[:32])
-		fmt.Printf("   PCR1: %s...\n", hex.EncodeToString(pcr1)[:32])
-		fmt.Printf("   PCR2: %s...\n\n", hex.EncodeToString(pcr2)[:32])
 	}
 
 	// ==========================================
-	// Step 1: Setup Admin
+	// SECTION 1: Admin Management
 	// ==========================================
 	fmt.Println("------------------------------------------")
-	fmt.Println("Step 1: Setup Admin")
+	fmt.Println("SECTION 1: Admin Management")
 	fmt.Println("------------------------------------------")
 
+	// Test 1.1: Add first admin (bootstrap)
 	txHash, err := callAddAdmin(account, account)
-	if err != nil {
-		fmt.Printf("⚠️  addAdmin failed (may already be admin): %v\n", err)
-	} else {
-		fmt.Printf("📤 addAdmin tx: %s\n", txHash)
+	if err == nil {
 		waitForTx(txHash)
 	}
+	isAdmin, _ := callIsAdmin(account)
+	results.Add("Add first admin (bootstrap)", isAdmin, "")
 
-	isAdmin, err := callIsAdmin(account)
-	if err != nil {
-		fmt.Printf("❌ isAdmin failed: %v\n", err)
-	} else {
-		fmt.Printf("✅ isAdmin(%s) = %v\n\n", account, isAdmin)
-	}
+	// Test 1.2: Check isAdmin
+	isAdmin, err = callIsAdmin(account)
+	results.Add("isAdmin returns true for admin", isAdmin && err == nil, fmt.Sprintf("%v", err))
+
+	// Test 1.3: isAdmin for non-admin
+	isAdmin, _ = callIsAdmin("0x0000000000000000000000000000000000000001")
+	results.Add("isAdmin returns false for non-admin", !isAdmin, "")
+
+	// Test 1.4: Get admins list
+	admins, err := callGetAdmins()
+	results.Add("getAdmins returns list", err == nil && len(admins) > 0, fmt.Sprintf("count=%d", len(admins)))
 
 	// ==========================================
-	// Step 2: Add TEE Type
+	// SECTION 2: TEE Type Management
 	// ==========================================
-	fmt.Println("------------------------------------------")
-	fmt.Println("Step 2: Add TEE Type")
+	fmt.Println("\n------------------------------------------")
+	fmt.Println("SECTION 2: TEE Type Management")
 	fmt.Println("------------------------------------------")
 
+	// Test 2.1: Add TEE type 0 (LLMProxy)
 	txHash, err = callAddTEEType(account, 0, "LLMProxy")
-	if err != nil {
-		fmt.Printf("⚠️  addTEEType failed (may already exist): %v\n", err)
-	} else {
-		fmt.Printf("📤 addTEEType tx: %s\n", txHash)
+	if err == nil {
 		waitForTx(txHash)
 	}
+	isValid, _ := callIsValidTEEType(0)
+	results.Add("Add TEE type 0 (LLMProxy)", isValid, "")
 
-	isValid, err := callIsValidTEEType(0)
-	if err != nil {
-		fmt.Printf("❌ isValidTEEType failed: %v\n", err)
-	} else {
-		fmt.Printf("✅ isValidTEEType(0) = %v\n\n", isValid)
+	// Test 2.2: Add TEE type 1 (Validator)
+	txHash, err = callAddTEEType(account, 1, "Validator")
+	if err == nil {
+		waitForTx(txHash)
 	}
+	isValid, _ = callIsValidTEEType(1)
+	results.Add("Add TEE type 1 (Validator)", isValid, "")
+
+	// Test 2.3: Check invalid type
+	isValid, _ = callIsValidTEEType(99)
+	results.Add("isValidTEEType returns false for unknown type", !isValid, "")
 
 	// ==========================================
-	// Step 3: Approve PCR
+	// SECTION 3: PCR Management
 	// ==========================================
-	fmt.Println("------------------------------------------")
-	fmt.Println("Step 3: Approve PCR")
+	fmt.Println("\n------------------------------------------")
+	fmt.Println("SECTION 3: PCR Management")
 	fmt.Println("------------------------------------------")
 
+	// Test 3.1: Approve PCR
 	txHash, err = callApprovePCR(account, pcr0, pcr1, pcr2, "v1.0.0")
-	if err != nil {
-		fmt.Printf("❌ approvePCR failed: %v\n", err)
-		os.Exit(1)
+	if err == nil {
+		waitForTx(txHash)
 	}
-	fmt.Printf("📤 approvePCR tx: %s\n", txHash)
-	waitForTx(txHash)
+	approved, _ := callIsPCRApproved(pcr0, pcr1, pcr2)
+	results.Add("Approve PCR v1.0.0", approved, "")
 
-	approved, err := callIsPCRApproved(pcr0, pcr1, pcr2)
-	if err != nil {
-		fmt.Printf("❌ isPCRApproved failed: %v\n", err)
-	} else {
-		fmt.Printf("✅ isPCRApproved = %v\n\n", approved)
-	}
+	// Test 3.2: Check unapproved PCR
+	fakePCR := make([]byte, 48)
+	rand.Read(fakePCR)
+	approved, _ = callIsPCRApproved(fakePCR, pcr1, pcr2)
+	results.Add("isPCRApproved returns false for unknown PCR", !approved, "")
+
+	// Test 3.3: Get active PCRs
+	activePCRs, err := callGetActivePCRs()
+	results.Add("getActivePCRs returns list", err == nil && len(activePCRs) > 0, fmt.Sprintf("count=%d", len(activePCRs)))
 
 	// ==========================================
-	// Step 4: Register TEE (Real Attestation)
+	// SECTION 4: TEE Registration (Real Attestation)
 	// ==========================================
-	fmt.Println("------------------------------------------")
-	fmt.Println("Step 4: Register TEE (Dual-Key Architecture)")
+	fmt.Println("\n------------------------------------------")
+	fmt.Println("SECTION 4: TEE Registration")
 	fmt.Println("------------------------------------------")
 
 	var registeredTEEId [32]byte
 	var signingPubKeyDER []byte
 	registrationSuccess := false
 
-	// Generate fresh nonce (40 hex chars = 20 bytes)
+	// Generate nonce
 	nonce := generateNonce()
-	fmt.Printf("🎲 Generated nonce: %s\n", nonce)
+	fmt.Printf("  🎲 Nonce: %s\n", nonce)
 
-	// Step 4a: Fetch attestation document
-	fmt.Printf("\n📡 Step 4a: Fetching attestation from enclave...\n")
+	// Fetch attestation
 	attestationURL := fmt.Sprintf("https://%s/enclave/attestation?nonce=%s", ENCLAVE_HOST, nonce)
 	attestationDoc, err := getAttestation(attestationURL)
 	if err != nil {
-		fmt.Printf("❌ Failed to get attestation: %v\n", err)
-		fmt.Println("   ⚠️  Make sure the enclave is running!")
-		fmt.Println("   Skipping TEE registration...")
+		results.Add("Fetch attestation from enclave", false, err.Error())
 	} else {
-		fmt.Printf("✅ Got attestation document (%d chars base64)\n", len(attestationDoc))
+		results.Add("Fetch attestation from enclave", true, fmt.Sprintf("%d chars", len(attestationDoc)))
 
-		// Decode base64 attestation
-		attestationBytes, err := base64.StdEncoding.DecodeString(attestationDoc)
+		attestationBytes, _ := base64.StdEncoding.DecodeString(attestationDoc)
+
+		// Fetch signing key
+		signingPubKeyDER, err = fetchSigningPublicKey(ENCLAVE_HOST)
 		if err != nil {
-			fmt.Printf("❌ Failed to decode attestation: %v\n", err)
+			results.Add("Fetch signing public key", false, err.Error())
 		} else {
-			fmt.Printf("   Decoded attestation: %d bytes\n", len(attestationBytes))
+			results.Add("Fetch signing public key", true, fmt.Sprintf("%d bytes", len(signingPubKeyDER)))
 
-			// Step 4b: Fetch signing public key from /attestation endpoint
-			fmt.Printf("\n📡 Step 4b: Fetching signing public key...\n")
-			signingPubKeyDER, err = fetchSigningPublicKey(ENCLAVE_HOST)
+			// Fetch TLS certificate
+			tlsCertDER, err := fetchTLSCertificate(ENCLAVE_HOST, ENCLAVE_PORT)
 			if err != nil {
-				fmt.Printf("❌ Failed to get signing key: %v\n", err)
+				results.Add("Fetch TLS certificate", false, err.Error())
 			} else {
-				fmt.Printf("✅ Got signing public key (%d bytes DER)\n", len(signingPubKeyDER))
-				signingKeyHash := sha256.Sum256(signingPubKeyDER)
-				fmt.Printf("   SHA256: %s\n", base64.StdEncoding.EncodeToString(signingKeyHash[:]))
+				results.Add("Fetch TLS certificate", true, fmt.Sprintf("%d bytes", len(tlsCertDER)))
 
-				// Step 4c: Fetch TLS certificate from TLS handshake
-				fmt.Printf("\n📡 Step 4c: Fetching TLS certificate...\n")
-				tlsCertDER, err := fetchTLSCertificate(ENCLAVE_HOST, ENCLAVE_PORT)
+				// Register TEE
+				endpoint := fmt.Sprintf("https://%s", ENCLAVE_HOST)
+				txHash, err = callRegisterTEE(account, attestationBytes, signingPubKeyDER, tlsCertDER, account, endpoint, 0)
 				if err != nil {
-					fmt.Printf("❌ Failed to get TLS cert: %v\n", err)
+					results.Add("Register TEE with attestation", false, err.Error())
 				} else {
-					fmt.Printf("✅ Got TLS certificate (%d bytes DER)\n", len(tlsCertDER))
-					tlsCertHash := sha256.Sum256(tlsCertDER)
-					fmt.Printf("   SHA256: %s\n", base64.StdEncoding.EncodeToString(tlsCertHash[:]))
-
-					// Parse and display cert info
-					cert, _ := x509.ParseCertificate(tlsCertDER)
-					if cert != nil {
-						fmt.Printf("   Subject: %s\n", cert.Subject.Organization)
-						fmt.Printf("   Valid: %s to %s\n", cert.NotBefore.Format("2006-01-02"), cert.NotAfter.Format("2006-01-02"))
-					}
-
-					// Step 4d: Register TEE with all components
-					fmt.Printf("\n📤 Step 4d: Registering TEE...\n")
-					endpoint := fmt.Sprintf("https://%s", ENCLAVE_HOST)
-					txHash, err = callRegisterTEE(
-						account,
-						attestationBytes,
-						signingPubKeyDER,
-						tlsCertDER,
-						account,  // payment address
-						endpoint, // endpoint
-						0,        // teeType (LLMProxy)
-					)
-					if err != nil {
-						fmt.Printf("❌ registerTEE failed: %v\n", err)
-					} else {
-						fmt.Printf("📤 registerTEE tx: %s\n", txHash)
-						if waitForTx(txHash) {
-							fmt.Println("✅ TEE registered successfully with dual-key architecture!")
-							registrationSuccess = true
-
-							// Compute TEE ID (keccak256 of signing public key)
-							registeredTEEId = crypto.Keccak256Hash(signingPubKeyDER)
-							fmt.Printf("   TEE ID: %s\n", hex.EncodeToString(registeredTEEId[:]))
-						}
+					success := waitForTx(txHash)
+					results.Add("Register TEE with attestation", success, "")
+					if success {
+						registrationSuccess = true
+						registeredTEEId = crypto.Keccak256Hash(signingPubKeyDER)
 					}
 				}
 			}
@@ -268,143 +282,165 @@ func main() {
 	}
 
 	// ==========================================
-	// Step 5: Verify Registration
+	// SECTION 5: TEE Queries
 	// ==========================================
+	fmt.Println("\n------------------------------------------")
+	fmt.Println("SECTION 5: TEE Queries")
+	fmt.Println("------------------------------------------")
+
 	if registrationSuccess {
-		fmt.Println("\n------------------------------------------")
-		fmt.Println("Step 5: Verify Registration")
-		fmt.Println("------------------------------------------")
-
-		// Check if TEE is active
+		// Test 5.1: isActive
 		isActive, err := callIsActive(registeredTEEId)
-		if err != nil {
-			fmt.Printf("❌ isActive failed: %v\n", err)
-		} else {
-			fmt.Printf("✅ isActive(TEE) = %v\n", isActive)
-		}
+		results.Add("isActive returns true for registered TEE", isActive && err == nil, "")
 
-		// Get stored public key and verify it matches
-		storedPubKey, err := callGetPublicKey(registeredTEEId)
-		if err != nil {
-			fmt.Printf("❌ getPublicKey failed: %v\n", err)
-		} else {
-			if bytes.Equal(storedPubKey, signingPubKeyDER) {
-				fmt.Printf("✅ Stored signing key matches (%d bytes)\n", len(storedPubKey))
-			} else {
-				fmt.Printf("❌ Stored signing key mismatch!\n")
-			}
-		}
+		// Test 5.2: getPublicKey
+		storedKey, err := callGetPublicKey(registeredTEEId)
+		keyMatches := err == nil && bytes.Equal(storedKey, signingPubKeyDER)
+		results.Add("getPublicKey returns correct key", keyMatches, "")
 
-		// Get stored TLS certificate
-		storedTLSCert, err := callGetTLSCertificate(registeredTEEId)
-		if err != nil {
-			fmt.Printf("❌ getTLSCertificate failed: %v\n", err)
-		} else {
-			fmt.Printf("✅ Stored TLS certificate (%d bytes)\n", len(storedTLSCert))
-		}
+		// Test 5.3: getTLSCertificate
+		storedCert, err := callGetTLSCertificate(registeredTEEId)
+		results.Add("getTLSCertificate returns cert", err == nil && len(storedCert) > 0, fmt.Sprintf("%d bytes", len(storedCert)))
+
+		// Test 5.4: getActiveTEEs
+		activeTEEs, err := callGetActiveTEEs()
+		results.Add("getActiveTEEs includes registered TEE", err == nil && len(activeTEEs) > 0, fmt.Sprintf("count=%d", len(activeTEEs)))
+
+		// Test 5.5: getTEEsByType
+		teesByType, err := callGetTEEsByType(0)
+		results.Add("getTEEsByType(0) includes registered TEE", err == nil && len(teesByType) > 0, fmt.Sprintf("count=%d", len(teesByType)))
+
+		// Test 5.6: getTEEsByOwner
+		teesByOwner, err := callGetTEEsByOwner(account)
+		results.Add("getTEEsByOwner includes registered TEE", err == nil && len(teesByOwner) > 0, fmt.Sprintf("count=%d", len(teesByOwner)))
+	} else {
+		fmt.Println("  ⚠️  Skipping query tests (registration failed)")
 	}
 
 	// ==========================================
-	// Step 6: Signature Verification Test
+	// SECTION 6: TEE Lifecycle (Activate/Deactivate)
 	// ==========================================
 	fmt.Println("\n------------------------------------------")
-	fmt.Println("Step 6: Local Signature Verification Test")
+	fmt.Println("SECTION 6: TEE Lifecycle")
 	fmt.Println("------------------------------------------")
 
-	// Generate test RSA key pair for signature testing
+	if registrationSuccess {
+		// Test 6.1: Deactivate TEE
+		txHash, err = callDeactivateTEE(account, registeredTEEId)
+		if err == nil {
+			waitForTx(txHash)
+		}
+		isActive, _ := callIsActive(registeredTEEId)
+		results.Add("Deactivate TEE", !isActive, "")
+
+		// Test 6.2: Verify not in active list
+		activeTEEs, _ := callGetActiveTEEs()
+		found := false
+		for _, id := range activeTEEs {
+			if id == hex.EncodeToString(registeredTEEId[:]) {
+				found = true
+			}
+		}
+		results.Add("Deactivated TEE not in getActiveTEEs", !found, "")
+
+		// Test 6.3: Reactivate TEE
+		txHash, err = callActivateTEE(account, registeredTEEId)
+		if err == nil {
+			waitForTx(txHash)
+		}
+		isActive, _ = callIsActive(registeredTEEId)
+		results.Add("Reactivate TEE", isActive, "")
+	} else {
+		fmt.Println("  ⚠️  Skipping lifecycle tests (registration failed)")
+	}
+
+	// ==========================================
+	// SECTION 7: Signature Verification
+	// ==========================================
+	fmt.Println("\n------------------------------------------")
+	fmt.Println("SECTION 7: Signature Verification")
+	fmt.Println("------------------------------------------")
+
+	// Generate test key pair
 	privateKey, testPubKeyDER := generateKeyPair()
-	testTeeId := crypto.Keccak256Hash(testPubKeyDER)
-	fmt.Printf("🔑 Generated test RSA key pair\n")
-	fmt.Printf("   TEE ID (from pubkey): %s\n", testTeeId.Hex())
 
 	// Create test data
-	inputHash := sha256.Sum256([]byte(`{"prompt": "Hello, world!"}`))
-	outputHash := sha256.Sum256([]byte(`{"response": "Hi there!"}`))
+	inputHash := sha256.Sum256([]byte(`{"prompt": "Hello"}`))
+	outputHash := sha256.Sum256([]byte(`{"response": "Hi"}`))
 	timestamp := big.NewInt(time.Now().Unix())
 
-	// Compute message hash
+	// Compute message hash using Keccak256
 	messageHash := computeMessageHash(inputHash, outputHash, timestamp)
-	fmt.Printf("   Input hash:   %s\n", hex.EncodeToString(inputHash[:]))
-	fmt.Printf("   Output hash:  %s\n", hex.EncodeToString(outputHash[:]))
-	fmt.Printf("   Timestamp:    %d\n", timestamp.Int64())
-	fmt.Printf("   Message hash: %s\n", hex.EncodeToString(messageHash[:]))
 
 	// Sign message
 	signature := signMessage(privateKey, messageHash[:])
-	fmt.Printf("   Signature:    %d bytes\n\n", len(signature))
 
-	// Verify signature locally
+	// Verify locally
 	err = verifySignatureLocal(testPubKeyDER, messageHash[:], signature)
-	if err != nil {
-		fmt.Printf("❌ Local signature verification failed: %v\n", err)
-	} else {
-		fmt.Printf("✅ Local signature verification passed\n")
-	}
+	results.Add("Local RSA-PSS signature verification", err == nil, fmt.Sprintf("%v", err))
+
+	// Test with wrong signature
+	badSig := make([]byte, len(signature))
+	copy(badSig, signature)
+	badSig[0] ^= 0xFF
+	err = verifySignatureLocal(testPubKeyDER, messageHash[:], badSig)
+	results.Add("Reject invalid signature", err != nil, "")
 
 	// ==========================================
-	// Step 7: Get Active TEEs
+	// SECTION 8: Utility Functions
 	// ==========================================
 	fmt.Println("\n------------------------------------------")
-	fmt.Println("Step 7: Get Active TEEs")
+	fmt.Println("SECTION 8: Utility Functions")
 	fmt.Println("------------------------------------------")
 
-	activeTEEs, err := callGetActiveTEEs()
-	if err != nil {
-		fmt.Printf("❌ getActiveTEEs failed: %v\n", err)
-	} else {
-		fmt.Printf("✅ Active TEEs: %d\n", len(activeTEEs))
-		for i, id := range activeTEEs {
-			fmt.Printf("   [%d] %s\n", i, id)
-		}
-	}
+	// Test 8.1: computeTEEId
+	computedId, err := callComputeTEEId(testPubKeyDER)
+	expectedId := crypto.Keccak256Hash(testPubKeyDER)
+	results.Add("computeTEEId matches keccak256", err == nil && computedId == expectedId, "")
+
+	// Test 8.2: computeMessageHash
+	computedHash, err := callComputeMessageHash(inputHash, outputHash, timestamp)
+	results.Add("computeMessageHash returns hash", err == nil && computedHash != [32]byte{}, "")
 
 	// ==========================================
 	// Summary
 	// ==========================================
 	fmt.Println("\n==========================================")
-	fmt.Println("  Integration Test Complete")
+	fmt.Println("  Test Summary")
 	fmt.Println("==========================================")
+	fmt.Printf("\n  Total:  %d\n", results.Passed+results.Failed)
+	fmt.Printf("  Passed: %d ✅\n", results.Passed)
+	fmt.Printf("  Failed: %d ❌\n", results.Failed)
 	fmt.Println()
-	fmt.Println("Summary:")
-	fmt.Println("  ✅ Admin setup")
-	fmt.Println("  ✅ TEE type management")
-	fmt.Println("  ✅ PCR approval")
-	fmt.Println("  ✅ Signature verification (local)")
-	if registrationSuccess {
-		fmt.Println("  ✅ Real attestation fetched")
-		fmt.Println("  ✅ Signing key fetched")
-		fmt.Println("  ✅ TLS certificate fetched")
-		fmt.Println("  ✅ TEE registration successful")
-		fmt.Println("  ✅ Dual-key binding verified")
-	} else {
-		fmt.Println("  ⚠️  TEE registration skipped (enclave not available or error)")
+
+	if results.Failed > 0 {
+		fmt.Println("Failed tests:")
+		for _, t := range results.Tests {
+			if !t.Passed {
+				fmt.Printf("  - %s: %s\n", t.Name, t.Message)
+			}
+		}
+		os.Exit(1)
 	}
 }
 
 // ============================================================================
-// ATTESTATION & KEY FETCHING FUNCTIONS
+// NETWORK HELPERS
 // ============================================================================
 
-// generateNonce creates a random 40-character hex nonce
 func generateNonce() string {
 	nonce := make([]byte, 20)
 	rand.Read(nonce)
 	return hex.EncodeToString(nonce)
 }
 
-// getAttestation fetches attestation document from enclave
 func getAttestation(url string) (string, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{
-		Transport: tr,
-		Timeout:   30 * time.Second,
-	}
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
 
 	resp, err := client.Get(url)
 	if err != nil {
-		return "", fmt.Errorf("HTTP request failed: %v", err)
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -415,128 +451,81 @@ func getAttestation(url string) (string, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %v", err)
+		return "", err
 	}
-
 	return string(bytes.TrimSpace(body)), nil
 }
 
-// fetchSigningPublicKey gets the signing public key from /attestation endpoint
 func fetchSigningPublicKey(host string) ([]byte, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{
-		Transport: tr,
-		Timeout:   30 * time.Second,
-	}
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
 
-	url := fmt.Sprintf("https://%s/attestation", host)
-	resp, err := client.Get(url)
+	resp, err := client.Get(fmt.Sprintf("https://%s/attestation", host))
 	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
 	var attestResp AttestationResponse
 	if err := json.NewDecoder(resp.Body).Decode(&attestResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %v", err)
+		return nil, err
 	}
 
-	// Parse PEM to DER
 	block, _ := pem.Decode([]byte(attestResp.PublicKey))
 	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM public key")
+		return nil, fmt.Errorf("failed to decode PEM")
 	}
-
-	// Validate it's a valid public key
-	_, err = x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("invalid public key: %v", err)
-	}
-
 	return block.Bytes, nil
 }
 
-// fetchTLSCertificate gets the TLS certificate from the enclave's TLS handshake
 func fetchTLSCertificate(host, port string) ([]byte, error) {
-	conn, err := tls.Dial("tcp", host+":"+port, &tls.Config{
-		InsecureSkipVerify: true,
-	})
+	conn, err := tls.Dial("tcp", host+":"+port, &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
-		return nil, fmt.Errorf("TLS dial failed: %v", err)
+		return nil, err
 	}
 	defer conn.Close()
 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		return nil, fmt.Errorf("no certificates received")
+		return nil, fmt.Errorf("no certificates")
 	}
-
-	// Return DER-encoded certificate (first cert in chain)
 	return certs[0].Raw, nil
 }
 
-// loadPCRMeasurements loads expected PCR values from measurements.txt
-func loadPCRMeasurements() (pcr0, pcr1, pcr2 []byte, err error) {
+func loadPCRMeasurements() ([]byte, []byte, []byte, error) {
 	data, err := os.ReadFile(MEASUREMENTS_PATH)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to read file: %v", err)
+		return nil, nil, nil, err
 	}
 
-	var measurements MeasurementsFile
-	if err := json.Unmarshal(data, &measurements); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
+	var m MeasurementsFile
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, nil, nil, err
 	}
 
-	pcr0, err = hex.DecodeString(measurements.Measurements.PCR0)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode PCR0: %v", err)
-	}
-
-	pcr1, err = hex.DecodeString(measurements.Measurements.PCR1)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode PCR1: %v", err)
-	}
-
-	pcr2, err = hex.DecodeString(measurements.Measurements.PCR2)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode PCR2: %v", err)
-	}
-
+	pcr0, _ := hex.DecodeString(m.Measurements.PCR0)
+	pcr1, _ := hex.DecodeString(m.Measurements.PCR1)
+	pcr2, _ := hex.DecodeString(m.Measurements.PCR2)
 	return pcr0, pcr1, pcr2, nil
 }
 
 // ============================================================================
-// KEY GENERATION & SIGNING
+// CRYPTO HELPERS
 // ============================================================================
 
 func generateKeyPair() (*rsa.PrivateKey, []byte) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		panic(err)
-	}
-	publicKeyDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-	if err != nil {
-		panic(err)
-	}
+	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	publicKeyDER, _ := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
 	return privateKey, publicKeyDER
 }
 
 func signMessage(privateKey *rsa.PrivateKey, messageHash []byte) []byte {
+	// Hash the message hash with SHA256 for RSA-PSS
 	hash := sha256.Sum256(messageHash)
-	signature, err := rsa.SignPSS(rand.Reader, privateKey, gcrypto.SHA256, hash[:], &rsa.PSSOptions{
+	signature, _ := rsa.SignPSS(rand.Reader, privateKey, gcrypto.SHA256, hash[:], &rsa.PSSOptions{
 		SaltLength: rsa.PSSSaltLengthEqualsHash,
 		Hash:       gcrypto.SHA256,
 	})
-	if err != nil {
-		panic(err)
-	}
 	return signature
 }
 
@@ -553,17 +542,21 @@ func verifySignatureLocal(publicKeyDER, messageHash, signature []byte) error {
 	})
 }
 
+// computeMessageHash uses Keccak256 to match the precompile
+
 func computeMessageHash(inputHash, outputHash [32]byte, timestamp *big.Int) [32]byte {
 	data := make([]byte, 96)
 	copy(data[0:32], inputHash[:])
 	copy(data[32:64], outputHash[:])
 	timestampBytes := timestamp.Bytes()
 	copy(data[96-len(timestampBytes):96], timestampBytes)
-	return sha256.Sum256(data)
+
+	hash := crypto.Keccak256Hash(data)
+	return hash
 }
 
 // ============================================================================
-// CONTRACT CALLS
+// CONTRACT CALLS - ADMIN
 // ============================================================================
 
 func callAddAdmin(from, newAdmin string) (string, error) {
@@ -578,14 +571,31 @@ func callIsAdmin(account string) (bool, error) {
 	args := abi.Arguments{{Type: addrType}}
 	encoded, _ := args.Pack(common.HexToAddress(account))
 	result, err := ethCall(append(SEL_IS_ADMIN, encoded...))
-	if err != nil {
+	if err != nil || len(result) < 32 {
 		return false, err
-	}
-	if len(result) < 32 {
-		return false, nil
 	}
 	return result[31] == 1, nil
 }
+
+func callGetAdmins() ([]string, error) {
+	result, err := ethCall(SEL_GET_ADMINS)
+	if err != nil || len(result) < 64 {
+		return nil, err
+	}
+	length := new(big.Int).SetBytes(result[32:64]).Uint64()
+	admins := make([]string, length)
+	for i := uint64(0); i < length; i++ {
+		start := 64 + i*32
+		if start+32 <= uint64(len(result)) {
+			admins[i] = common.BytesToAddress(result[start+12 : start+32]).Hex()
+		}
+	}
+	return admins, nil
+}
+
+// ============================================================================
+// CONTRACT CALLS - TEE TYPE
+// ============================================================================
 
 func callAddTEEType(from string, typeId uint8, name string) (string, error) {
 	uint8Type, _ := abi.NewType("uint8", "", nil)
@@ -600,14 +610,15 @@ func callIsValidTEEType(typeId uint8) (bool, error) {
 	args := abi.Arguments{{Type: uint8Type}}
 	encoded, _ := args.Pack(typeId)
 	result, err := ethCall(append(SEL_IS_VALID_TYPE, encoded...))
-	if err != nil {
+	if err != nil || len(result) < 32 {
 		return false, err
-	}
-	if len(result) < 32 {
-		return false, nil
 	}
 	return result[31] == 1, nil
 }
+
+// ============================================================================
+// CONTRACT CALLS - PCR
+// ============================================================================
 
 func callApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string) (string, error) {
 	tupleType, _ := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
@@ -619,24 +630,9 @@ func callApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string) (strin
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	uint256Type, _ := abi.NewType("uint256", "", nil)
 
-	args := abi.Arguments{
-		{Type: tupleType},
-		{Type: stringType},
-		{Type: bytes32Type},
-		{Type: uint256Type},
-	}
-
-	pcrs := struct {
-		Pcr0 []byte
-		Pcr1 []byte
-		Pcr2 []byte
-	}{pcr0, pcr1, pcr2}
-
-	encoded, err := args.Pack(pcrs, version, [32]byte{}, big.NewInt(0))
-	if err != nil {
-		return "", err
-	}
-
+	args := abi.Arguments{{Type: tupleType}, {Type: stringType}, {Type: bytes32Type}, {Type: uint256Type}}
+	pcrs := struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}
+	encoded, _ := args.Pack(pcrs, version, [32]byte{}, big.NewInt(0))
 	return sendTx(from, append(SEL_APPROVE_PCR, encoded...))
 }
 
@@ -646,72 +642,79 @@ func callIsPCRApproved(pcr0, pcr1, pcr2 []byte) (bool, error) {
 		{Name: "pcr1", Type: "bytes"},
 		{Name: "pcr2", Type: "bytes"},
 	})
-
 	args := abi.Arguments{{Type: tupleType}}
-
-	pcrs := struct {
-		Pcr0 []byte
-		Pcr1 []byte
-		Pcr2 []byte
-	}{pcr0, pcr1, pcr2}
-
-	encoded, err := args.Pack(pcrs)
-	if err != nil {
-		return false, err
-	}
-
+	pcrs := struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}
+	encoded, _ := args.Pack(pcrs)
 	result, err := ethCall(append(SEL_IS_PCR_APPROVED, encoded...))
-	if err != nil {
+	if err != nil || len(result) < 32 {
 		return false, err
-	}
-	if len(result) < 32 {
-		return false, nil
 	}
 	return result[31] == 1, nil
 }
 
-// Updated to match new precompile signature
-func callRegisterTEE(from string, attestationDoc []byte, signingPubKeyDER []byte, tlsCertDER []byte, paymentAddr string, endpoint string, teeType uint8) (string, error) {
+func callGetActivePCRs() ([]string, error) {
+	result, err := ethCall(SEL_GET_ACTIVE_PCRS)
+	if err != nil || len(result) < 64 {
+		return nil, err
+	}
+	length := new(big.Int).SetBytes(result[32:64]).Uint64()
+	pcrs := make([]string, length)
+	for i := uint64(0); i < length; i++ {
+		start := 64 + i*32
+		if start+32 <= uint64(len(result)) {
+			pcrs[i] = "0x" + hex.EncodeToString(result[start:start+32])
+		}
+	}
+	return pcrs, nil
+}
+
+// ============================================================================
+// CONTRACT CALLS - REGISTRATION
+// ============================================================================
+
+func callRegisterTEE(from string, attestation, signingKey, tlsCert []byte, paymentAddr, endpoint string, teeType uint8) (string, error) {
 	bytesType, _ := abi.NewType("bytes", "", nil)
 	addrType, _ := abi.NewType("address", "", nil)
 	stringType, _ := abi.NewType("string", "", nil)
 	uint8Type, _ := abi.NewType("uint8", "", nil)
 
 	args := abi.Arguments{
-		{Type: bytesType},  // attestationDoc
-		{Type: bytesType},  // signingPublicKeyDER
-		{Type: bytesType},  // tlsCertificateDER
-		{Type: addrType},   // paymentAddress
-		{Type: stringType}, // endpoint
-		{Type: uint8Type},  // teeType
+		{Type: bytesType}, {Type: bytesType}, {Type: bytesType},
+		{Type: addrType}, {Type: stringType}, {Type: uint8Type},
 	}
-
-	encoded, err := args.Pack(
-		attestationDoc,
-		signingPubKeyDER,
-		tlsCertDER,
-		common.HexToAddress(paymentAddr),
-		endpoint,
-		teeType,
-	)
-	if err != nil {
-		return "", err
-	}
-
+	encoded, _ := args.Pack(attestation, signingKey, tlsCert, common.HexToAddress(paymentAddr), endpoint, teeType)
 	return sendTx(from, append(SEL_REGISTER_TEE, encoded...))
 }
+
+// ============================================================================
+// CONTRACT CALLS - MANAGEMENT
+// ============================================================================
+
+func callDeactivateTEE(from string, teeId [32]byte) (string, error) {
+	bytes32Type, _ := abi.NewType("bytes32", "", nil)
+	args := abi.Arguments{{Type: bytes32Type}}
+	encoded, _ := args.Pack(teeId)
+	return sendTx(from, append(SEL_DEACTIVATE_TEE, encoded...))
+}
+
+func callActivateTEE(from string, teeId [32]byte) (string, error) {
+	bytes32Type, _ := abi.NewType("bytes32", "", nil)
+	args := abi.Arguments{{Type: bytes32Type}}
+	encoded, _ := args.Pack(teeId)
+	return sendTx(from, append(SEL_ACTIVATE_TEE, encoded...))
+}
+
+// ============================================================================
+// CONTRACT CALLS - QUERIES
+// ============================================================================
 
 func callIsActive(teeId [32]byte) (bool, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-
 	result, err := ethCall(append(SEL_IS_ACTIVE, encoded...))
-	if err != nil {
+	if err != nil || len(result) < 32 {
 		return false, err
-	}
-	if len(result) < 32 {
-		return false, nil
 	}
 	return result[31] == 1, nil
 }
@@ -720,23 +723,14 @@ func callGetPublicKey(teeId [32]byte) ([]byte, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-
 	result, err := ethCall(append(SEL_GET_PUBLIC_KEY, encoded...))
-	if err != nil {
+	if err != nil || len(result) < 64 {
 		return nil, err
 	}
-
-	// ABI decode bytes
-	if len(result) < 64 {
-		return nil, fmt.Errorf("result too short")
-	}
-
-	// First 32 bytes = offset, next 32 = length
 	length := new(big.Int).SetBytes(result[32:64]).Uint64()
 	if uint64(len(result)) < 64+length {
-		return nil, fmt.Errorf("result truncated")
+		return nil, fmt.Errorf("truncated")
 	}
-
 	return result[64 : 64+length], nil
 }
 
@@ -744,69 +738,100 @@ func callGetTLSCertificate(teeId [32]byte) ([]byte, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-
 	result, err := ethCall(append(SEL_GET_TLS_CERT, encoded...))
-	if err != nil {
+	if err != nil || len(result) < 64 {
 		return nil, err
 	}
-
-	// ABI decode bytes
-	if len(result) < 64 {
-		return nil, fmt.Errorf("result too short")
-	}
-
 	length := new(big.Int).SetBytes(result[32:64]).Uint64()
 	if uint64(len(result)) < 64+length {
-		return nil, fmt.Errorf("result truncated")
+		return nil, fmt.Errorf("truncated")
 	}
-
 	return result[64 : 64+length], nil
-}
-
-func callVerifySettlement(from string, teeId, inputHash, outputHash [32]byte, timestamp *big.Int, signature []byte) (string, error) {
-	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	uint256Type, _ := abi.NewType("uint256", "", nil)
-	bytesType, _ := abi.NewType("bytes", "", nil)
-
-	args := abi.Arguments{
-		{Type: bytes32Type},
-		{Type: bytes32Type},
-		{Type: bytes32Type},
-		{Type: uint256Type},
-		{Type: bytesType},
-	}
-
-	encoded, err := args.Pack(teeId, inputHash, outputHash, timestamp, signature)
-	if err != nil {
-		return "", err
-	}
-
-	return sendTx(from, append(SEL_VERIFY_SETTLEMENT, encoded...))
 }
 
 func callGetActiveTEEs() ([]string, error) {
 	result, err := ethCall(SEL_GET_ACTIVE_TEES)
-	if err != nil {
+	if err != nil || len(result) < 64 {
 		return nil, err
 	}
-
-	if len(result) < 64 {
-		return []string{}, nil
-	}
-
 	length := new(big.Int).SetBytes(result[32:64]).Uint64()
 	tees := make([]string, length)
-
 	for i := uint64(0); i < length; i++ {
 		start := 64 + i*32
-		end := start + 32
-		if end > uint64(len(result)) {
-			break
+		if start+32 <= uint64(len(result)) {
+			tees[i] = hex.EncodeToString(result[start : start+32])
 		}
-		tees[i] = "0x" + hex.EncodeToString(result[start:end])
 	}
-
 	return tees, nil
+}
+
+func callGetTEEsByType(teeType uint8) ([]string, error) {
+	uint8Type, _ := abi.NewType("uint8", "", nil)
+	args := abi.Arguments{{Type: uint8Type}}
+	encoded, _ := args.Pack(teeType)
+	result, err := ethCall(append(SEL_GET_TEES_BY_TYPE, encoded...))
+	if err != nil || len(result) < 64 {
+		return nil, err
+	}
+	length := new(big.Int).SetBytes(result[32:64]).Uint64()
+	tees := make([]string, length)
+	for i := uint64(0); i < length; i++ {
+		start := 64 + i*32
+		if start+32 <= uint64(len(result)) {
+			tees[i] = hex.EncodeToString(result[start : start+32])
+		}
+	}
+	return tees, nil
+}
+
+func callGetTEEsByOwner(owner string) ([]string, error) {
+	addrType, _ := abi.NewType("address", "", nil)
+	args := abi.Arguments{{Type: addrType}}
+	encoded, _ := args.Pack(common.HexToAddress(owner))
+	result, err := ethCall(append(SEL_GET_TEES_BY_OWNER, encoded...))
+	if err != nil || len(result) < 64 {
+		return nil, err
+	}
+	length := new(big.Int).SetBytes(result[32:64]).Uint64()
+	tees := make([]string, length)
+	for i := uint64(0); i < length; i++ {
+		start := 64 + i*32
+		if start+32 <= uint64(len(result)) {
+			tees[i] = hex.EncodeToString(result[start : start+32])
+		}
+	}
+	return tees, nil
+}
+
+// ============================================================================
+// CONTRACT CALLS - UTILITIES
+// ============================================================================
+
+func callComputeTEEId(publicKey []byte) ([32]byte, error) {
+	bytesType, _ := abi.NewType("bytes", "", nil)
+	args := abi.Arguments{{Type: bytesType}}
+	encoded, _ := args.Pack(publicKey)
+	result, err := ethCall(append(SEL_COMPUTE_TEE_ID, encoded...))
+	if err != nil || len(result) < 32 {
+		return [32]byte{}, err
+	}
+	var id [32]byte
+	copy(id[:], result[:32])
+	return id, nil
+}
+
+func callComputeMessageHash(inputHash, outputHash [32]byte, timestamp *big.Int) ([32]byte, error) {
+	bytes32Type, _ := abi.NewType("bytes32", "", nil)
+	uint256Type, _ := abi.NewType("uint256", "", nil)
+	args := abi.Arguments{{Type: bytes32Type}, {Type: bytes32Type}, {Type: uint256Type}}
+	encoded, _ := args.Pack(inputHash, outputHash, timestamp)
+	result, err := ethCall(append(SEL_COMPUTE_MSG_HASH, encoded...))
+	if err != nil || len(result) < 32 {
+		return [32]byte{}, err
+	}
+	var hash [32]byte
+	copy(hash[:], result[:32])
+	return hash, nil
 }
 
 // ============================================================================
@@ -818,9 +843,7 @@ func getFirstAccount() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var result struct {
-		Result []string `json:"result"`
-	}
+	var result struct{ Result []string }
 	json.Unmarshal(resp, &result)
 	if len(result.Result) == 0 {
 		return "", fmt.Errorf("no accounts")
@@ -830,30 +853,21 @@ func getFirstAccount() (string, error) {
 
 func ethCall(data []byte) ([]byte, error) {
 	params := []interface{}{
-		map[string]string{
-			"to":   TEE_ADDRESS,
-			"data": "0x" + hex.EncodeToString(data),
-		},
+		map[string]string{"to": TEE_ADDRESS, "data": "0x" + hex.EncodeToString(data)},
 		"latest",
 	}
-
 	resp, err := rpcCall("eth_call", params)
 	if err != nil {
 		return nil, err
 	}
-
 	var result struct {
-		Result string `json:"result"`
-		Error  *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		Result string
+		Error  *struct{ Message string }
 	}
 	json.Unmarshal(resp, &result)
-
 	if result.Error != nil {
 		return nil, fmt.Errorf(result.Error.Message)
 	}
-
 	if len(result.Result) > 2 {
 		return hex.DecodeString(result.Result[2:])
 	}
@@ -862,31 +876,20 @@ func ethCall(data []byte) ([]byte, error) {
 
 func sendTx(from string, data []byte) (string, error) {
 	params := []interface{}{
-		map[string]string{
-			"from": from,
-			"to":   TEE_ADDRESS,
-			"gas":  "0x500000",
-			"data": "0x" + hex.EncodeToString(data),
-		},
+		map[string]string{"from": from, "to": TEE_ADDRESS, "gas": "0x500000", "data": "0x" + hex.EncodeToString(data)},
 	}
-
 	resp, err := rpcCall("eth_sendTransaction", params)
 	if err != nil {
 		return "", err
 	}
-
 	var result struct {
-		Result string `json:"result"`
-		Error  *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		Result string
+		Error  *struct{ Message string }
 	}
 	json.Unmarshal(resp, &result)
-
 	if result.Error != nil {
 		return "", fmt.Errorf(result.Error.Message)
 	}
-
 	return result.Result, nil
 }
 
@@ -894,33 +897,19 @@ func waitForTx(txHash string) bool {
 	for i := 0; i < 15; i++ {
 		resp, _ := rpcCall("eth_getTransactionReceipt", []string{txHash})
 		var result struct {
-			Result *struct {
-				Status string `json:"status"`
-			} `json:"result"`
+			Result *struct{ Status string }
 		}
 		json.Unmarshal(resp, &result)
 		if result.Result != nil {
-			success := result.Result.Status == "0x1"
-			if success {
-				fmt.Println("   ✅ Transaction confirmed")
-			} else {
-				fmt.Println("   ❌ Transaction reverted")
-			}
-			return success
+			return result.Result.Status == "0x1"
 		}
 		time.Sleep(time.Second)
 	}
-	fmt.Println("   ⚠️ Transaction timeout")
 	return false
 }
 
 func rpcCall(method string, params interface{}) ([]byte, error) {
-	body := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"method":  method,
-		"params":  params,
-		"id":      1,
-	}
+	body := map[string]interface{}{"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
 	jsonBody, _ := json.Marshal(body)
 	resp, err := http.Post(RPC_URL, "application/json", bytes.NewReader(jsonBody))
 	if err != nil {

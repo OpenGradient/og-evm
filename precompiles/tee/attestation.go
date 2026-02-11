@@ -19,9 +19,6 @@ import (
 // =============================================================================
 // AWS Nitro Attestation Verification
 // Reference: Python implementation (verify.py) from nitro-enclave-python-demo
-// TODO: khalifa Different Improvement should be done later
-// TODO: the registration from TEE directly (msg binary)
-// TODO: Private request to investigate.
 // =============================================================================
 
 // AttestationDocument represents the decoded AWS Nitro attestation payload
@@ -72,7 +69,7 @@ const (
 	SHA384HashLength    = 48
 	SHA256HashLength    = 32
 	P384SignatureLength = 96
-	// TODo Kyle: is it alawys foloowing this format?
+
 	// Nitriding user_data format: 0x1220 + hash(32) + 0x1220 + hash(32) = 68 bytes
 	NitridingUserDataLength = 68
 	MultihashSHA256Prefix   = 0x12 // SHA256 identifier in multihash
@@ -100,26 +97,27 @@ IwLz3/Y=
 // ============================================================================
 
 // ParseNitridingUserData extracts TLS cert and signing key hashes from Nitriding user_data
-// Format: 0x1220 + SHA256(tlsCertDER) + 0x1220 + SHA256(signingKeyDER) = 68 bytes total
-// 0x12 = SHA256 multihash type, 0x20 = 32 bytes length indicator
+// Format: [2-byte prefix][32-byte TLS cert hash][2-byte prefix][32-byte signing key hash] = 68 bytes
+// The prefix bytes are from multihash format but we don't validate their values (per Nitriding docs)
 func ParseNitridingUserData(userData []byte) (*NitridingKeyHashes, error) {
 	if len(userData) != NitridingUserDataLength {
 		return nil, fmt.Errorf("invalid user_data length: got %d, expected %d", len(userData), NitridingUserDataLength)
 	}
 
-	// Verify first multihash prefix (TLS certificate hash)
-	if userData[0] != MultihashSHA256Prefix || userData[1] != MultihashLength32 {
-		return nil, fmt.Errorf("invalid first multihash prefix: expected 0x1220, got 0x%02x%02x", userData[0], userData[1])
-	}
-
-	// Verify second multihash prefix (Signing key hash)
-	if userData[34] != MultihashSHA256Prefix || userData[35] != MultihashLength32 {
-		return nil, fmt.Errorf("invalid second multihash prefix: expected 0x1220, got 0x%02x%02x", userData[34], userData[35])
-	}
+	// Extract hashes at fixed offsets (skip 2-byte prefixes)
+	// Layout: [prefix:2][tlsHash:32][prefix:2][signingHash:32]
+	const (
+		prefixLen     = 2
+		hashLen       = 32
+		tlsHashStart  = prefixLen               // 2
+		tlsHashEnd    = tlsHashStart + hashLen  // 34
+		signHashStart = tlsHashEnd + prefixLen  // 36
+		signHashEnd   = signHashStart + hashLen // 68
+	)
 
 	return &NitridingKeyHashes{
-		TLSCertHash:    userData[2:34],  // Skip 0x1220 prefix, get 32-byte hash
-		SigningKeyHash: userData[36:68], // Skip 0x1220 prefix, get 32-byte hash
+		TLSCertHash:    userData[tlsHashStart:tlsHashEnd],   // bytes [2:34]
+		SigningKeyHash: userData[signHashStart:signHashEnd], // bytes [36:68]
 	}, nil
 }
 
