@@ -7,54 +7,10 @@ import "../src/ITEERegistry.sol";
 import "precompiles/attestation/IAttestationVerifier.sol";
 import "precompiles/rsa/IRSAVerifier.sol";
 
-/// @title Mock Attestation Verifier
-/// @notice Mock implementation for testing
-contract MockAttestationVerifier is IAttestationVerifier {
-    bool public shouldReturnValid = true;
-    bytes32 public pcrHashToReturn;
-
-    function setShouldReturnValid(bool valid) external {
-        shouldReturnValid = valid;
-    }
-
-    function setPCRHash(bytes32 pcrHash) external {
-        pcrHashToReturn = pcrHash;
-    }
-
-    function verifyAttestation(
-        bytes calldata,
-        bytes calldata,
-        bytes calldata,
-        bytes calldata
-    ) external view override returns (bool valid, bytes32 pcrHash) {
-        return (shouldReturnValid, pcrHashToReturn);
-    }
-}
-
-/// @title Mock RSA Verifier
-/// @notice Mock implementation for testing
-contract MockRSAVerifier is IRSAVerifier {
-    bool public shouldReturnValid = true;
-
-    function setShouldReturnValid(bool valid) external {
-        shouldReturnValid = valid;
-    }
-
-    function verifyRSAPSS(
-        bytes calldata,
-        bytes32,
-        bytes calldata
-    ) external view override returns (bool valid) {
-        return shouldReturnValid;
-    }
-}
-
 /// @title TEERegistryTest
 /// @notice Comprehensive Foundry tests for TEERegistry contract
 contract TEERegistryTest is Test {
     TEERegistry public registry;
-    MockAttestationVerifier public attestationVerifier;
-    MockRSAVerifier public rsaVerifier;
 
     address deployer = address(this);
     address admin = address(0x1);
@@ -73,6 +29,7 @@ contract TEERegistryTest is Test {
     bytes testTLSCert = hex"fedcba0987654321fedcba0987654321";
     bytes testSignature = hex"abcdef1234567890";
     bytes testAttestation = hex"a1b2c3d4";
+    bytes testRootCert = hex"726f6f74636572743132";
     bytes32 testTeeId;
 
     ITEERegistry.PCRMeasurements testPcrs = ITEERegistry.PCRMeasurements({
@@ -81,14 +38,11 @@ contract TEERegistryTest is Test {
         pcr2: hex"567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
     });
 
-    function setUp() public {
-        // Deploy mock precompiles
-        attestationVerifier = new MockAttestationVerifier();
-        rsaVerifier = new MockRSAVerifier();
+    bytes32 testPcrHash;
 
-        // Deploy them at the expected addresses using vm.etch
-        vm.etch(ATTESTATION_VERIFIER_ADDR, address(attestationVerifier).code);
-        vm.etch(RSA_VERIFIER_ADDR, address(rsaVerifier).code);
+    function setUp() public {
+        // Set reasonable timestamp to avoid underflow in timestamp validations
+        vm.warp(100000);
 
         // Deploy registry
         registry = new TEERegistry();
@@ -98,23 +52,40 @@ contract TEERegistryTest is Test {
 
         // Setup test data
         testTeeId = keccak256(testPublicKey);
+        testPcrHash = registry.computePCRHash(testPcrs);
 
         // Setup basic state for most tests
         registry.addTEEType(0, "AWS Nitro");
-        registry.setAWSRootCertificate(hex"726f6f74636572743132");
-
-        bytes32 pcrHash = registry.computePCRHash(testPcrs);
+        registry.setAWSRootCertificate(testRootCert);
         registry.approvePCR(testPcrs, "v1.0.0", bytes32(0), 0);
 
-        // Configure mocks
-        MockAttestationVerifier(ATTESTATION_VERIFIER_ADDR).setPCRHash(pcrHash);
-        MockAttestationVerifier(ATTESTATION_VERIFIER_ADDR).setShouldReturnValid(true);
-        MockRSAVerifier(RSA_VERIFIER_ADDR).setShouldReturnValid(true);
+        // Mock attestation verifier to return valid with correct PCR hash
+        mockAttestationValid(true, testPcrHash);
+
+        // Mock RSA verifier to return valid
+        mockRSAValid(true);
+    }
+
+    // Helper functions to mock precompile calls
+    function mockAttestationValid(bool valid, bytes32 pcrHash) internal {
+        vm.mockCall(
+            ATTESTATION_VERIFIER_ADDR,
+            abi.encodeWithSelector(IAttestationVerifier.verifyAttestation.selector),
+            abi.encode(valid, pcrHash)
+        );
+    }
+
+    function mockRSAValid(bool valid) internal {
+        vm.mockCall(
+            RSA_VERIFIER_ADDR,
+            abi.encodeWithSelector(IRSAVerifier.verifyRSAPSS.selector),
+            abi.encode(valid)
+        );
     }
 
     // ============ Access Control Tests ============
 
-    function test_DeployerHasAdminRoles() public {
+    function test_DeployerHasAdminRoles() public view {
         assertTrue(registry.hasRole(registry.DEFAULT_ADMIN_ROLE(), deployer));
         assertTrue(registry.hasRole(TEE_ADMIN_ROLE, deployer));
     }
@@ -219,12 +190,12 @@ contract TEERegistryTest is Test {
         assertTrue(registry.isPCRApproved(newPcrs));
     }
 
-    function test_GetActivePCRs() public {
+    function test_GetActivePCRs() public view {
         bytes32[] memory activePCRs = registry.getActivePCRs();
         assertEq(activePCRs.length, 1);
     }
 
-    function test_GetPCRDetails() public {
+    function test_GetPCRDetails() public view {
         bytes32 pcrHash = registry.computePCRHash(testPcrs);
         ITEERegistry.ApprovedPCR memory details = registry.getPCRDetails(pcrHash);
 
@@ -294,7 +265,7 @@ contract TEERegistryTest is Test {
     }
 
     function test_RevertWhen_RegisteringWithInvalidAttestation() public {
-        MockAttestationVerifier(ATTESTATION_VERIFIER_ADDR).setShouldReturnValid(false);
+        mockAttestationValid(false, testPcrHash);
 
         vm.prank(operator);
         vm.expectRevert(ITEERegistry.InvalidAttestation.selector);
@@ -311,7 +282,7 @@ contract TEERegistryTest is Test {
 
     function test_RevertWhen_RegisteringWithUnapprovedPCR() public {
         bytes32 unapprovedPCRHash = keccak256("unapproved");
-        MockAttestationVerifier(ATTESTATION_VERIFIER_ADDR).setPCRHash(unapprovedPCRHash);
+        mockAttestationValid(true, unapprovedPCRHash);
 
         vm.prank(operator);
         vm.expectRevert(ITEERegistry.PCRNotApproved.selector);
@@ -549,7 +520,7 @@ contract TEERegistryTest is Test {
             0
         );
 
-        MockRSAVerifier(RSA_VERIFIER_ADDR).setShouldReturnValid(false);
+        mockRSAValid(false);
 
         ITEERegistry.VerificationRequest memory req = ITEERegistry.VerificationRequest({
             teeId: teeId,
@@ -668,7 +639,7 @@ contract TEERegistryTest is Test {
             0
         );
 
-        MockRSAVerifier(RSA_VERIFIER_ADDR).setShouldReturnValid(false);
+        mockRSAValid(false);
 
         vm.expectRevert(ITEERegistry.InvalidSignature.selector);
         registry.verifySettlement(
@@ -838,7 +809,7 @@ contract TEERegistryTest is Test {
 
     // ============ Utility Tests ============
 
-    function test_ComputePCRHash() public {
+    function test_ComputePCRHash() public view {
         ITEERegistry.PCRMeasurements memory pcrs = ITEERegistry.PCRMeasurements({
             pcr0: hex"1234",
             pcr1: hex"5678",
@@ -851,7 +822,7 @@ contract TEERegistryTest is Test {
         assertEq(hash, expected);
     }
 
-    function test_ComputeTEEId() public {
+    function test_ComputeTEEId() public view {
         bytes memory publicKey = hex"1234567890abcdef";
         bytes32 teeId = registry.computeTEEId(publicKey);
         bytes32 expected = keccak256(publicKey);
@@ -859,7 +830,7 @@ contract TEERegistryTest is Test {
         assertEq(teeId, expected);
     }
 
-    function test_ComputeMessageHash() public {
+    function test_ComputeMessageHash() public view {
         bytes32 inputHash = bytes32(uint256(1));
         bytes32 outputHash = bytes32(uint256(2));
         uint256 timestamp = 12345;
