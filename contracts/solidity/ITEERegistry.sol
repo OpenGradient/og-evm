@@ -211,5 +211,3 @@ interface ITEERegistry {
     function computeTEEId(bytes calldata publicKey) external pure returns (bytes32);
     function computeMessageHash(bytes32 inputHash, bytes32 outputHash, uint256 timestamp) external pure returns (bytes32);
 }
-
-address constant TEE_REGISTRY = 0x0000000000000000000000000000000000000900;
