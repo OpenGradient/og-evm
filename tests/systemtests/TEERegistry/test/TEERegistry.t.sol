@@ -4,8 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "../src/TEERegistry.sol";
 import "../src/ITEERegistry.sol";
-import "precompiles/attestation/IAttestationVerifier.sol";
-import "precompiles/rsa/IRSAVerifier.sol";
+import "precompiles/tee/ITEEVerifier.sol";
 
 /// @title TEERegistryTest
 /// @notice Comprehensive Foundry tests for TEERegistry contract
@@ -21,8 +20,7 @@ contract TEERegistryTest is Test {
     bytes32 public constant TEE_ADMIN_ROLE = keccak256("TEE_ADMIN_ROLE");
     bytes32 public constant TEE_OPERATOR_ROLE = keccak256("TEE_OPERATOR_ROLE");
 
-    address constant ATTESTATION_VERIFIER_ADDR = 0x0000000000000000000000000000000000000901;
-    address constant RSA_VERIFIER_ADDR = 0x0000000000000000000000000000000000000902;
+    address constant TEE_VERIFIER_ADDR = 0x0000000000000000000000000000000000000901;
 
     // Test data
     bytes testPublicKey = hex"1234567890abcdef1234567890abcdef";
@@ -69,16 +67,16 @@ contract TEERegistryTest is Test {
     // Helper functions to mock precompile calls
     function mockAttestationValid(bool valid, bytes32 pcrHash) internal {
         vm.mockCall(
-            ATTESTATION_VERIFIER_ADDR,
-            abi.encodeWithSelector(IAttestationVerifier.verifyAttestation.selector),
+            TEE_VERIFIER_ADDR,
+            abi.encodeWithSelector(ITEEVerifier.verifyAttestation.selector),
             abi.encode(valid, pcrHash)
         );
     }
 
     function mockRSAValid(bool valid) internal {
         vm.mockCall(
-            RSA_VERIFIER_ADDR,
-            abi.encodeWithSelector(IRSAVerifier.verifyRSAPSS.selector),
+            TEE_VERIFIER_ADDR,
+            abi.encodeWithSelector(ITEEVerifier.verifyRSAPSS.selector),
             abi.encode(valid)
         );
     }

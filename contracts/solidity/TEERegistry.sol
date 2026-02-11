@@ -3,8 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./ITEERegistry.sol";
-import "precompiles/attestation/IAttestationVerifier.sol";
-import "precompiles/rsa/IRSAVerifier.sol";
+import "precompiles/tee/ITEEVerifier.sol";
 
 /// @title TEERegistry - Trusted Execution Environment Registry
 /// @notice Manages TEE registration and signature verification for X402 settlements
@@ -13,11 +12,8 @@ contract TEERegistry is ITEERegistry, AccessControl {
 
     // ============ Precompile Addresses ============
 
-    /// @dev Attestation verification precompile
-    address constant ATTESTATION_VERIFIER = 0x0000000000000000000000000000000000000901;
-
-    /// @dev RSA-PSS signature verification precompile
-    address constant RSA_VERIFIER = 0x0000000000000000000000000000000000000902;
+    /// @dev TEE verification precompile (attestation + RSA-PSS signatures)
+    address constant TEE_VERIFIER = 0x0000000000000000000000000000000000000901;
 
     // ============ Access Control ============
 
@@ -253,7 +249,7 @@ contract TEERegistry is ITEERegistry, AccessControl {
         }
 
         // Call precompile to verify attestation and extract data
-        (bool valid, bytes32 pcrHash) = IAttestationVerifier(ATTESTATION_VERIFIER).verifyAttestation(
+        (bool valid, bytes32 pcrHash) = ITEEVerifier(TEE_VERIFIER).verifyAttestation(
             attestationDocument,
             signingPublicKey,
             tlsCertificate,
@@ -352,8 +348,8 @@ contract TEERegistry is ITEERegistry, AccessControl {
         // Compute message hash
         bytes32 messageHash = computeMessageHash(request.requestHash, request.responseHash, request.timestamp);
 
-        // Call RSA verifier precompile
-        return IRSAVerifier(RSA_VERIFIER).verifyRSAPSS(
+        // Call TEE verifier precompile
+        return ITEEVerifier(TEE_VERIFIER).verifyRSAPSS(
             _tees[request.teeId].publicKey,
             messageHash,
             request.signature
@@ -388,8 +384,8 @@ contract TEERegistry is ITEERegistry, AccessControl {
         // Compute message hash
         bytes32 messageHash = computeMessageHash(inputHash, outputHash, timestamp);
 
-        // Call RSA verifier precompile
-        bool valid = IRSAVerifier(RSA_VERIFIER).verifyRSAPSS(
+        // Call TEE verifier precompile
+        bool valid = ITEEVerifier(TEE_VERIFIER).verifyRSAPSS(
             _tees[teeId].publicKey,
             messageHash,
             signature

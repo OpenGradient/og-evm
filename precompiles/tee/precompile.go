@@ -1,9 +1,14 @@
-package attestation
+package tee
 
 import (
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"strings"
+
+	gcrypto "crypto"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,20 +21,22 @@ const (
 
 	// Gas costs
 	GasVerifyAttestation uint64 = 500000 // Expensive due to crypto operations
+	GasVerifyRSAPSS      uint64 = 20000  // RSA signature verification
 )
 
 // Method names
 const (
 	MethodVerifyAttestation = "verifyAttestation"
+	MethodVerifyRSAPSS      = "verifyRSAPSS"
 )
 
-// Precompile implements AWS Nitro attestation verification
+// Precompile implements TEE verification (AWS Nitro attestation + RSA-PSS signatures)
 type Precompile struct {
 	abi     abi.ABI
 	address common.Address
 }
 
-// NewPrecompile creates a new attestation verifier precompile
+// NewPrecompile creates a new TEE verifier precompile
 func NewPrecompile() (*Precompile, error) {
 	parsed, err := abi.JSON(strings.NewReader(ABI))
 	if err != nil {
@@ -58,8 +65,11 @@ func (p *Precompile) RequiredGas(input []byte) uint64 {
 		return 0
 	}
 
-	if method.Name == MethodVerifyAttestation {
+	switch method.Name {
+	case MethodVerifyAttestation:
 		return GasVerifyAttestation
+	case MethodVerifyRSAPSS:
+		return GasVerifyRSAPSS
 	}
 
 	return 0
@@ -81,8 +91,11 @@ func (p *Precompile) Run(evm *vm.EVM, contract *vm.Contract, readOnly bool) ([]b
 		return nil, fmt.Errorf("unpack inputs: %w", err)
 	}
 
-	if method.Name == MethodVerifyAttestation {
+	switch method.Name {
+	case MethodVerifyAttestation:
 		return p.verifyAttestation(method, args)
+	case MethodVerifyRSAPSS:
+		return p.verifyRSAPSS(method, args)
 	}
 
 	return nil, ErrMethodNotFound
@@ -141,6 +154,47 @@ func (p *Precompile) verifyAttestation(method *abi.Method, args []interface{}) (
 
 	// Return success and PCR hash
 	return method.Outputs.Pack(true, pcrHash)
+}
+
+// verifyRSAPSS verifies RSA-PSS signature with SHA-256
+func (p *Precompile) verifyRSAPSS(method *abi.Method, args []interface{}) ([]byte, error) {
+	publicKeyDER := args[0].([]byte)
+	messageHash := args[1].([32]byte)
+	signature := args[2].([]byte)
+
+	// Parse public key
+	pub, err := x509.ParsePKIXPublicKey(publicKeyDER)
+	if err != nil {
+		return method.Outputs.Pack(false)
+	}
+
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return method.Outputs.Pack(false)
+	}
+
+	// Verify minimum key size (2048 bits)
+	if rsaPub.Size() < 256 {
+		return method.Outputs.Pack(false)
+	}
+
+	// Configure RSA-PSS options
+	opts := &rsa.PSSOptions{
+		SaltLength: rsa.PSSSaltLengthEqualsHash,
+		Hash:       gcrypto.SHA256,
+	}
+
+	// Hash the message hash with SHA256 for RSA-PSS
+	// (The message hash is already keccak256, we apply SHA256 for RSA)
+	h := sha256.Sum256(messageHash[:])
+
+	// Verify signature
+	err = rsa.VerifyPSS(rsaPub, gcrypto.SHA256, h[:], signature, opts)
+	if err != nil {
+		return method.Outputs.Pack(false)
+	}
+
+	return method.Outputs.Pack(true)
 }
 
 // computePCRHash computes keccak256 hash of concatenated PCR values

@@ -19,8 +19,7 @@ import (
 	"github.com/cosmos/evm/precompiles/p256"
 	slashingprecompile "github.com/cosmos/evm/precompiles/slashing"
 	stakingprecompile "github.com/cosmos/evm/precompiles/staking"
-	attestationprecompile "github.com/cosmos/evm/precompiles/attestation"
-	rsaprecompile "github.com/cosmos/evm/precompiles/rsa"
+	teeprecompile "github.com/cosmos/evm/precompiles/tee"
 
 	erc20Keeper "github.com/cosmos/evm/x/erc20/keeper"
 	transferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
@@ -189,22 +188,12 @@ func (s StaticPrecompiles) WithSlashingPrecompile(
 	return s
 }
 
-// WithAttestationPrecompile registers the AWS Nitro attestation verifier precompile at 0x901
-func (s StaticPrecompiles) WithAttestationPrecompile() StaticPrecompiles {
-	attestationPrecompile, err := attestationprecompile.NewPrecompile()
+// WithTEEPrecompile registers the TEE verification precompile (attestation + RSA-PSS) at 0x901
+func (s StaticPrecompiles) WithTEEPrecompile() StaticPrecompiles {
+	teePrecompile, err := teeprecompile.NewPrecompile()
 	if err != nil {
-		panic(fmt.Errorf("failed to instantiate attestation precompile: %w", err))
+		panic(fmt.Errorf("failed to instantiate TEE precompile: %w", err))
 	}
-	s[attestationPrecompile.Address()] = attestationPrecompile
-	return s
-}
-
-// WithRSAPrecompile registers the RSA-PSS signature verifier precompile at 0x902
-func (s StaticPrecompiles) WithRSAPrecompile() StaticPrecompiles {
-	rsaPrecompile, err := rsaprecompile.NewPrecompile()
-	if err != nil {
-		panic(fmt.Errorf("failed to instantiate RSA precompile: %w", err))
-	}
-	s[rsaPrecompile.Address()] = rsaPrecompile
+	s[teePrecompile.Address()] = teePrecompile
 	return s
 }

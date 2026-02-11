@@ -87,7 +87,6 @@ func DefaultStaticPrecompiles(
 		WithBankPrecompile(bankKeeper, erc20Keeper).
 		WithGovPrecompile(govKeeper, bankKeeper, codec, opts...).
 		WithSlashingPrecompile(slashingKeeper, bankKeeper, opts...).
-		WithAttestationPrecompile(). // AWS Nitro attestation verification at 0x901
-		WithRSAPrecompile()          // RSA-PSS signature verification at 0x902
+		WithTEEPrecompile() // TEE verification (attestation + RSA-PSS) at 0x901
 	return map[common.Address]vm.PrecompiledContract(precompiles)
 }

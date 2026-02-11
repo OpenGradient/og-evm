@@ -1,4 +1,4 @@
-package attestation
+package tee
 
 import (
 	"bytes"
