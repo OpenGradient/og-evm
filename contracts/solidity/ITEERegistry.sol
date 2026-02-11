@@ -6,14 +6,13 @@ pragma solidity ^0.8.20;
 /// @dev Precompile deployed at 0x0000000000000000000000000000000000000900
 /// @dev Supports Nitriding framework with dual-key verification (TLS + Signing)
 interface ITEERegistry {
-    
+
     // ============ Errors ============
-    
+
     error TEENotFound(bytes32 teeId);
     error TEENotActive(bytes32 teeId);
     error TEEAlreadyExists(bytes32 teeId);
     error NotTEEOwner(bytes32 teeId, address caller, address owner);
-    error NotAdmin(address caller);
     error InvalidSignature();
     error InvalidPublicKey();
     error InvalidAttestation();
@@ -25,9 +24,6 @@ interface ITEERegistry {
     error TimestampTooOld(uint256 timestamp, uint256 maxAge);
     error TimestampInFuture(uint256 timestamp);
     error RootCertificateNotSet();
-    error AdminAlreadyExists(address admin);
-    error AdminNotFound(address admin);
-    error CannotRemoveLastAdmin();
     error PublicKeyBindingFailed();
     
     // ============ Structs ============
@@ -82,10 +78,7 @@ interface ITEERegistry {
     }
     
     // ============ Events ============
-    
-    event AdminAdded(address indexed admin, address indexed addedBy, uint256 addedAt);
-    event AdminRemoved(address indexed admin, address indexed removedBy, uint256 removedAt);
-    
+
     event TEETypeAdded(uint8 indexed typeId, string name, uint256 addedAt);
     event TEETypeDeactivated(uint8 indexed typeId, uint256 deactivatedAt);
     
@@ -99,13 +92,6 @@ interface ITEERegistry {
     event SettlementVerified(bytes32 indexed teeId, bytes32 indexed settlementHash, address indexed caller, uint256 timestamp);
     
     event AWSRootCertificateUpdated(bytes32 indexed certificateHash, address indexed updatedBy, uint256 updatedAt);
-
-    // ============ Admin Management ============
-    
-    function addAdmin(address newAdmin) external;
-    function removeAdmin(address admin) external;
-    function isAdmin(address account) external view returns (bool);
-    function getAdmins() external view returns (address[] memory);
 
     // ============ TEE Type Management ============
     
@@ -161,7 +147,6 @@ interface ITEERegistry {
     function getTEE(bytes32 teeId) external view returns (TEEInfo memory);
     function getActiveTEEs() external view returns (bytes32[] memory);
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory);
-    function getTEEsByOwner(address owner) external view returns (bytes32[] memory);
     function getPublicKey(bytes32 teeId) external view returns (bytes memory);
     
     /// @notice Get TLS certificate for a registered TEE 

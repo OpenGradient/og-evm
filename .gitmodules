@@ -37,3 +37,6 @@
 [submodule "tests/systemtests/TEERegistry/lib/forge-std"]
 	path = tests/systemtests/TEERegistry/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "tests/systemtests/TEERegistry/lib/openzeppelin-contracts"]
+	path = tests/systemtests/TEERegistry/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts

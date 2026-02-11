@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./ITEERegistry.sol";
 
 /// @title TEERegistry - Trusted Execution Environment Registry
 /// @notice Manages TEE registration and signature verification for X402 settlements
 /// @dev Delegates crypto-heavy operations to precompiles, handles all business logic in Solidity
-contract TEERegistry is ITEERegistry {
+contract TEERegistry is ITEERegistry, AccessControl {
 
     // ============ Precompile Addresses ============
 
@@ -16,11 +17,12 @@ contract TEERegistry is ITEERegistry {
     /// @dev RSA-PSS signature verification precompile
     address constant RSA_VERIFIER = 0x0000000000000000000000000000000000000902;
 
-    // ============ State Variables ============
+    // ============ Access Control ============
 
-    /// @dev Admin access control
-    mapping(address => bool) private _admins;
-    address[] private _adminList;
+    /// @dev Role for TEE management operations
+    bytes32 public constant TEE_ADMIN_ROLE = keccak256("TEE_ADMIN_ROLE");
+
+    // ============ State Variables ============
 
     /// @dev TEE type registry
     mapping(uint8 => TEETypeInfo) private _teeTypes;
@@ -36,7 +38,6 @@ contract TEERegistry is ITEERegistry {
     mapping(bytes32 => uint256) private _activeTEEIndex; // For O(1) removal
 
     /// @dev TEE indexes
-    mapping(address => bytes32[]) private _teesByOwner;
     mapping(uint8 => bytes32[]) private _teesByType;
 
     /// @dev Settlement replay protection
@@ -49,14 +50,14 @@ contract TEERegistry is ITEERegistry {
     uint256 constant MAX_SETTLEMENT_AGE = 3600; // 1 hour
     uint256 constant FUTURE_TIME_TOLERANCE = 300; // 5 minutes
 
-    // ============ Modifiers ============
+    // ============ Constructor ============
 
-    modifier onlyAdmin() {
-        if (!_admins[msg.sender] && _adminList.length > 0) {
-            revert NotAdmin(msg.sender);
-        }
-        _;
+    constructor() {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(TEE_ADMIN_ROLE, msg.sender);
     }
+
+    // ============ Modifiers ============
 
     modifier teeExists(bytes32 teeId) {
         if (_tees[teeId].owner == address(0)) {
@@ -66,79 +67,16 @@ contract TEERegistry is ITEERegistry {
     }
 
     modifier onlyTEEOwnerOrAdmin(bytes32 teeId) {
-        if (_tees[teeId].owner != msg.sender && !_admins[msg.sender]) {
+        if (_tees[teeId].owner != msg.sender && !hasRole(TEE_ADMIN_ROLE, msg.sender)) {
             revert NotTEEOwner(teeId, msg.sender, _tees[teeId].owner);
         }
         _;
     }
 
-    // ============ Admin Management ============
-
-    /// @inheritdoc ITEERegistry
-    function addAdmin(address newAdmin) external onlyAdmin {
-        if (_admins[newAdmin]) {
-            revert AdminAlreadyExists(newAdmin);
-        }
-
-        _admins[newAdmin] = true;
-        _adminList.push(newAdmin);
-
-        emit AdminAdded(newAdmin, msg.sender, block.timestamp);
-    }
-
-    /// @inheritdoc ITEERegistry
-    function removeAdmin(address admin) external onlyAdmin {
-        if (!_admins[admin]) {
-            revert AdminNotFound(admin);
-        }
-
-        // Count active admins
-        uint256 activeCount = 0;
-        for (uint256 i = 0; i < _adminList.length; i++) {
-            if (_admins[_adminList[i]]) {
-                activeCount++;
-            }
-        }
-
-        if (activeCount <= 1) {
-            revert CannotRemoveLastAdmin();
-        }
-
-        _admins[admin] = false;
-
-        emit AdminRemoved(admin, msg.sender, block.timestamp);
-    }
-
-    /// @inheritdoc ITEERegistry
-    function isAdmin(address account) external view returns (bool) {
-        return _admins[account];
-    }
-
-    /// @inheritdoc ITEERegistry
-    function getAdmins() external view returns (address[] memory) {
-        uint256 activeCount = 0;
-        for (uint256 i = 0; i < _adminList.length; i++) {
-            if (_admins[_adminList[i]]) {
-                activeCount++;
-            }
-        }
-
-        address[] memory activeAdmins = new address[](activeCount);
-        uint256 j = 0;
-        for (uint256 i = 0; i < _adminList.length; i++) {
-            if (_admins[_adminList[i]]) {
-                activeAdmins[j] = _adminList[i];
-                j++;
-            }
-        }
-
-        return activeAdmins;
-    }
-
     // ============ TEE Type Management ============
 
     /// @inheritdoc ITEERegistry
-    function addTEEType(uint8 typeId, string calldata name) external onlyAdmin {
+    function addTEEType(uint8 typeId, string calldata name) external onlyRole(TEE_ADMIN_ROLE) {
         if (_teeTypes[typeId].addedAt != 0) {
             revert TEETypeExists(typeId);
         }
@@ -156,7 +94,7 @@ contract TEERegistry is ITEERegistry {
     }
 
     /// @inheritdoc ITEERegistry
-    function deactivateTEEType(uint8 typeId) external onlyAdmin {
+    function deactivateTEEType(uint8 typeId) external onlyRole(TEE_ADMIN_ROLE) {
         if (_teeTypes[typeId].addedAt == 0) {
             revert InvalidTEEType(typeId);
         }
@@ -188,7 +126,7 @@ contract TEERegistry is ITEERegistry {
         string calldata version,
         bytes32 previousPcrHash,
         uint256 gracePeriod
-    ) external onlyAdmin {
+    ) external onlyRole(TEE_ADMIN_ROLE) {
         bytes32 pcrHash = computePCRHash(pcrs);
 
         // Set expiry on previous PCR if provided
@@ -214,7 +152,7 @@ contract TEERegistry is ITEERegistry {
     }
 
     /// @inheritdoc ITEERegistry
-    function revokePCR(bytes32 pcrHash) external onlyAdmin {
+    function revokePCR(bytes32 pcrHash) external onlyRole(TEE_ADMIN_ROLE) {
         if (_approvedPCRs[pcrHash].approvedAt == 0) {
             revert TEENotFound(pcrHash);
         }
@@ -267,7 +205,7 @@ contract TEERegistry is ITEERegistry {
     // ============ Certificate Management ============
 
     /// @inheritdoc ITEERegistry
-    function setAWSRootCertificate(bytes calldata certificate) external onlyAdmin {
+    function setAWSRootCertificate(bytes calldata certificate) external onlyRole(TEE_ADMIN_ROLE) {
         if (certificate.length == 0) {
             revert RootCertificateNotSet();
         }
@@ -295,7 +233,7 @@ contract TEERegistry is ITEERegistry {
         address paymentAddress,
         string calldata endpoint,
         uint8 teeType
-    ) external onlyAdmin returns (bytes32 teeId) {
+    ) external onlyRole(TEE_ADMIN_ROLE) returns (bytes32 teeId) {
         // Validate TEE type
         if (!_teeTypes[teeType].active) {
             revert InvalidTEEType(teeType);
@@ -354,9 +292,6 @@ contract TEERegistry is ITEERegistry {
         // Add to active list
         _activeTEEIndex[teeId] = _activeTEEList.length;
         _activeTEEList.push(teeId);
-
-        // Add to owner's list
-        _teesByOwner[msg.sender].push(teeId);
 
         // Add to type list
         _teesByType[teeType].push(teeId);
@@ -496,11 +431,6 @@ contract TEERegistry is ITEERegistry {
     /// @inheritdoc ITEERegistry
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory) {
         return _teesByType[teeType];
-    }
-
-    /// @inheritdoc ITEERegistry
-    function getTEEsByOwner(address owner) external view returns (bytes32[] memory) {
-        return _teesByOwner[owner];
     }
 
     /// @inheritdoc ITEERegistry

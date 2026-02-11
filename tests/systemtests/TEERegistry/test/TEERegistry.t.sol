@@ -10,99 +10,50 @@ import "../src/ITEERegistry.sol";
 contract TEERegistryTest is Test {
     TEERegistry public registry;
 
+    address deployer = address(this);
     address admin = address(0x1);
     address user = address(0x2);
     address teeOwner = address(0x3);
 
+    bytes32 public constant TEE_ADMIN_ROLE = keccak256("TEE_ADMIN_ROLE");
+
     function setUp() public {
         registry = new TEERegistry();
+        // Deployer (this contract) automatically gets DEFAULT_ADMIN_ROLE and TEE_ADMIN_ROLE
     }
 
-    // ============ Admin Management Tests ============
+    // ============ Access Control Tests ============
 
-    function test_AddFirstAdmin() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        assertTrue(registry.isAdmin(admin));
+    function test_DeployerHasAdminRoles() public {
+        assertTrue(registry.hasRole(registry.DEFAULT_ADMIN_ROLE(), deployer));
+        assertTrue(registry.hasRole(TEE_ADMIN_ROLE, deployer));
     }
 
-    function test_AddSecondAdmin() public {
-        // Bootstrap first admin
-        vm.prank(admin);
-        registry.addAdmin(admin);
+    function test_GrantTEEAdminRole() public {
+        // Deployer grants TEE_ADMIN_ROLE to admin
+        registry.grantRole(TEE_ADMIN_ROLE, admin);
 
-        // Add second admin
-        vm.prank(admin);
-        registry.addAdmin(user);
-
-        assertTrue(registry.isAdmin(user));
+        assertTrue(registry.hasRole(TEE_ADMIN_ROLE, admin));
     }
 
-    function test_RevertWhen_NonAdminAddsAdmin() public {
-        // Bootstrap first admin
-        vm.prank(admin);
-        registry.addAdmin(admin);
+    function test_RevokeTEEAdminRole() public {
+        // Grant then revoke
+        registry.grantRole(TEE_ADMIN_ROLE, admin);
+        registry.revokeRole(TEE_ADMIN_ROLE, admin);
 
-        // Try to add admin as non-admin
+        assertFalse(registry.hasRole(TEE_ADMIN_ROLE, admin));
+    }
+
+    function test_RevertWhen_NonAdminGrantsRole() public {
+        // User tries to grant role without permission
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(ITEERegistry.NotAdmin.selector, user));
-        registry.addAdmin(user);
-    }
-
-    function test_RevertWhen_AddingExistingAdmin() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(ITEERegistry.AdminAlreadyExists.selector, admin));
-        registry.addAdmin(admin);
-    }
-
-    function test_RemoveAdmin() public {
-        // Setup two admins
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
-        registry.addAdmin(user);
-
-        // Remove one admin
-        vm.prank(admin);
-        registry.removeAdmin(user);
-
-        assertFalse(registry.isAdmin(user));
-    }
-
-    function test_RevertWhen_RemovingLastAdmin() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
-        vm.expectRevert(ITEERegistry.CannotRemoveLastAdmin.selector);
-        registry.removeAdmin(admin);
-    }
-
-    function test_GetAdmins() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
-        registry.addAdmin(user);
-
-        address[] memory admins = registry.getAdmins();
-        assertEq(admins.length, 2);
-        assertEq(admins[0], admin);
-        assertEq(admins[1], user);
+        vm.expectRevert();  // AccessControl will revert
+        registry.grantRole(TEE_ADMIN_ROLE, admin);
     }
 
     // ============ TEE Type Management Tests ============
 
     function test_AddTEEType() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
         vm.expectEmit(true, false, false, true);
         emit ITEERegistry.TEETypeAdded(0, "LLMProxy", block.timestamp);
         registry.addTEEType(0, "LLMProxy");
@@ -111,26 +62,16 @@ contract TEERegistryTest is Test {
     }
 
     function test_RevertWhen_DuplicateTEEType() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
         registry.addTEEType(0, "LLMProxy");
 
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(ITEERegistry.TEETypeExists.selector, 0));
+vm.expectRevert(abi.encodeWithSelector(ITEERegistry.TEETypeExists.selector, 0));
         registry.addTEEType(0, "LLMProxy");
     }
 
     function test_DeactivateTEEType() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
         registry.addTEEType(0, "LLMProxy");
 
-        vm.prank(admin);
-        vm.expectEmit(true, false, false, true);
+vm.expectEmit(true, false, false, true);
         emit ITEERegistry.TEETypeDeactivated(0, block.timestamp);
         registry.deactivateTEEType(0);
 
@@ -138,14 +79,9 @@ contract TEERegistryTest is Test {
     }
 
     function test_GetTEETypes() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
         registry.addTEEType(0, "LLMProxy");
 
-        vm.prank(admin);
-        registry.addTEEType(1, "Validator");
+registry.addTEEType(1, "Validator");
 
         ITEERegistry.TEETypeInfo[] memory types = registry.getTEETypes();
         assertEq(types.length, 2);
@@ -158,8 +94,6 @@ contract TEERegistryTest is Test {
     // ============ PCR Management Tests ============
 
     function test_ApprovePCR() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
 
         ITEERegistry.PCRMeasurements memory pcrs = ITEERegistry.PCRMeasurements({
             pcr0: hex"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
@@ -169,8 +103,7 @@ contract TEERegistryTest is Test {
 
         bytes32 expectedHash = registry.computePCRHash(pcrs);
 
-        vm.prank(admin);
-        vm.expectEmit(true, false, false, true);
+vm.expectEmit(true, false, false, true);
         emit ITEERegistry.PCRApproved(expectedHash, "v1.0.0", block.timestamp, 0);
         registry.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
 
@@ -178,8 +111,6 @@ contract TEERegistryTest is Test {
     }
 
     function test_RevokePCR() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
 
         ITEERegistry.PCRMeasurements memory pcrs = ITEERegistry.PCRMeasurements({
             pcr0: hex"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
@@ -187,13 +118,11 @@ contract TEERegistryTest is Test {
             pcr2: hex"567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
         });
 
-        vm.prank(admin);
-        registry.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
+registry.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
 
         bytes32 pcrHash = registry.computePCRHash(pcrs);
 
-        vm.prank(admin);
-        vm.expectEmit(true, false, false, true);
+vm.expectEmit(true, false, false, true);
         emit ITEERegistry.PCRRevoked(pcrHash, block.timestamp);
         registry.revokePCR(pcrHash);
 
@@ -201,8 +130,6 @@ contract TEERegistryTest is Test {
     }
 
     function test_PCRGracePeriod() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
 
         ITEERegistry.PCRMeasurements memory oldPcrs = ITEERegistry.PCRMeasurements({
             pcr0: hex"1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
@@ -217,14 +144,12 @@ contract TEERegistryTest is Test {
         });
 
         // Approve old PCR
-        vm.prank(admin);
-        registry.approvePCR(oldPcrs, "v1.0.0", bytes32(0), 0);
+registry.approvePCR(oldPcrs, "v1.0.0", bytes32(0), 0);
 
         bytes32 oldPcrHash = registry.computePCRHash(oldPcrs);
 
         // Approve new PCR with grace period for old one
-        vm.prank(admin);
-        registry.approvePCR(newPcrs, "v2.0.0", oldPcrHash, 3600); // 1 hour grace
+registry.approvePCR(newPcrs, "v2.0.0", oldPcrHash, 3600); // 1 hour grace
 
         // Both should be valid during grace period
         assertTrue(registry.isPCRApproved(oldPcrs));
@@ -275,14 +200,10 @@ contract TEERegistryTest is Test {
     // ============ Certificate Management Tests ============
 
     function test_SetAWSRootCertificate() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
         bytes memory cert = hex"1234567890abcdef";
 
-        vm.prank(admin);
         vm.expectEmit(true, true, false, true);
-        emit ITEERegistry.AWSRootCertificateUpdated(keccak256(cert), admin, block.timestamp);
+        emit ITEERegistry.AWSRootCertificateUpdated(keccak256(cert), deployer, block.timestamp);
         registry.setAWSRootCertificate(cert);
 
         bytes32 certHash = registry.getAWSRootCertificateHash();
@@ -290,10 +211,6 @@ contract TEERegistryTest is Test {
     }
 
     function test_RevertWhen_SettingEmptyCertificate() public {
-        vm.prank(admin);
-        registry.addAdmin(admin);
-
-        vm.prank(admin);
         vm.expectRevert(ITEERegistry.RootCertificateNotSet.selector);
         registry.setAWSRootCertificate("");
     }
