@@ -23,6 +23,15 @@ const (
 	// Gas costs
 	GasVerifyAttestation uint64 = 500000 // Expensive due to crypto operations
 	GasVerifyRSAPSS      uint64 = 20000  // RSA signature verification
+
+	// Input size limits (DoS prevention)
+	MaxAttestationSize uint64 = 16 * 1024 // 16KB max attestation document
+	MaxCertificateSize uint64 = 8 * 1024  // 8KB max certificate
+	MaxPublicKeySize   uint64 = 8 * 1024  // 8KB max public key
+	MaxSignatureSize   uint64 = 1024      // 1KB max signature
+	MaxRSAKeySize      uint64 = 1024      // 8192 bits max RSA key
+	MinRSAKeySize      uint64 = 256       // 2048 bits min RSA key
+	MaxPCRSize         uint64 = 64        // 64 bytes max per PCR value
 )
 
 // Method names
@@ -104,12 +113,45 @@ func (p *Precompile) Run(evm *vm.EVM, contract *vm.Contract, readOnly bool) ([]b
 
 // verifyAttestation verifies AWS Nitro attestation and extracts validated data
 func (p *Precompile) verifyAttestation(method *abi.Method, args []interface{}) ([]byte, error) {
-	attestationDoc := args[0].([]byte)
-	signingPublicKey := args[1].([]byte)
-	tlsCertificate := args[2].([]byte)
-	rootCertificate := args[3].([]byte)
+	// Safe type assertions
+	attestationDoc, ok := args[0].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
 
-	// Validate inputs
+	signingPublicKey, ok := args[1].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	tlsCertificate, ok := args[2].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	rootCertificate, ok := args[3].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Validate input sizes (DoS prevention)
+	if uint64(len(attestationDoc)) > MaxAttestationSize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if uint64(len(signingPublicKey)) > MaxPublicKeySize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if uint64(len(tlsCertificate)) > MaxCertificateSize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if uint64(len(rootCertificate)) > MaxCertificateSize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Validate non-empty inputs
 	if len(attestationDoc) == 0 {
 		return method.Outputs.Pack(false, common.Hash{})
 	}
@@ -159,9 +201,30 @@ func (p *Precompile) verifyAttestation(method *abi.Method, args []interface{}) (
 
 // verifyRSAPSS verifies RSA-PSS signature with SHA-256
 func (p *Precompile) verifyRSAPSS(method *abi.Method, args []interface{}) ([]byte, error) {
-	publicKeyDER := args[0].([]byte)
-	messageHash := args[1].([32]byte)
-	signature := args[2].([]byte)
+	// Safe type assertions
+	publicKeyDER, ok := args[0].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false)
+	}
+
+	messageHash, ok := args[1].([32]byte)
+	if !ok {
+		return method.Outputs.Pack(false)
+	}
+
+	signature, ok := args[2].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false)
+	}
+
+	// Validate input sizes (DoS prevention)
+	if uint64(len(publicKeyDER)) > MaxPublicKeySize {
+		return method.Outputs.Pack(false)
+	}
+
+	if uint64(len(signature)) > MaxSignatureSize {
+		return method.Outputs.Pack(false)
+	}
 
 	// Parse public key
 	pub, err := x509.ParsePKIXPublicKey(publicKeyDER)
@@ -174,8 +237,9 @@ func (p *Precompile) verifyRSAPSS(method *abi.Method, args []interface{}) ([]byt
 		return method.Outputs.Pack(false)
 	}
 
-	// Verify minimum key size (2048 bits)
-	if rsaPub.Size() < 256 {
+	// Verify key size (2048-8192 bits)
+	keySize := uint64(rsaPub.Size())
+	if keySize < MinRSAKeySize || keySize > MaxRSAKeySize {
 		return method.Outputs.Pack(false)
 	}
 
@@ -200,6 +264,12 @@ func (p *Precompile) verifyRSAPSS(method *abi.Method, args []interface{}) ([]byt
 
 // computePCRHash computes keccak256 hash of concatenated PCR values
 func computePCRHash(pcr0, pcr1, pcr2 []byte) common.Hash {
+	// Validate PCR sizes to prevent excessive memory allocation
+	if uint64(len(pcr0)) > MaxPCRSize || uint64(len(pcr1)) > MaxPCRSize || uint64(len(pcr2)) > MaxPCRSize {
+		// Return empty hash for invalid PCR sizes
+		return common.Hash{}
+	}
+
 	data := make([]byte, 0, len(pcr0)+len(pcr1)+len(pcr2))
 	data = append(data, pcr0...)
 	data = append(data, pcr1...)
