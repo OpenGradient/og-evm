@@ -167,8 +167,9 @@ contract TEERegistryTest is Test {
             pcr2: hex"567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
         });
 
-        vm.prank(admin);
         bytes32 expectedHash = registry.computePCRHash(pcrs);
+
+        vm.prank(admin);
         vm.expectEmit(true, false, false, true);
         emit ITEERegistry.PCRApproved(expectedHash, "v1.0.0", block.timestamp, 0);
         registry.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
