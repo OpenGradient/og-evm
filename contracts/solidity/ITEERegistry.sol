@@ -1,10 +1,59 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title ITEERegistry - Interface for TEE Registry Precompile
+/// @title ITEERegistry - Interface for TEE Registry
 /// @notice Manages TEE registration and signature verification for X402 settlements
-/// @dev Precompile deployed at 0x0000000000000000000000000000000000000900
 /// @dev Supports Nitriding framework with dual-key verification (TLS + Signing)
+///
+/// ## High-Level Flow
+///
+/// ### Roles & Permissions
+/// - **TEE_ADMIN_ROLE**: Protocol administrators who manage the registry
+///   - Add/remove TEE types and approve PCR measurements
+///   - Set AWS root certificates for attestation verification
+///   - Register TEEs (become owners) and can deactivate/activate ANY TEE
+/// - **TEE_OPERATOR_ROLE**: TEE operators who run enclaves
+///   - Register their own TEEs (become owners)
+///   - Can only deactivate/activate TEEs they own
+///
+/// ### TEE Lifecycle
+/// 1. **Setup** (Admin):
+///    - Admin calls `addTEEType()` to create allowed TEE types (e.g., AWS Nitro)
+///    - Admin calls `approvePCR()` to approve enclave measurements
+///    - Admin calls `setAWSRootCertificate()` for attestation verification
+///
+/// 2. **Registration** (Operator or Admin):
+///    - Operator runs a TEE (e.g., AWS Nitro Enclave with Nitriding framework)
+///    - TEE generates signing key + TLS certificate, creates attestation document
+///    - Operator calls `registerTEEWithAttestation()` with:
+///      - Raw attestation document from AWS Nitro
+///      - RSA signing public key (for settlement signatures)
+///      - TLS certificate (for HTTPS connections)
+///      - Payment address and endpoint URL
+///    - Registry verifies:
+///      - Attestation signature against AWS root certificate
+///      - PCR measurements match approved values
+///      - Both keys are bound in attestation.user_data (Nitriding framework)
+///    - TEE is registered with `teeId = keccak256(signingPublicKey)`
+///
+/// 3. **Settlement Verification**:
+///    - Client sends request to TEE endpoint (HTTPS with TLS cert verification)
+///    - TEE processes request and signs response with signing key
+///    - Client calls `verifySettlement()` with signature
+///    - Registry verifies signature using TEE's public key
+///    - Settlement is recorded on-chain with replay protection
+///
+/// 4. **Deactivation**:
+///    - Owner or admin calls `deactivateTEE()` to pause a TEE
+///    - TEE can be reactivated with `activateTEE()`
+///    - For metadata changes (endpoint, keys), deactivate + re-register with new attestation
+///
+/// ### PCR Management
+/// - PCRs (Platform Configuration Registers) are cryptographic measurements of enclave code
+/// - Admins approve specific PCR values representing trusted enclave builds
+/// - When approving new PCR, can set grace period on previous PCR for smooth upgrades
+/// - Expired or revoked PCRs prevent new registrations but don't affect existing TEEs
+///
 interface ITEERegistry {
 
     // ============ Errors ============
