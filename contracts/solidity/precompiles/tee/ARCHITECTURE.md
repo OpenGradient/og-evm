@@ -2,7 +2,7 @@
 
 ## Overview
 
-The TEE Registry has been refactored from a monolithic precompile implementation to a **hybrid architecture** that separates cryptographic primitives (precompiles) from business logic (Solidity contract).
+The TEE Registry uses a **hybrid architecture** that separates cryptographic primitives (precompiles) from business logic (Solidity contract).
 
 ## Architecture
 
@@ -98,20 +98,6 @@ function verifyRSAPSS(
 
 ## Registration Flow
 
-### Old Architecture (Monolithic Precompile)
-```
-User calls precompile 0x900
-  ↓
-Go code handles EVERYTHING:
-  - Admin check (manual storage)
-  - Attestation parsing
-  - X.509 verification
-  - PCR validation (manual storage)
-  - TEE storage (manual slot computation)
-  - Event emission
-```
-
-### New Architecture (Hybrid)
 ```
 User calls TEERegistry.registerTEEWithAttestation()
   ↓
@@ -132,132 +118,94 @@ Solidity stores TEE info (standard storage)
 Emits TEERegistered event
 ```
 
-## Benefits of Hybrid Architecture
+## Why This Architecture?
 
-| Aspect | Old (Monolithic) | New (Hybrid) | Improvement |
-|--------|------------------|--------------|-------------|
-| **Go Code** | 2,706 lines | 320 lines | **88% reduction** |
-| **Auditability** | Custom Go + storage | Standard Solidity | **3x easier** |
-| **Testing** | Custom Go tests | Foundry tests | **Standard tooling** |
-| **Upgradeability** | Requires hardfork | Deploy new contract | **No consensus needed** |
-| **Storage Safety** | Manual slots (error-prone) | Compiler-enforced | **No collision bugs** |
-| **Gas Efficiency** | Manual accounting | EVM optimized | **Better** |
-| **Debugging** | Go debugger | Tenderly/Remix | **Standard tools** |
+### Separation of Concerns
 
-## Code Comparison
+**Precompiles (Go):** Only handle cryptographic operations that can't be done efficiently in EVM
+- AWS Nitro attestation parsing (CBOR format)
+- X.509 certificate chain verification
+- RSA-PSS signature verification
 
-### Admin Management
+**Smart Contract (Solidity):** All business logic
+- Admin access control
+- Registry management
+- State storage
+- Query operations
 
-**Old (Go - 39 lines):**
-```go
-func (p *Precompile) addAdmin(ctx *callContext, args []interface{}) ([]byte, error) {
-    newAdmin := args[0].(common.Address)
-    admins := ctx.storage.GetAdmins()
-    if len(admins) > 0 && !ctx.storage.IsAdmin(ctx.caller()) {
-        return nil, ErrNotAdmin
-    }
-    if err := ctx.storage.AddAdmin(newAdmin); err != nil {
-        return nil, err
-    }
-    return nil, nil
-}
+### Benefits
 
-// Plus 70+ lines in storage.go for GetAdmins, AddAdmin, etc.
-```
+| Aspect | Value |
+|--------|-------|
+| **Auditability** | Standard Solidity patterns, tools like Slither/Foundry work |
+| **Testing** | Foundry test suite with fuzzing and coverage |
+| **Upgradeability** | Deploy new contract, no hardfork needed |
+| **Storage Safety** | Compiler-enforced, no slot collision bugs |
+| **Gas Efficiency** | EVM-optimized for standard operations |
+| **Debugging** | Tenderly, Remix, standard block explorers |
+| **Maintainability** | Standard patterns, easy to understand |
 
-**New (Solidity - 12 lines):**
+## Storage Layout
+
+The contract uses standard Solidity storage patterns:
+
 ```solidity
+// Admin access control
 mapping(address => bool) private _admins;
+address[] private _adminList;
 
-function addAdmin(address newAdmin) external onlyAdmin {
-    if (_admins[newAdmin]) {
-        revert AdminAlreadyExists(newAdmin);
-    }
-    _admins[newAdmin] = true;
-    _adminList.push(newAdmin);
-    emit AdminAdded(newAdmin, msg.sender, block.timestamp);
-}
-```
+// TEE type registry
+mapping(uint8 => TEETypeInfo) private _teeTypes;
+uint8[] private _teeTypeList;
 
-### Storage Layout
+// PCR approval registry
+mapping(bytes32 => ApprovedPCR) private _approvedPCRs;
+bytes32[] private _pcrList;
 
-**Old (Manual Slot Computation):**
-```go
-const (
-    slotTEEOwner     byte = 0x01
-    slotTEEFlags     byte = 0x02
-    slotTEEPublicKey byte = 0x03
-    // ... 15 more manual slots
-)
-
-func (s *Storage) computeSlot(prefix byte, key common.Hash) common.Hash {
-    data := make([]byte, 33)
-    data[0] = prefix
-    copy(data[1:], key.Bytes())
-    return crypto.Keccak256Hash(data)
-}
-
-// Risk: Typos, collisions, no compiler protection
-```
-
-**New (Standard Solidity):**
-```solidity
+// TEE registry
 mapping(bytes32 => TEEInfo) private _tees;
+bytes32[] private _activeTEEList;
+mapping(bytes32 => uint256) private _activeTEEIndex;
 
-// Compiler handles all storage layout
-// Collision-proof by design
-// Transparent to block explorers
+// Settlement replay protection
+mapping(bytes32 => bool) private _usedSettlements;
+
+// AWS root certificate
+bytes private _awsRootCertificate;
 ```
+
+All storage is managed by the Solidity compiler - no manual slot computation needed.
 
 ## Testing
 
-### Old Approach
-```go
-// Custom Go tests with mocked EVM state
-// Hard to write, hard to maintain
-// No standard coverage tools
-```
+The contract includes a comprehensive Foundry test suite:
 
-### New Approach
-```solidity
-// Standard Foundry tests
+```bash
+# Run all tests
 forge test
 
-// Fuzzing
+# Run with verbosity
+forge test -vv
+
+# Run specific test
+forge test --match-test test_AddFirstAdmin
+
+# Run fuzzing
 forge test --fuzz-runs 10000
 
-// Coverage
+# Generate coverage report
 forge coverage
 
-// Gas snapshots
+# Generate gas snapshot
 forge snapshot
 ```
 
-## Migration from Old Implementation
-
-If you have data in the old 0x900 precompile:
-
-1. **Extract Data:** Read from old precompile
-2. **Deploy New Contract:** Deploy TEERegistry.sol
-3. **Migrate State:** Call admin functions to restore state
-4. **Update Integrations:** Point to new contract address
-5. **Remove Old Precompile:** In next hardfork
-
-If starting fresh:
-1. Deploy TEERegistry.sol
-2. Register precompiles 0x901 and 0x902
-3. Bootstrap first admin
-4. Ready to use!
-
-## Gas Costs
-
-| Operation | Old (0x900) | New (Solidity + Precompiles) |
-|-----------|-------------|------------------------------|
-| Admin operations | 50,000 | ~30,000 (Solidity optimized) |
-| Registration | 600,000 | ~520,000 (precompile + storage) |
-| Signature verification | 20,000 | 20,000 (same precompile) |
-| Settlement verification | 25,000 | 25,000 (same precompile) |
-| Queries | 1,000-5,000 | Free (view functions) |
+**Test Coverage:**
+- Admin management (add, remove, bootstrap)
+- TEE type management (add, deactivate, query)
+- PCR registry (approve, revoke, grace periods)
+- Certificate management
+- Utility functions (hash computation, ID generation)
 
 ## Security Considerations
 
@@ -273,47 +221,156 @@ These should be thoroughly audited and tested.
 
 The TEERegistry.sol contract uses:
 - Standard Solidity patterns
-- Well-tested OpenZeppelin-style access control
+- Well-tested access control patterns
 - No custom cryptography (delegates to precompiles)
-- Clear upgrade path
+- Clear upgrade path via proxy pattern
+
+### Best Practices
+
+1. **Always verify both keys** during registration
+2. **Download TLS cert from blockchain** before connecting to endpoint
+3. **Verify settlement signatures** before processing payments
+4. **Keep private keys inside enclave** - never export
+5. **Use PCR grace periods** for smooth upgrades
+6. **Monitor TEE active status** before routing requests
+
+## Gas Costs
+
+| Operation | Estimated Gas |
+|-----------|---------------|
+| Admin operations | ~30,000 |
+| Registration with attestation | ~520,000 |
+| Signature verification (view) | 20,000 |
+| Settlement verification | 25,000 |
+| Activate/Deactivate | ~10,000 |
+| PCR management | ~50,000 |
+| TEE type management | ~30,000 |
+| Certificate management | ~100,000 |
+| Query functions | Free (view) |
 
 ## File Structure
 
 ```
 contracts/solidity/precompiles/tee/
-├── ITEERegistry.sol         # Interface (unchanged for compatibility)
-├── TEERegistry.sol          # Main contract (NEW)
+├── ITEERegistry.sol         # Interface definition
+├── TEERegistry.sol          # Main contract implementation
 ├── ARCHITECTURE.md          # This file
 └── test/
-    └── TEERegistry.t.sol    # Foundry tests (NEW)
+    └── TEERegistry.t.sol    # Foundry tests
 
 precompiles/
-├── attestation/             # NEW
+├── attestation/             # Attestation verification precompile
 │   ├── precompile.go
 │   ├── verification.go
 │   ├── abi.go
 │   └── errors.go
-├── rsa/                     # NEW
-│   ├── precompile.go
-│   ├── abi.go
-│   └── errors.go
-└── tee/                     # OLD (can be deprecated)
-    ├── precompile.go        # 931 lines - DELETE
-    ├── storage.go           # 788 lines - DELETE
-    ├── attestation.go       # Moved to precompiles/attestation
-    └── ...
+└── rsa/                     # RSA signature verification precompile
+    ├── precompile.go
+    ├── abi.go
+    └── errors.go
+```
+
+## Deployment
+
+### 1. Build Precompiles
+
+```bash
+go build ./precompiles/attestation
+go build ./precompiles/rsa
+```
+
+The precompiles automatically register at addresses 0x901 and 0x902.
+
+### 2. Deploy Contract
+
+```bash
+cd contracts/solidity/precompiles/tee
+
+forge create TEERegistry \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY
+```
+
+### 3. Bootstrap Registry
+
+```bash
+REGISTRY_ADDRESS="0x..."  # Your deployed contract
+
+# Add first admin
+cast send $REGISTRY_ADDRESS \
+  "addAdmin(address)" \
+  $ADMIN_ADDRESS \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY
+
+# Add TEE types
+cast send $REGISTRY_ADDRESS \
+  "addTEEType(uint8,string)" \
+  0 "LLMProxy" \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY
+
+# Approve PCRs
+cast send $REGISTRY_ADDRESS \
+  "approvePCR((bytes,bytes,bytes),string,bytes32,uint256)" \
+  "($PCR0,$PCR1,$PCR2)" "v1.0.0" "0x0" 0 \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY
 ```
 
 ## Future Improvements
 
-1. **Proxy Pattern:** Make TEERegistry upgradeable via proxy
+1. **Proxy Pattern:** Make TEERegistry upgradeable via TransparentUpgradeableProxy
 2. **Multi-sig Admin:** Use TimelockController for admin operations
 3. **Event Indexing:** Add more indexed parameters for better querying
 4. **Batch Operations:** Add batch registration for efficiency
 5. **EIP-712 Signatures:** Support off-chain admin approvals
+6. **Health Monitoring:** TEE heartbeat/health check system
+
+## Integration Example
+
+```javascript
+import { ethers } from "ethers";
+import ITEERegistryABI from "./ITEERegistry.json";
+
+const REGISTRY_ADDRESS = "0x...";
+
+const registry = new ethers.Contract(
+  REGISTRY_ADDRESS,
+  ITEERegistryABI,
+  signer
+);
+
+// Register a TEE
+const tx = await registry.registerTEEWithAttestation(
+  attestationDoc,
+  signingKey,
+  tlsCert,
+  paymentAddress,
+  "https://tee.example.com",
+  0  // TEE type
+);
+
+await tx.wait();
+console.log("TEE registered!");
+
+// Verify a settlement
+const valid = await registry.verifySettlement(
+  teeId,
+  inputHash,
+  outputHash,
+  timestamp,
+  signature
+);
+
+if (valid) {
+  // Process payment
+}
+```
 
 ## References
 
-- Original README: `precompiles/tee/README.md`
 - Interface: `contracts/solidity/precompiles/tee/ITEERegistry.sol`
+- README: `precompiles/tee/README.md`
 - Nitriding Docs: [https://github.com/brave/nitriding](https://github.com/brave/nitriding)
+- AWS Nitro Enclaves: [https://aws.amazon.com/ec2/nitro/nitro-enclaves/](https://aws.amazon.com/ec2/nitro/nitro-enclaves/)
