@@ -1,0 +1,1 @@
+../../../../contracts/solidity/TEERegistry.sol

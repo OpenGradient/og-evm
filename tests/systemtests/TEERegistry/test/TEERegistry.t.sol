@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../TEERegistry.sol";
-import "../ITEERegistry.sol";
+import "../src/TEERegistry.sol";
+import "../src/ITEERegistry.sol";
 
 /// @title TEERegistryTest
 /// @notice Foundry tests for TEERegistry contract

@@ -1,0 +1,1 @@
+../../../../contracts/solidity/ITEERegistry.sol
