@@ -13,8 +13,6 @@ contract TEERegistry is AccessControl {
 
     bytes32 public constant TEE_OPERATOR = keccak256("TEE_OPERATOR");
     ITEEVerifier public constant VERIFIER = ITEEVerifier(0x0000000000000000000000000000000000000900);
-    uint256 public constant MAX_SETTLEMENT_AGE = 1 hours;
-    uint256 public constant FUTURE_TOLERANCE = 5 minutes;
 
     // ============ Structs ============
     
@@ -69,9 +67,6 @@ contract TEERegistry is AccessControl {
     mapping(bytes32 => uint256) private _activeTEEIndex;
     mapping(address => bytes32[]) private _teesByOwner;
     mapping(uint8 => bytes32[]) private _teesByType;
-    
-    // Settlement replay protection
-    mapping(bytes32 => bool) public settlementUsed;
 
     // ============ Events ============
 
@@ -82,7 +77,6 @@ contract TEERegistry is AccessControl {
     event TEERegistered(bytes32 indexed teeId, address indexed owner, uint8 teeType);
     event TEEDeactivated(bytes32 indexed teeId);
     event TEEActivated(bytes32 indexed teeId);
-    event SettlementVerified(bytes32 indexed teeId, bytes32 indexed settlementHash);
     event AWSCertificateUpdated(bytes32 indexed certHash);
 
     // ============ Errors ============
@@ -99,9 +93,6 @@ contract TEERegistry is AccessControl {
     error AttestationInvalid(string reason);
     error KeyBindingFailed(string reason);
     error InvalidSignature();
-    error SettlementAlreadyUsed();
-    error TimestampTooOld();
-    error TimestampInFuture();
 
     // ============ Constructor ============
 
@@ -316,33 +307,6 @@ contract TEERegistry is AccessControl {
 
         bytes32 messageHash = computeMessageHash(inputHash, outputHash, timestamp);
         return VERIFIER.verifyRSAPSS(tee.publicKey, messageHash, signature);
-    }
-
-    function verifySettlement(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp,
-        bytes calldata signature
-    ) external returns (bool) {
-        // Timestamp validation
-        if (timestamp < block.timestamp - MAX_SETTLEMENT_AGE) revert TimestampTooOld();
-        if (timestamp > block.timestamp + FUTURE_TOLERANCE) revert TimestampInFuture();
-
-        // Replay protection
-        bytes32 settlementHash = keccak256(abi.encodePacked(teeId, inputHash, outputHash, timestamp));
-        if (settlementUsed[settlementHash]) revert SettlementAlreadyUsed();
-
-        // Verify signature
-        if (!verifySignature(teeId, inputHash, outputHash, timestamp, signature)) {
-            revert InvalidSignature();
-        }
-
-        // Mark as used
-        settlementUsed[settlementHash] = true;
-        emit SettlementVerified(teeId, settlementHash);
-        
-        return true;
     }
 
     function computeMessageHash(

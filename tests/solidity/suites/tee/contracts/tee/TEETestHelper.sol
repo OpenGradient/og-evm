@@ -123,16 +123,6 @@ contract TEETestHelper {
         return registry.verifySignature(teeId, inputHash, outputHash, timestamp, signature);
     }
 
-    function verifySettlement(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp,
-        bytes calldata signature
-    ) external returns (bool) {
-        return registry.verifySettlement(teeId, inputHash, outputHash, timestamp, signature);
-    }
-
     function computeMessageHash(
         bytes32 inputHash,
         bytes32 outputHash,
@@ -207,19 +197,5 @@ contract TEETestHelper {
     // Helper to test timestamp validation
     function getCurrentTimestamp() external view returns (uint256) {
         return block.timestamp;
-    }
-
-    // Helper to test settlement replay protection
-    function isSettlementUsed(bytes32 settlementHash) external view returns (bool) {
-        return registry.settlementUsed(settlementHash);
-    }
-
-    function computeSettlementHash(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp
-    ) external pure returns (bytes32) {
-        return keccak256(abi.encodePacked(teeId, inputHash, outputHash, timestamp));
     }
 }

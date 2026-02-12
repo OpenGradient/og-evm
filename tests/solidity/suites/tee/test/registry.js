@@ -47,16 +47,6 @@ describe('TEERegistry', function () {
 
             console.log('✓ Precompile address is correct')
         })
-
-        it('should have correct constants', async function () {
-            const MAX_SETTLEMENT_AGE = await registry.MAX_SETTLEMENT_AGE()
-            const FUTURE_TOLERANCE = await registry.FUTURE_TOLERANCE()
-
-            expect(MAX_SETTLEMENT_AGE).to.equal(3600n) // 1 hour
-            expect(FUTURE_TOLERANCE).to.equal(300n) // 5 minutes
-
-            console.log('✓ Constants are correct')
-        })
     })
 
     describe('TEE Type Management', function () {
