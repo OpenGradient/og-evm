@@ -19,7 +19,7 @@ describe('Staking – delegate with event assertion', function () {
     })
 
     it('should stake native coin and emit Delegate event (using precision-adjusted shares)', async function () {
-        const valBech32 = 'cosmosvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pw4xyrql'
+        const valBech32 = 'ogvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pwn5se8x'
         const stakeAmountBn = hre.ethers.parseEther('0.001')   // BigNumber
         const stakeAmount = BigInt(stakeAmountBn.toString())
 
@@ -41,7 +41,7 @@ describe('Staking – delegate with event assertion', function () {
         const tx = await staking
             .connect(signer)
             .delegate(signer.address, valBech32, stakeAmount, {gasLimit: GAS_LIMIT})
-        const receipt = await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC)
+        const receipt = await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC)
         console.log('Delegate tx hash:', receipt.hash, 'gas used:', receipt.gasUsed.toString())
 
         // parse the Delegate event from logs

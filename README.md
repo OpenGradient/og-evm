@@ -1,5 +1,7 @@
 # OpenGradient Blockchain Node
 
+[![CI Tests](https://github.com/OpenGradient/og-evm/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenGradient/og-evm/actions/workflows/ci.yml)
+
 `og-evm` is the official node software for participating in the OpenGradient blockchain network.
 
 ## What is OpenGradient?
