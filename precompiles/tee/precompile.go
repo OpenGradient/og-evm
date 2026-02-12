@@ -13,75 +13,46 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// Precompile address
-const AddressHex = "0x0000000000000000000000000000000000000900"
-
-// Gas costs
+// Precompile constants
 const (
-	GasVerifyAttestation uint64 = 500000
-	GasVerifyRSA         uint64 = 20000
-	GasParseUserData     uint64 = 1000
+	AddressHex = "0x0000000000000000000000000000000000000900"
+
+	// Gas costs
+	GasVerifyAttestation uint64 = 500000 // Expensive due to crypto operations
+	GasVerifyRSAPSS      uint64 = 20000  // RSA signature verification
+
+	// Input size limits (DoS prevention)
+	MaxAttestationSize uint64 = 16 * 1024 // 16KB max attestation document
+	MaxCertificateSize uint64 = 8 * 1024  // 8KB max certificate
+	MaxPublicKeySize   uint64 = 8 * 1024  // 8KB max public key
+	MaxSignatureSize   uint64 = 1024      // 1KB max signature
+	MaxRSAKeySize      uint64 = 1024      // 8192 bits max RSA key
+	MinRSAKeySize      uint64 = 256       // 2048 bits min RSA key
+	MaxPCRSize         uint64 = 64        // 64 bytes max per PCR value
 )
 
-const ABI = `[
-	{
-		"name": "verifyAttestation",
-		"type": "function",
-		"stateMutability": "view",
-		"inputs": [
-			{"name": "attestationDocument", "type": "bytes"},
-			{"name": "rootCertificate", "type": "bytes"}
-		],
-		"outputs": [{
-			"name": "result",
-			"type": "tuple",
-			"components": [
-				{"name": "valid", "type": "bool"},
-				{"name": "pcr0", "type": "bytes"},
-				{"name": "pcr1", "type": "bytes"},
-				{"name": "pcr2", "type": "bytes"},
-				{"name": "userData", "type": "bytes"},
-				{"name": "errorMsg", "type": "string"}
-			]
-		}]
-	},
-	{
-		"name": "verifyRSASignature",
-		"type": "function",
-		"stateMutability": "view",
-		"inputs": [
-			{"name": "publicKeyDER", "type": "bytes"},
-			{"name": "messageHash", "type": "bytes32"},
-			{"name": "signature", "type": "bytes"}
-		],
-		"outputs": [{"name": "valid", "type": "bool"}]
-	},
-	{
-		"name": "parseNitridingUserData",
-		"type": "function",
-		"stateMutability": "pure",
-		"inputs": [{"name": "userData", "type": "bytes"}],
-		"outputs": [
-			{"name": "tlsCertHash", "type": "bytes32"},
-			{"name": "signingKeyHash", "type": "bytes32"}
-		]
-	}
-]`
+// Method names
+const (
+	MethodVerifyAttestation = "verifyAttestation"
+	MethodVerifyRSAPSS      = "verifyRSAPSS"
+)
 
-// Precompile implements the minimal TEE Verifier
+// Precompile implements TEE verification (AWS Nitro attestation + RSA-PSS signatures)
 type Precompile struct {
 	abi     abi.ABI
 	address common.Address
 }
 
-// NewPrecompile creates a new instance
+// NewPrecompile creates a new TEE verifier precompile
 func NewPrecompile() (*Precompile, error) {
 	parsed, err := abi.JSON(strings.NewReader(ABI))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ABI: %w", err)
 	}
+
 	return &Precompile{
 		abi:     parsed,
 		address: common.HexToAddress(AddressHex),
@@ -93,36 +64,36 @@ func (p *Precompile) Address() common.Address {
 	return p.address
 }
 
-// RequiredGas returns gas cost
+// RequiredGas calculates gas cost for the call
 func (p *Precompile) RequiredGas(input []byte) uint64 {
 	if len(input) < 4 {
 		return 0
 	}
+
 	method, err := p.abi.MethodById(input[:4])
 	if err != nil {
 		return 0
 	}
+
 	switch method.Name {
-	case "verifyAttestation":
+	case MethodVerifyAttestation:
 		return GasVerifyAttestation
-	case "verifyRSASignature":
-		return GasVerifyRSA
-	case "parseNitridingUserData":
-		return GasParseUserData
-	default:
-		return GasParseUserData
+	case MethodVerifyRSAPSS:
+		return GasVerifyRSAPSS
 	}
+
+	return 0
 }
 
 // Run executes the precompile
 func (p *Precompile) Run(evm *vm.EVM, contract *vm.Contract, readOnly bool) ([]byte, error) {
 	if len(contract.Input) < 4 {
-		return nil, fmt.Errorf("invalid input")
+		return nil, ErrInvalidInput
 	}
 
 	method, err := p.abi.MethodById(contract.Input[:4])
 	if err != nil {
-		return nil, fmt.Errorf("method not found")
+		return nil, ErrMethodNotFound
 	}
 
 	args, err := method.Inputs.Unpack(contract.Input[4:])
@@ -131,124 +102,177 @@ func (p *Precompile) Run(evm *vm.EVM, contract *vm.Contract, readOnly bool) ([]b
 	}
 
 	switch method.Name {
-	case "verifyAttestation":
+	case MethodVerifyAttestation:
 		return p.verifyAttestation(method, args)
-	case "verifyRSASignature":
-		return p.verifyRSASignature(method, args)
-	case "parseNitridingUserData":
-		return p.parseNitridingUserData(method, args)
-	default:
-		return nil, fmt.Errorf("unknown method: %s", method.Name)
+	case MethodVerifyRSAPSS:
+		return p.verifyRSAPSS(method, args)
 	}
+
+	return nil, ErrMethodNotFound
 }
 
-// ============================================================================
-// METHOD: verifyAttestation
-// ============================================================================
-
-type AttestationResultABI struct {
-	Valid    bool   `abi:"valid"`
-	Pcr0     []byte `abi:"pcr0"`
-	Pcr1     []byte `abi:"pcr1"`
-	Pcr2     []byte `abi:"pcr2"`
-	UserData []byte `abi:"userData"`
-	ErrorMsg string `abi:"errorMsg"`
-}
-
+// verifyAttestation verifies AWS Nitro attestation and extracts validated data
 func (p *Precompile) verifyAttestation(method *abi.Method, args []interface{}) ([]byte, error) {
-	attestationDoc := args[0].([]byte)
-	rootCert := args[1].([]byte)
+	// Safe type assertions
+	attestationDoc, ok := args[0].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	signingPublicKey, ok := args[1].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	tlsCertificate, ok := args[2].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	rootCertificate, ok := args[3].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Validate input sizes (DoS prevention)
+	if uint64(len(attestationDoc)) > MaxAttestationSize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if uint64(len(signingPublicKey)) > MaxPublicKeySize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if uint64(len(tlsCertificate)) > MaxCertificateSize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if uint64(len(rootCertificate)) > MaxCertificateSize {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Validate non-empty inputs
+	if len(attestationDoc) == 0 {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if len(signingPublicKey) == 0 {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	if len(tlsCertificate) == 0 {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
 
 	// Use default AWS root cert if none provided
-	if len(rootCert) == 0 {
-		rootCert = DefaultAWSNitroRootCertPEM
+	if len(rootCertificate) == 0 {
+		rootCertificate = DefaultAWSNitroRootCertPEM
 	}
 
-	// Convert to base64 for verification function
+	// Convert attestation to base64 (expected format)
 	attestationBase64 := base64.StdEncoding.EncodeToString(attestationDoc)
 
-	// Verify attestation
-	result, err := VerifyAttestationDocument(attestationBase64, rootCert, nil)
-
-	abiResult := AttestationResultABI{}
-
+	// Verify attestation document using imported verification logic
+	result, err := VerifyAttestationDocument(attestationBase64, rootCertificate, nil)
 	if err != nil {
-		abiResult.Valid = false
-		abiResult.ErrorMsg = err.Error()
-	} else if !result.Valid {
-		abiResult.Valid = false
-		abiResult.ErrorMsg = result.ErrorMessage
-	} else {
-		abiResult.Valid = true
-		abiResult.Pcr0 = result.PCRs.PCR0
-		abiResult.Pcr1 = result.PCRs.PCR1
-		abiResult.Pcr2 = result.PCRs.PCR2
-		abiResult.UserData = result.UserData
-		abiResult.ErrorMsg = ""
+		return method.Outputs.Pack(false, common.Hash{})
 	}
 
-	return method.Outputs.Pack(abiResult)
+	if !result.Valid {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Verify Nitriding dual-key binding (TLS certificate)
+	if err := VerifyTLSCertificateBinding(tlsCertificate, result.UserData); err != nil {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Verify Nitriding dual-key binding (signing key)
+	if err := VerifySigningKeyBinding(signingPublicKey, result.UserData); err != nil {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Compute PCR hash from extracted PCRs
+	pcrHash := computePCRHash(result.PCRs.PCR0, result.PCRs.PCR1, result.PCRs.PCR2)
+
+	// Return success and PCR hash
+	return method.Outputs.Pack(true, pcrHash)
 }
 
-// ============================================================================
-// METHOD: verifyRSASignature
-// ============================================================================
+// verifyRSAPSS verifies RSA-PSS signature with SHA-256
+func (p *Precompile) verifyRSAPSS(method *abi.Method, args []interface{}) ([]byte, error) {
+	// Safe type assertions
+	publicKeyDER, ok := args[0].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false)
+	}
 
-func (p *Precompile) verifyRSASignature(method *abi.Method, args []interface{}) ([]byte, error) {
-	publicKeyDER := args[0].([]byte)
-	messageHash := args[1].([32]byte)
-	signature := args[2].([]byte)
+	messageHash, ok := args[1].([32]byte)
+	if !ok {
+		return method.Outputs.Pack(false)
+	}
 
-	valid := verifyRSAPSS(publicKeyDER, messageHash[:], signature)
-	return method.Outputs.Pack(valid)
-}
+	signature, ok := args[2].([]byte)
+	if !ok {
+		return method.Outputs.Pack(false)
+	}
 
-func verifyRSAPSS(publicKeyDER []byte, messageHash []byte, signature []byte) bool {
+	// Validate input sizes (DoS prevention)
+	if uint64(len(publicKeyDER)) > MaxPublicKeySize {
+		return method.Outputs.Pack(false)
+	}
+
+	if uint64(len(signature)) > MaxSignatureSize {
+		return method.Outputs.Pack(false)
+	}
+
 	// Parse public key
 	pub, err := x509.ParsePKIXPublicKey(publicKeyDER)
 	if err != nil {
-		return false
+		return method.Outputs.Pack(false)
 	}
 
 	rsaPub, ok := pub.(*rsa.PublicKey)
 	if !ok {
-		return false
+		return method.Outputs.Pack(false)
 	}
 
-	// RSA-PSS verification with SHA256
+	// Verify key size (2048-8192 bits)
+	keySize := uint64(rsaPub.Size())
+	if keySize < MinRSAKeySize || keySize > MaxRSAKeySize {
+		return method.Outputs.Pack(false)
+	}
+
+	// Configure RSA-PSS options
 	opts := &rsa.PSSOptions{
 		SaltLength: rsa.PSSSaltLengthEqualsHash,
 		Hash:       gcrypto.SHA256,
 	}
 
 	// Hash the message hash with SHA256 for RSA-PSS
-	h := sha256.Sum256(messageHash)
+	// (The message hash is already keccak256, we apply SHA256 for RSA)
+	h := sha256.Sum256(messageHash[:])
 
+	// Verify signature
 	err = rsa.VerifyPSS(rsaPub, gcrypto.SHA256, h[:], signature, opts)
-	return err == nil
+	if err != nil {
+		return method.Outputs.Pack(false)
+	}
+
+	return method.Outputs.Pack(true)
 }
 
-// ============================================================================
-// METHOD: parseNitridingUserData
-// ============================================================================
-
-func (p *Precompile) parseNitridingUserData(method *abi.Method, args []interface{}) ([]byte, error) {
-	userData := args[0].([]byte)
-
-	// Nitriding format: 68 bytes
-	// [0:2]   = 0x1220 prefix
-	// [2:34]  = SHA256(TLS cert DER)
-	// [34:36] = 0x1220 prefix
-	// [36:68] = SHA256(signing key DER)
-
-	var tlsCertHash [32]byte
-	var signingKeyHash [32]byte
-
-	if len(userData) == 68 {
-		copy(tlsCertHash[:], userData[2:34])
-		copy(signingKeyHash[:], userData[36:68])
+// computePCRHash computes keccak256 hash of concatenated PCR values
+func computePCRHash(pcr0, pcr1, pcr2 []byte) common.Hash {
+	// Validate PCR sizes to prevent excessive memory allocation
+	if uint64(len(pcr0)) > MaxPCRSize || uint64(len(pcr1)) > MaxPCRSize || uint64(len(pcr2)) > MaxPCRSize {
+		// Return empty hash for invalid PCR sizes
+		return common.Hash{}
 	}
-	// If wrong length, return zero hashes (Solidity will fail the comparison)
 
-	return method.Outputs.Pack(tlsCertHash, signingKeyHash)
+	data := make([]byte, 0, len(pcr0)+len(pcr1)+len(pcr2))
+	data = append(data, pcr0...)
+	data = append(data, pcr1...)
+	data = append(data, pcr2...)
+	return crypto.Keccak256Hash(data)
 }

@@ -1,0 +1,33 @@
+package tee
+
+// ABI defines the JSON interface for the TEE verifier precompile
+const ABI = `[
+	{
+		"name": "verifyAttestation",
+		"type": "function",
+		"stateMutability": "view",
+		"inputs": [
+			{"name": "attestationDocument", "type": "bytes"},
+			{"name": "signingPublicKey", "type": "bytes"},
+			{"name": "tlsCertificate", "type": "bytes"},
+			{"name": "rootCertificate", "type": "bytes"}
+		],
+		"outputs": [
+			{"name": "valid", "type": "bool"},
+			{"name": "pcrHash", "type": "bytes32"}
+		]
+	},
+	{
+		"name": "verifyRSAPSS",
+		"type": "function",
+		"stateMutability": "view",
+		"inputs": [
+			{"name": "publicKeyDER", "type": "bytes"},
+			{"name": "messageHash", "type": "bytes32"},
+			{"name": "signature", "type": "bytes"}
+		],
+		"outputs": [
+			{"name": "valid", "type": "bool"}
+		]
+	}
+]`

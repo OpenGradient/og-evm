@@ -269,25 +269,16 @@ contract TEERegistry {
         teeId = keccak256(signingPublicKey);
         if (tees[teeId].registeredAt != 0) revert TEEAlreadyExists();
 
-        // Verify attestation via precompile
-        ITEEVerifier.AttestationResult memory result = VERIFIER.verifyAttestation(
+        // Verify attestation via precompile (v2 API with dual-key binding)
+        (bool valid, bytes32 pcrHash) = VERIFIER.verifyAttestation(
             attestationDocument,
+            signingPublicKey,
+            tlsCertificate,
             awsRootCertificate
         );
-        if (!result.valid) revert AttestationInvalid(result.errorMsg);
-
-        // Verify key bindings (Nitriding dual-key)
-        (bytes32 expectedTlsHash, bytes32 expectedSigningHash) = VERIFIER.parseNitridingUserData(result.userData);
-        
-        if (keccak256(tlsCertificate) != bytes32(expectedTlsHash)) {
-            revert KeyBindingFailed("TLS certificate hash mismatch");
-        }
-        if (keccak256(signingPublicKey) != bytes32(expectedSigningHash)) {
-            revert KeyBindingFailed("Signing key hash mismatch");
-        }
+        if (!valid) revert AttestationInvalid("Attestation verification failed");
 
         // Verify PCR is approved
-        bytes32 pcrHash = keccak256(abi.encodePacked(result.pcr0, result.pcr1, result.pcr2));
         if (!isPCRApproved(pcrHash)) revert PCRNotApproved();
 
         // Store TEE
@@ -369,7 +360,7 @@ contract TEERegistry {
         if (!tee.active) return false;
 
         bytes32 messageHash = computeMessageHash(inputHash, outputHash, timestamp);
-        return VERIFIER.verifyRSASignature(tee.publicKey, messageHash, signature);
+        return VERIFIER.verifyRSAPSS(tee.publicKey, messageHash, signature);
     }
 
     function verifySettlement(
