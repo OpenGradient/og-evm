@@ -25,6 +25,7 @@ module.exports = {
         "0x741de4f8988ea941d3ff0287911ca4074e62b7d45c991a51186455366f10b544", // dev1
         "0x3b7955d25189c99a7468192fcbc6429205c158834053ebe3f78f4512ab432db9", // dev2
       ],
+      gasPrice: 1000000000, // 1 gwei
     },
   },
 };

@@ -47,7 +47,7 @@ describe('Staking – delegate, undelegate & cancelUnbondingDelegation with even
     })
 
     it('should delegate, undelegate, then cancel unbonding and emit correct events', async function () {
-        const valBech32 = 'cosmosvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pw4xyrql'
+        const valBech32 = 'ogvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pwn5se8x'
         const amount = hre.ethers.parseEther('0.001')
 
         // DELEGATE

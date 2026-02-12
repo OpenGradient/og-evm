@@ -5,7 +5,7 @@ const { findEvent, waitWithTimeout, RETRY_DELAY_FUNC} = require('../common');
 describe('Distribution – deposit validator rewards pool', function () {
     const DIST_ADDRESS = '0x0000000000000000000000000000000000000801';
     const GAS_LIMIT = 1_000_000;
-    const VAL_BECH32 = 'cosmosvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pw4xyrql';
+    const VAL_BECH32 = 'ogvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pwn5se8x';
     const VAL_HEX = '0x7cB61D4117AE31a12E393a1Cfa3BaC666481D02E';
 
     let distribution, signer;

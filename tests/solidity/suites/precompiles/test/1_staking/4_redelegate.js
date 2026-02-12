@@ -70,9 +70,9 @@ describe('Staking – redelegate with event and state assertions', function () {
     })
 
     it('should redelegate tokens and emit Redelegate event', async function () {
-        const signerBech32 = 'cosmos1cml96vmptgw99syqrrz8az79xer2pcgp95srxm'
-        const srcValBech32 = 'cosmosvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pw4xyrql'
-        const dstValBech32 = 'cosmosvaloper1cml96vmptgw99syqrrz8az79xer2pcgpqqyk2g'
+        const signerBech32 = 'og1cml96vmptgw99syqrrz8az79xer2pcgpum8mp7'
+        const srcValBech32 = 'ogvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pwn5se8x'
+        const dstValBech32 = 'ogvaloper1cml96vmptgw99syqrrz8az79xer2pcgpxjsvd3'
 
         // decode bech32 → hex for event comparisons
         const srcValHex = '0x7cB61D4117AE31a12E393a1Cfa3BaC666481D02E'

@@ -19,7 +19,7 @@ describe('Staking – delegate with event assertion', function () {
     })
 
     it('should stake native coin and emit Delegate event (using precision-adjusted shares)', async function () {
-        const valBech32 = 'cosmosvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pw4xyrql'
+        const valBech32 = 'ogvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pwn5se8x'
         const stakeAmountBn = hre.ethers.parseEther('0.001')   // BigNumber
         const stakeAmount = BigInt(stakeAmountBn.toString())
 
