@@ -6,6 +6,7 @@ artifacts/
 **/precompiles/contracts/evmos/*
 **/precompiles/contracts/cosmos/*
 **/tee/contracts/cosmos/*
+**/revert_cases/contracts/cosmos/*
 
 # ignore package-lock files (only use yarn.lock)
 package-lock.json
