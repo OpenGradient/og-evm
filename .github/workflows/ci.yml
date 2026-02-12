@@ -1,0 +1,132 @@
+name: CI Tests
+
+on:
+  pull_request:
+    types: [labeled]
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  setup:
+    name: Setup and Cache Dependencies
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.label.name == 'run-ci'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Download dependencies
+        run: |
+          go mod download
+          cd evmd && go mod download
+
+      - name: Build project
+        run: make build
+
+  go-tests:
+    name: Go Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test-type:
+          - name: "Unit Tests"
+            command: "make test-unit"
+          - name: "EVMD Module Tests"
+            command: "make test-evmd"
+          - name: "Race Condition Tests"
+            command: "make test-race"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run ${{ matrix.test-type.name }}
+        run: ${{ matrix.test-type.command }}
+
+  solidity-tests:
+    name: Solidity Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+          cache-dependency-path: 'tests/solidity/yarn.lock'
+
+      - name: Install Yarn (if not available)
+        run: |
+          if ! command -v yarn &> /dev/null; then
+            npm install -g yarn
+          fi
+
+      - name: Run Solidity tests
+        run: ./scripts/run-solidity-tests.sh
+
+  rpc-compat-tests:
+    name: JSON-RPC Compatibility Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run JSON-RPC compatibility tests
+        run: make test-rpc-compat
+        timeout-minutes: 30
+
+      - name: Cleanup Docker containers
+        if: always()
+        run: make test-rpc-compat-stop
+
+  fuzz-tests:
+    name: Fuzz Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run fuzz tests
+        run: make test-fuzz
