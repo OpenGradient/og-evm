@@ -175,7 +175,7 @@ contract TEERegistry is AccessControl {
     function isPCRApproved(bytes32 pcrHash) public view returns (bool) {
         ApprovedPCR storage pcr = approvedPCRs[pcrHash];
         if (!pcr.active) return false;
-        if (pcr.expiresAt != 0 && block.timestamp > pcr.expiresAt) return false;
+        if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) return false;
         return true;
     }
 
@@ -263,6 +263,7 @@ contract TEERegistry is AccessControl {
         TEEInfo storage tee = tees[teeId];
         if (tee.registeredAt == 0) revert TEENotFound();
         if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
+        if (!tee.active) return; // Already deactivated, nothing to do
 
         tee.active = false;
         tee.lastUpdatedAt = block.timestamp;
@@ -274,6 +275,7 @@ contract TEERegistry is AccessControl {
         TEEInfo storage tee = tees[teeId];
         if (tee.registeredAt == 0) revert TEENotFound();
         if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
+        if (tee.active) return; // Already active, nothing to do
 
         tee.active = true;
         tee.lastUpdatedAt = block.timestamp;
