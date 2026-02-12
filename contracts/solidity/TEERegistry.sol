@@ -2,14 +2,16 @@
 pragma solidity ^0.8.20;
 
 import "./precompiles/tee/ITEEVerifier.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title TEERegistry - TEE Registration and Management
 /// @notice Manages TEE lifecycle, calls precompile only for crypto
 /// @dev All storage in Solidity, crypto in precompile at 0x900
-contract TEERegistry {
+contract TEERegistry is AccessControl {
     
     // ============ Constants ============
-    
+
+    bytes32 public constant TEE_OPERATOR = keccak256("TEE_OPERATOR");
     ITEEVerifier public constant VERIFIER = ITEEVerifier(0x0000000000000000000000000000000000000900);
     uint256 public constant MAX_SETTLEMENT_AGE = 1 hours;
     uint256 public constant FUTURE_TOLERANCE = 5 minutes;
@@ -49,11 +51,7 @@ contract TEERegistry {
     }
 
     // ============ Storage ============
-    
-    // Admin management
-    mapping(address => bool) public isAdmin;
-    address[] private _adminList;
-    
+
     // TEE Types
     mapping(uint8 => TEETypeInfo) public teeTypes;
     uint8[] private _teeTypeList;
@@ -76,9 +74,7 @@ contract TEERegistry {
     mapping(bytes32 => bool) public settlementUsed;
 
     // ============ Events ============
-    
-    event AdminAdded(address indexed admin);
-    event AdminRemoved(address indexed admin);
+
     event TEETypeAdded(uint8 indexed typeId, string name);
     event TEETypeDeactivated(uint8 indexed typeId);
     event PCRApproved(bytes32 indexed pcrHash, string version);
@@ -90,11 +86,7 @@ contract TEERegistry {
     event AWSCertificateUpdated(bytes32 indexed certHash);
 
     // ============ Errors ============
-    
-    error NotAdmin();
-    error AdminAlreadyExists();
-    error AdminNotFound();
-    error CannotRemoveLastAdmin();
+
     error TEETypeExists();
     error TEETypeNotFound();
     error InvalidTEEType();
@@ -111,56 +103,17 @@ contract TEERegistry {
     error TimestampTooOld();
     error TimestampInFuture();
 
-    // ============ Modifiers ============
-    
-    modifier onlyAdmin() {
-        if (!isAdmin[msg.sender]) revert NotAdmin();
-        _;
-    }
-
     // ============ Constructor ============
-    
+
     constructor() {
-        // Bootstrap first admin
-        isAdmin[msg.sender] = true;
-        _adminList.push(msg.sender);
-        emit AdminAdded(msg.sender);
-    }
-
-    // ============ Admin Management ============
-    
-    function addAdmin(address admin) external onlyAdmin {
-        if (isAdmin[admin]) revert AdminAlreadyExists();
-        isAdmin[admin] = true;
-        _adminList.push(admin);
-        emit AdminAdded(admin);
-    }
-
-    function removeAdmin(address admin) external onlyAdmin {
-        if (!isAdmin[admin]) revert AdminNotFound();
-        if (_adminList.length <= 1) revert CannotRemoveLastAdmin();
-        isAdmin[admin] = false;
-        emit AdminRemoved(admin);
-    }
-
-    function getAdmins() external view returns (address[] memory) {
-        uint256 count = 0;
-        for (uint256 i = 0; i < _adminList.length; i++) {
-            if (isAdmin[_adminList[i]]) count++;
-        }
-        address[] memory result = new address[](count);
-        uint256 j = 0;
-        for (uint256 i = 0; i < _adminList.length; i++) {
-            if (isAdmin[_adminList[i]]) {
-                result[j++] = _adminList[i];
-            }
-        }
-        return result;
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(TEE_OPERATOR, msg.sender);
+        _setRoleAdmin(TEE_OPERATOR, DEFAULT_ADMIN_ROLE);
     }
 
     // ============ TEE Type Management ============
     
-    function addTEEType(uint8 typeId, string calldata name) external onlyAdmin {
+    function addTEEType(uint8 typeId, string calldata name) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (teeTypes[typeId].addedAt != 0) revert TEETypeExists();
         teeTypes[typeId] = TEETypeInfo({
             name: name,
@@ -171,7 +124,7 @@ contract TEERegistry {
         emit TEETypeAdded(typeId, name);
     }
 
-    function deactivateTEEType(uint8 typeId) external onlyAdmin {
+    function deactivateTEEType(uint8 typeId) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (teeTypes[typeId].addedAt == 0) revert TEETypeNotFound();
         teeTypes[typeId].active = false;
         emit TEETypeDeactivated(typeId);
@@ -196,7 +149,7 @@ contract TEERegistry {
         string calldata version,
         bytes32 previousPcrHash,
         uint256 gracePeriod
-    ) external onlyAdmin {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         bytes32 pcrHash = computePCRHash(pcrs);
         
         // Set expiry on previous PCR if provided
@@ -214,7 +167,7 @@ contract TEERegistry {
         emit PCRApproved(pcrHash, version);
     }
 
-    function revokePCR(bytes32 pcrHash) external onlyAdmin {
+    function revokePCR(bytes32 pcrHash) external onlyRole(DEFAULT_ADMIN_ROLE) {
         approvedPCRs[pcrHash].active = false;
         emit PCRRevoked(pcrHash);
     }
@@ -247,7 +200,7 @@ contract TEERegistry {
 
     // ============ Certificate Management ============
     
-    function setAWSRootCertificate(bytes calldata certificate) external onlyAdmin {
+    function setAWSRootCertificate(bytes calldata certificate) external onlyRole(DEFAULT_ADMIN_ROLE) {
         awsRootCertificate = certificate;
         emit AWSCertificateUpdated(keccak256(certificate));
     }
@@ -261,7 +214,7 @@ contract TEERegistry {
         address paymentAddress,
         string calldata endpoint,
         uint8 teeType
-    ) external onlyAdmin returns (bytes32 teeId) {
+    ) external onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
         // Validate TEE type
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
@@ -309,7 +262,7 @@ contract TEERegistry {
     function deactivateTEE(bytes32 teeId) external {
         TEEInfo storage tee = tees[teeId];
         if (tee.registeredAt == 0) revert TEENotFound();
-        if (tee.owner != msg.sender && !isAdmin[msg.sender]) revert NotTEEOwner();
+        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
 
         tee.active = false;
         tee.lastUpdatedAt = block.timestamp;
@@ -320,7 +273,7 @@ contract TEERegistry {
     function activateTEE(bytes32 teeId) external {
         TEEInfo storage tee = tees[teeId];
         if (tee.registeredAt == 0) revert TEENotFound();
-        if (tee.owner != msg.sender && !isAdmin[msg.sender]) revert NotTEEOwner();
+        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
 
         tee.active = true;
         tee.lastUpdatedAt = block.timestamp;
