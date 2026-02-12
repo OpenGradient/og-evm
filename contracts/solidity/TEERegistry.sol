@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./ITEEVerifier.sol";
+import "./precompiles/tee/ITEEVerifier.sol";
 
 /// @title TEERegistry - TEE Registration and Management
 /// @notice Manages TEE lifecycle, calls precompile only for crypto
