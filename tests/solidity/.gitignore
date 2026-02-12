@@ -5,6 +5,7 @@ artifacts/
 # don't track the contracts on evmos directory because these are copied from the precompiles pkg of this repo
 **/precompiles/contracts/evmos/*
 **/precompiles/contracts/cosmos/*
+**/tee/contracts/cosmos/*
 
 # ignore package-lock files (only use yarn.lock)
 package-lock.json
