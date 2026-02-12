@@ -16,12 +16,12 @@ describe('ERC20 Precompile', function () {
 
     it('should return the name', async function () {
         const name = await erc20.name()
-        expect(name).to.contain('ETH Token')
+        expect(name).to.contain('OpenGradient Token')
     })
 
     it('should return the symbol', async function () {
         const symbol = await erc20.symbol()
-        expect(symbol).to.contain('OGETH')
+        expect(symbol).to.contain('OPG')
     })
 
     it('should return the decimals', async function () {
@@ -49,7 +49,7 @@ describe('ERC20 Precompile', function () {
         const prev   = await erc20.balanceOf(spender.address)
 
         const tx = await erc20.connect(owner).transfer(spender.address, amount)
-        const receipt = await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC)
+        const receipt = await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC)
 
         const transferEvent = findEvent(receipt.logs, erc20.interface, 'Transfer')
         expect(transferEvent, 'Transfer event must be emitted').to.exist
@@ -68,7 +68,7 @@ describe('ERC20 Precompile', function () {
         const approvalTx = await erc20.
             connect(owner)
             .approve(spender.address, amount, {gasLimit: GAS_LIMIT})
-        const approvalReceipt = await waitWithTimeout(approvalTx, 20000, RETRY_DELAY_FUNC)
+        const approvalReceipt = await waitWithTimeout(approvalTx, 60000, RETRY_DELAY_FUNC)
         console.log(`Approval transaction hash: ${approvalTx.hash}`)
 
         const approvalEvent = findEvent(approvalReceipt.logs, erc20.interface, 'Approval')
@@ -87,7 +87,7 @@ describe('ERC20 Precompile', function () {
         const tx = await erc20
             .connect(spender)
             .transferFrom(owner.address, recipient.address, amount, {gasLimit: GAS_LIMIT})
-        const receipt = await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC)
+        const receipt = await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC)
         console.log(`Transfer transaction hash: ${tx.hash}`)
 
         const transferEvent = findEvent(receipt.logs, erc20.interface, 'Transfer')

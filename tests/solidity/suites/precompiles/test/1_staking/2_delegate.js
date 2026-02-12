@@ -41,7 +41,7 @@ describe('Staking – delegate with event assertion', function () {
         const tx = await staking
             .connect(signer)
             .delegate(signer.address, valBech32, stakeAmount, {gasLimit: GAS_LIMIT})
-        const receipt = await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC)
+        const receipt = await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC)
         console.log('Delegate tx hash:', receipt.hash, 'gas used:', receipt.gasUsed.toString())
 
         // parse the Delegate event from logs

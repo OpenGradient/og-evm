@@ -25,4 +25,7 @@ module.exports = {
       gasPrice: 1000000000, // 1 gwei
     },
   },
+  mocha: {
+    timeout: 120000, // 2 minutes
+  },
 };

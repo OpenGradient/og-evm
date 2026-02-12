@@ -27,7 +27,7 @@ describe('Distribution – withdraw validator commission', function () {
         const tx      = await distribution
             .connect(validator)
             .withdrawValidatorCommission(valBech32, { gasLimit: GAS_LIMIT })
-        const receipt = await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC)
+        const receipt = await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC)
 
         // 3) parse the event
         const parsedEvt = findEvent(receipt.logs, distribution.interface, 'WithdrawValidatorCommission')

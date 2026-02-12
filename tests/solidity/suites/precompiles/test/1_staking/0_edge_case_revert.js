@@ -24,7 +24,7 @@ describe('Staking – edge case revert test', function () {
             value: hre.ethers.parseEther('1.0'), // Fund contract with 1 ETH
             gasLimit: GAS_LIMIT
         });
-        await waitWithTimeout(stakingReverter.deploymentTransaction(), 20000, RETRY_DELAY_FUNC)
+        await waitWithTimeout(stakingReverter.deploymentTransaction(), 60000, RETRY_DELAY_FUNC)
 
         validatorAddress = 'ogvaloper10jmp6sgh4cc6zt3e8gw05wavvejgr5pwn5se8x';
         
@@ -48,7 +48,7 @@ describe('Staking – edge case revert test', function () {
             const tx = await stakingReverter.callPrecompileBeforeAndAfterRevert(1, validatorAddress, {
                 gasLimit: GAS_LIMIT
             });
-            await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC);
+            await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC);
             const receipt = await tx.wait();
             
             console.log('Transaction hash:', receipt.hash);

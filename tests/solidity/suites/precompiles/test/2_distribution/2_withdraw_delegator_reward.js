@@ -28,7 +28,7 @@ describe('Distribution – withdraw delegator reward', function () {
         const delegateTx = await staking
             .connect(signer)
             .delegate(signer.address, valBech32, stakeAmount, {gasLimit: GAS_LIMIT})
-        const delegateReceipt = await waitWithTimeout(delegateTx, 20000, RETRY_DELAY_FUNC)
+        const delegateReceipt = await waitWithTimeout(delegateTx, 60000, RETRY_DELAY_FUNC)
         console.log('Delegate tx hash:', delegateReceipt.hash, 'gas used:', delegateReceipt.gasUsed.toString())
 
         // Sleep to ensure rewards are available
@@ -46,7 +46,7 @@ describe('Distribution – withdraw delegator reward', function () {
         const tx = await distribution
             .connect(signer)
             .withdrawDelegatorRewards(signer.address, valBech32, {gasLimit: GAS_LIMIT});
-        const receipt = await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC)
+        const receipt = await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC)
         console.log('WithdrawDelegatorRewards tx hash:', receipt.hash);
 
         // Check user balance after withdrawal

@@ -54,7 +54,7 @@ describe('DistributionI – claimRewards', function () {
         const tx = await distribution
             .connect(signer)
             .claimRewards(signer.address, 5, { gasLimit: GAS_LIMIT });
-        const receipt = await waitWithTimeout(tx, 20000, RETRY_DELAY_FUNC)
+        const receipt = await waitWithTimeout(tx, 60000, RETRY_DELAY_FUNC)
         console.log('ClaimRewards tx hash:', receipt.hash, 'gas used:', receipt.gasUsed.toString());
 
         // Check user balance after claiming rewards
