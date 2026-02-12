@@ -9,8 +9,8 @@ on:
       - main
 
 jobs:
-  unit-tests:
-    name: Unit Tests
+  setup:
+    name: Setup and Cache Dependencies
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -22,12 +22,28 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Run unit tests
-        run: make test-unit
+      - name: Download dependencies
+        run: |
+          go mod download
+          cd evmd && go mod download
 
-  evmd-tests:
-    name: EVMD Module Tests
+      - name: Build project
+        run: make build
+
+  go-tests:
+    name: Go Tests
+    needs: setup
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test-type:
+          - name: "Unit Tests"
+            command: "make test-unit"
+          - name: "EVMD Module Tests"
+            command: "make test-evmd"
+          - name: "Race Condition Tests"
+            command: "make test-race"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,27 +54,12 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Run evmd module tests
-        run: make test-evmd
-
-  race-tests:
-    name: Race Condition Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Run race condition tests
-        run: make test-race
+      - name: Run ${{ matrix.test-type.name }}
+        run: ${{ matrix.test-type.command }}
 
   solidity-tests:
     name: Solidity Tests
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -88,6 +89,7 @@ jobs:
 
   rpc-compat-tests:
     name: JSON-RPC Compatibility Tests
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -112,6 +114,7 @@ jobs:
 
   fuzz-tests:
     name: Fuzz Tests
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
