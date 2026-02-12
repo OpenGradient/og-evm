@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "../../../../../contracts/solidity/TEERegistry.sol";
-import "../cosmos/tee/ITEEVerifier.sol";
+import "./cosmos/TEERegistry.sol";
+import "./cosmos/tee/ITEEVerifier.sol";
 
 /// @title TEETestHelper
 /// @notice Helper contract for testing TEERegistry and TEE precompile
