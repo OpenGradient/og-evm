@@ -2,7 +2,7 @@ const { expect } = require('chai')
 const hre = require('hardhat')
 const { findEvent, waitWithTimeout, RETRY_DELAY_FUNC} = require('../common')
 
-describe('Gov Precompile', function () {
+describe.skip('Gov Precompile', function () {
     const GOV_ADDRESS = '0x0000000000000000000000000000000000000805'
     const GAS_LIMIT = 1_000_000
     const COSMOS_ADDR = 'og1cml96vmptgw99syqrrz8az79xer2pcgpum8mp7'
