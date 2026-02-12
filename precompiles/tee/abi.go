@@ -1,33 +1,25 @@
 package tee
 
-// ABI defines the JSON interface for the TEE verifier precompile
-const ABI = `[
-	{
-		"name": "verifyAttestation",
-		"type": "function",
-		"stateMutability": "view",
-		"inputs": [
-			{"name": "attestationDocument", "type": "bytes"},
-			{"name": "signingPublicKey", "type": "bytes"},
-			{"name": "tlsCertificate", "type": "bytes"},
-			{"name": "rootCertificate", "type": "bytes"}
-		],
-		"outputs": [
-			{"name": "valid", "type": "bool"},
-			{"name": "pcrHash", "type": "bytes32"}
-		]
-	},
-	{
-		"name": "verifyRSAPSS",
-		"type": "function",
-		"stateMutability": "view",
-		"inputs": [
-			{"name": "publicKeyDER", "type": "bytes"},
-			{"name": "messageHash", "type": "bytes32"},
-			{"name": "signature", "type": "bytes"}
-		],
-		"outputs": [
-			{"name": "valid", "type": "bool"}
-		]
+import (
+	"bytes"
+
+	_ "embed"
+
+	"github.com/ethereum/go-ethereum/accounts/abi"
+)
+
+var (
+	// Embed abi json file to the executable binary. Needed when importing as dependency.
+	//
+	//go:embed abi.json
+	f   []byte
+	ABI abi.ABI
+)
+
+func init() {
+	var err error
+	ABI, err = abi.JSON(bytes.NewReader(f))
+	if err != nil {
+		panic(err)
 	}
-]`
+}

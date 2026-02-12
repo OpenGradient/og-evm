@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"strings"
 
 	gcrypto "crypto"
 
@@ -48,13 +47,8 @@ type Precompile struct {
 
 // NewPrecompile creates a new TEE verifier precompile
 func NewPrecompile() (*Precompile, error) {
-	parsed, err := abi.JSON(strings.NewReader(ABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %w", err)
-	}
-
 	return &Precompile{
-		abi:     parsed,
+		abi:     ABI,
 		address: common.HexToAddress(AddressHex),
 	}, nil
 }
