@@ -1,7 +1,7 @@
 {
   "name": "tee",
   "version": "1.0.0",
-  "author": "Evmos team",
+  "author": "OpenGradient team",
   "license": "GPL-3.0-or-later",
   "scripts": {
     "get-contracts": "mkdir -p ./contracts/cosmos && rsync -avm --include='*/' --include='*.sol' --exclude='*' ../../../../precompiles/ ./contracts/cosmos/",
