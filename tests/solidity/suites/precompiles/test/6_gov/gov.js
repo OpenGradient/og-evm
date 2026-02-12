@@ -2,6 +2,7 @@ const { expect } = require('chai')
 const hre = require('hardhat')
 const { findEvent, waitWithTimeout, RETRY_DELAY_FUNC} = require('../common')
 
+// TODO: re-enable
 describe.skip('Gov Precompile', function () {
     const GOV_ADDRESS = '0x0000000000000000000000000000000000000805'
     const GAS_LIMIT = 1_000_000
