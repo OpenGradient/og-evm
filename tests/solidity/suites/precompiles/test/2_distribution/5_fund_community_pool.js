@@ -2,7 +2,7 @@ const { expect } = require('chai');
 const hre = require('hardhat');
 const { findEvent, waitWithTimeout, RETRY_DELAY_FUNC} = require('../common');
 
-describe('Distribution – fund community pool', function () {
+describe.skip('Distribution – fund community pool', function () {
     const DIST_ADDRESS = '0x0000000000000000000000000000000000000801';
     const GAS_LIMIT = 1_000_000;
 

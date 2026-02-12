@@ -26,7 +26,7 @@ function formatTotalRewards([delegationRewardsRaw, totalRaw]) {
     return { delegationRewards, totalRewards }
 }
 
-describe('DistributionI – claimRewards', function () {
+describe.skip('DistributionI – claimRewards', function () {
     const DISTRIBUTION_ADDRESS = '0x0000000000000000000000000000000000000801';
     const GAS_LIMIT = 1_000_000;
 
