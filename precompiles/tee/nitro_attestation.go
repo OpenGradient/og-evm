@@ -159,11 +159,27 @@ func VerifyAttestationDocument(
 		return result, err
 	}
 
-	// Step 4: Extract PCRs
+	// Step 4: Extract PCRs (validate keys exist to prevent panic)
+	pcr0, ok := attestDoc.PCRs[0]
+	if !ok {
+		result.ErrorMessage = "missing PCR0 in attestation document"
+		return result, errors.New("missing PCR0")
+	}
+	pcr1, ok := attestDoc.PCRs[1]
+	if !ok {
+		result.ErrorMessage = "missing PCR1 in attestation document"
+		return result, errors.New("missing PCR1")
+	}
+	pcr2, ok := attestDoc.PCRs[2]
+	if !ok {
+		result.ErrorMessage = "missing PCR2 in attestation document"
+		return result, errors.New("missing PCR2")
+	}
+
 	result.PCRs = PCRValues384{
-		PCR0: attestDoc.PCRs[0],
-		PCR1: attestDoc.PCRs[1],
-		PCR2: attestDoc.PCRs[2],
+		PCR0: pcr0,
+		PCR1: pcr1,
+		PCR2: pcr2,
 	}
 
 	// Step 5: Validate nonce (optional)
