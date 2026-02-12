@@ -5,12 +5,15 @@ on:
     types: [labeled]
     branches:
       - main
+  push:
+    branches:
+      - main
 
 jobs:
   setup:
     name: Setup and Cache Dependencies
     runs-on: ubuntu-latest
-    if: github.event.label.name == 'run-ci'
+    if: github.event_name == 'push' || github.event.label.name == 'run-ci'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
