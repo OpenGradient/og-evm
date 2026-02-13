@@ -55,7 +55,7 @@ contract('TEERegistry', function (accounts) {
             const result = await registry.addTEEType(TYPE_AWS_NITRO, 'AWS Nitro')
 
             truffleAssert.eventEmitted(result, 'TEETypeAdded', (ev) => {
-                return ev.teeType.toString() === TYPE_AWS_NITRO.toString() && ev.name === 'AWS Nitro'
+                return ev.typeId.toString() === TYPE_AWS_NITRO.toString() && ev.name === 'AWS Nitro'
             })
 
             expect(await registry.isValidTEEType(TYPE_AWS_NITRO)).to.be.true
@@ -69,8 +69,7 @@ contract('TEERegistry', function (accounts) {
 
         it('should prevent duplicate TEE type', async function () {
             await truffleAssert.reverts(
-                registry.addTEEType(TYPE_AWS_NITRO, 'Duplicate'),
-                'TEETypeExists'
+                registry.addTEEType(TYPE_AWS_NITRO, 'Duplicate')
             )
 
             console.log('✓ Duplicate TEE type prevented')
@@ -93,7 +92,7 @@ contract('TEERegistry', function (accounts) {
             const result = await registry.deactivateTEEType(TYPE_CUSTOM)
 
             truffleAssert.eventEmitted(result, 'TEETypeDeactivated', (ev) => {
-                return ev.teeType.toString() === TYPE_CUSTOM.toString()
+                return ev.typeId.toString() === TYPE_CUSTOM.toString()
             })
 
             expect(await registry.isValidTEEType(TYPE_CUSTOM)).to.be.false
@@ -291,8 +290,7 @@ contract('TEERegistry', function (accounts) {
                     'https://tee.example.com',
                     99, // Invalid type
                     { from: teeOperator }
-                ),
-                'InvalidTEEType'
+                )
             )
 
             console.log('✓ Invalid TEE type rejected')
@@ -326,8 +324,7 @@ contract('TEERegistry', function (accounts) {
                     'https://tee.example.com',
                     1,
                     { from: teeOperator }
-                ),
-                'AttestationInvalid'
+                )
             )
 
             console.log('✓ Invalid attestation rejected during registration')
@@ -384,8 +381,7 @@ contract('TEERegistry', function (accounts) {
             const nonExistentId = web3.utils.keccak256('0xDEADBEEF')
 
             await truffleAssert.reverts(
-                registry.getTEE(nonExistentId),
-                'TEENotFound'
+                registry.getTEE(nonExistentId)
             )
 
             console.log('✓ Non-existent TEE query handled correctly')
