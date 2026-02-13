@@ -101,7 +101,9 @@ contract('TEERegistry', function (accounts) {
         })
 
         it('should list all TEE types', async function () {
-            const [typeIds, infos] = await registry.getTEETypes()
+            const result = await registry.getTEETypes()
+            const typeIds = result.typeIds || result[0]
+            const infos = result.infos || result[1]
 
             expect(typeIds.length).to.be.greaterThan(0)
             expect(infos.length).to.equal(typeIds.length)
@@ -138,7 +140,7 @@ contract('TEERegistry', function (accounts) {
             const pcrInfo = await registry.approvedPCRs(pcrHash)
             expect(pcrInfo.active).to.be.true
             expect(pcrInfo.version).to.equal('v1.0.0')
-            expect(pcrInfo.expiresAt).to.equal(0n)
+            expect(pcrInfo.expiresAt.toString()).to.equal('0')
 
             console.log('✓ PCR approved successfully')
         })
@@ -161,7 +163,7 @@ contract('TEERegistry', function (accounts) {
             expect(await registry.isPCRApproved(pcrHashV2)).to.be.true
 
             const pcrV1Info = await registry.approvedPCRs(pcrHash)
-            expect(pcrV1Info.expiresAt).to.be.greaterThan(0n)
+            expect(pcrV1Info.expiresAt.toNumber()).to.be.greaterThan(0)
 
             console.log('✓ PCR versioning with grace period works')
         })
