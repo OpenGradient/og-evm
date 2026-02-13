@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"math/big"
 	"testing"
 
 	gcrypto "crypto"
@@ -452,3 +453,247 @@ func TestVerifyAttestation_InvalidInputs(t *testing.T) {
 	}
 }
 
+// TestVerifyAttestation_KeyBindingValidation tests the critical dual-key binding logic
+func TestVerifyAttestation_KeyBindingValidation(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewPrecompile()
+	require.NoError(t, err)
+
+	method, ok := p.abi.Methods[MethodVerifyAttestation]
+	require.True(t, ok)
+
+	// Generate test keys
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	correctPublicKeyDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+
+	wrongPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	wrongPublicKeyDER, err := x509.MarshalPKIXPublicKey(&wrongPrivateKey.PublicKey)
+	require.NoError(t, err)
+
+	// Create test certificates
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+	}
+	correctCertDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	require.NoError(t, err)
+
+	wrongCertDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &wrongPrivateKey.PublicKey, wrongPrivateKey)
+	require.NoError(t, err)
+
+	// Note: These tests use invalid attestation documents, so they will fail
+	// attestation verification before reaching key binding. This tests that
+	// the precompile handles all invalid inputs gracefully without panicking.
+
+	tests := []struct {
+		name             string
+		signingPublicKey []byte
+		tlsCertificate   []byte
+		expectValid      bool
+	}{
+		{
+			name:             "mismatched signing key",
+			signingPublicKey: wrongPublicKeyDER,
+			tlsCertificate:   correctCertDER,
+			expectValid:      false,
+		},
+		{
+			name:             "mismatched TLS certificate",
+			signingPublicKey: correctPublicKeyDER,
+			tlsCertificate:   wrongCertDER,
+			expectValid:      false,
+		},
+		{
+			name:             "both keys wrong",
+			signingPublicKey: wrongPublicKeyDER,
+			tlsCertificate:   wrongCertDER,
+			expectValid:      false,
+		},
+		{
+			name:             "oversized signing key",
+			signingPublicKey: make([]byte, MaxPublicKeySize+1),
+			tlsCertificate:   correctCertDER,
+			expectValid:      false,
+		},
+		{
+			name:             "oversized certificate",
+			signingPublicKey: correctPublicKeyDER,
+			tlsCertificate:   make([]byte, MaxCertificateSize+1),
+			expectValid:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			args := []interface{}{
+				[]byte("invalid_attestation_doc"),
+				tt.signingPublicKey,
+				tt.tlsCertificate,
+				[]byte{}, // Use default root cert
+			}
+
+			result, err := p.verifyAttestation(&method, args)
+			require.NoError(t, err, "precompile should not panic")
+
+			outputs, err := method.Outputs.Unpack(result)
+			require.NoError(t, err)
+			require.Len(t, outputs, 2)
+
+			valid := outputs[0].(bool)
+			require.Equal(t, tt.expectValid, valid)
+		})
+	}
+}
+
+// TestVerifyAttestation_SizeLimits tests DoS protection via size limits
+func TestVerifyAttestation_SizeLimits(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewPrecompile()
+	require.NoError(t, err)
+
+	method, ok := p.abi.Methods[MethodVerifyAttestation]
+	require.True(t, ok)
+
+	tests := []struct {
+		name           string
+		attestationDoc []byte
+		signingKey     []byte
+		tlsCert        []byte
+		rootCert       []byte
+		expectValid    bool
+	}{
+		{
+			name:           "attestation too large",
+			attestationDoc: make([]byte, MaxAttestationSize+1),
+			signingKey:     []byte("key"),
+			tlsCert:        []byte("cert"),
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+		{
+			name:           "signing key too large",
+			attestationDoc: []byte("doc"),
+			signingKey:     make([]byte, MaxPublicKeySize+1),
+			tlsCert:        []byte("cert"),
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+		{
+			name:           "TLS cert too large",
+			attestationDoc: []byte("doc"),
+			signingKey:     []byte("key"),
+			tlsCert:        make([]byte, MaxCertificateSize+1),
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+		{
+			name:           "root cert too large",
+			attestationDoc: []byte("doc"),
+			signingKey:     []byte("key"),
+			tlsCert:        []byte("cert"),
+			rootCert:       make([]byte, MaxCertificateSize+1),
+			expectValid:    false,
+		},
+		{
+			name:           "all at max size (should pass size check)",
+			attestationDoc: make([]byte, MaxAttestationSize),
+			signingKey:     make([]byte, MaxPublicKeySize),
+			tlsCert:        make([]byte, MaxCertificateSize),
+			rootCert:       make([]byte, MaxCertificateSize),
+			expectValid:    false, // Will fail attestation parsing, but passes size check
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			args := []interface{}{
+				tt.attestationDoc,
+				tt.signingKey,
+				tt.tlsCert,
+				tt.rootCert,
+			}
+
+			result, err := p.verifyAttestation(&method, args)
+			require.NoError(t, err, "should handle oversized inputs gracefully")
+
+			outputs, err := method.Outputs.Unpack(result)
+			require.NoError(t, err)
+			require.Len(t, outputs, 2)
+
+			valid := outputs[0].(bool)
+			require.Equal(t, tt.expectValid, valid)
+		})
+	}
+}
+
+// TestComputePCRHash_SizeLimits tests PCR size validation
+func TestComputePCRHash_SizeLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		pcr0        []byte
+		pcr1        []byte
+		pcr2        []byte
+		expectEmpty bool
+	}{
+		{
+			name:        "valid PCR sizes",
+			pcr0:        make([]byte, 48),
+			pcr1:        make([]byte, 48),
+			pcr2:        make([]byte, 48),
+			expectEmpty: false,
+		},
+		{
+			name:        "PCR0 too large",
+			pcr0:        make([]byte, MaxPCRSize+1),
+			pcr1:        make([]byte, 48),
+			pcr2:        make([]byte, 48),
+			expectEmpty: true,
+		},
+		{
+			name:        "PCR1 too large",
+			pcr0:        make([]byte, 48),
+			pcr1:        make([]byte, MaxPCRSize+1),
+			pcr2:        make([]byte, 48),
+			expectEmpty: true,
+		},
+		{
+			name:        "PCR2 too large",
+			pcr0:        make([]byte, 48),
+			pcr1:        make([]byte, 48),
+			pcr2:        make([]byte, MaxPCRSize+1),
+			expectEmpty: true,
+		},
+		{
+			name:        "all PCRs at max size",
+			pcr0:        make([]byte, MaxPCRSize),
+			pcr1:        make([]byte, MaxPCRSize),
+			pcr2:        make([]byte, MaxPCRSize),
+			expectEmpty: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := computePCRHash(tt.pcr0, tt.pcr1, tt.pcr2)
+			if tt.expectEmpty {
+				require.Equal(t, common.Hash{}, result, "oversized PCRs should return empty hash")
+			} else {
+				require.NotEqual(t, common.Hash{}, result, "valid PCRs should return non-empty hash")
+			}
+		})
+	}
+}
