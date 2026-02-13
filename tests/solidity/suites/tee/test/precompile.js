@@ -1,25 +1,23 @@
 const { expect } = require('chai')
-const hre = require('hardhat')
 const crypto = require('crypto')
 
-describe('TEE Precompile (0x900)', function () {
+const TEETestHelper = artifacts.require('TEETestHelper')
+
+contract('TEE Precompile (0x900)', function (accounts) {
     const TEE_VERIFIER_ADDRESS = '0x0000000000000000000000000000000000000900'
     const GAS_LIMIT = 10_000_000
 
-    let signer, TEETestHelper, helper
+    let signer, helper
 
     before(async () => {
-        [signer] = await hre.ethers.getSigners()
+        signer = accounts[0]
 
         // Deploy a minimal test helper for direct precompile access
-        const HelperFactory = await hre.ethers.getContractFactory('TEETestHelper')
-
         // We need a dummy registry address for the helper constructor
-        const dummyRegistry = hre.ethers.ZeroAddress
-        helper = await HelperFactory.deploy(dummyRegistry)
-        await helper.waitForDeployment()
+        const dummyRegistry = '0x0000000000000000000000000000000000000000'
+        helper = await TEETestHelper.new(dummyRegistry)
 
-        console.log('TEETestHelper deployed at:', await helper.getAddress())
+        console.log('TEETestHelper deployed at:', helper.address)
     })
 
     describe('verifyRSAPSS', function () {
@@ -47,14 +45,18 @@ describe('TEE Precompile (0x900)', function () {
         it('should verify valid RSA-PSS signature', async function () {
             // Create a message hash (simulating keccak256 from Solidity)
             const message = 'test message'
-            const messageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes(message))
+            const messageHash = web3.utils.keccak256(message)
 
-            // Sign using RSA-PSS with SHA-256
-            // The precompile expects: SHA256(messageHash) signed with RSA-PSS
+            // The precompile will compute SHA256(messageHash) and verify the signature
+            // So we need to sign SHA256(messageHash)
             const messageHashBuffer = Buffer.from(messageHash.slice(2), 'hex')
-            const sha256Hash = crypto.createHash('sha256').update(messageHashBuffer).digest()
 
-            const signature = crypto.sign(null, sha256Hash, {
+            // Use crypto.createSign to properly handle SHA-256 hashing and RSA-PSS signing
+            const sign = crypto.createSign('SHA256')
+            sign.update(messageHashBuffer)  // This will be SHA-256 hashed internally
+            sign.end()
+
+            const signature = sign.sign({
                 key: privateKey,
                 padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
                 saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
@@ -65,58 +67,43 @@ describe('TEE Precompile (0x900)', function () {
             console.log('Message hash:', messageHash)
             console.log('Signature length:', signature.length)
 
-            const result = await helper.testVerifyRSAPSS(publicKeyDER, messageHash, signatureHex)
-            const receipt = await result.wait()
+            const receipt = await helper.testVerifyRSAPSS(publicKeyDER, messageHash, signatureHex)
 
             // Check for the SignatureVerificationResult event
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'SignatureVerificationResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'SignatureVerificationResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.valid).to.be.true
+            expect(event.args.valid).to.be.true
 
             console.log('✓ RSA-PSS signature verified successfully')
         })
 
         it('should reject invalid signature', async function () {
-            const messageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes('test message'))
+            const messageHash = web3.utils.keccak256('test message')
             const invalidSignature = '0x' + Buffer.alloc(256, 0).toString('hex') // All zeros
 
-            const result = await helper.testVerifyRSAPSS(publicKeyDER, messageHash, invalidSignature)
-            const receipt = await result.wait()
+            const receipt = await helper.testVerifyRSAPSS(publicKeyDER, messageHash, invalidSignature)
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'SignatureVerificationResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'SignatureVerificationResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.valid).to.be.false
+            expect(event.args.valid).to.be.false
 
             console.log('✓ Invalid signature rejected correctly')
         })
 
         it('should reject signature with wrong message hash', async function () {
-            const messageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes('test message'))
-            const wrongMessageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes('wrong message'))
+            const messageHash = web3.utils.keccak256('test message')
+            const wrongMessageHash = web3.utils.keccak256('wrong message')
 
             // Sign the correct message
             const messageHashBuffer = Buffer.from(messageHash.slice(2), 'hex')
-            const sha256Hash = crypto.createHash('sha256').update(messageHashBuffer).digest()
 
-            const signature = crypto.sign(null, sha256Hash, {
+            const sign = crypto.createSign('SHA256')
+            sign.update(messageHashBuffer)
+            sign.end()
+
+            const signature = sign.sign({
                 key: privateKey,
                 padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
                 saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
@@ -125,45 +112,27 @@ describe('TEE Precompile (0x900)', function () {
             const signatureHex = '0x' + signature.toString('hex')
 
             // Verify with wrong message hash
-            const result = await helper.testVerifyRSAPSS(publicKeyDER, wrongMessageHash, signatureHex)
-            const receipt = await result.wait()
+            const receipt = await helper.testVerifyRSAPSS(publicKeyDER, wrongMessageHash, signatureHex)
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'SignatureVerificationResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'SignatureVerificationResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.valid).to.be.false
+            expect(event.args.valid).to.be.false
 
             console.log('✓ Signature with wrong message hash rejected')
         })
 
         it('should reject invalid public key format', async function () {
-            const messageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes('test'))
+            const messageHash = web3.utils.keccak256('test')
             const signature = '0x' + Buffer.alloc(256, 0).toString('hex')
             const invalidPublicKey = '0x0102030405' // Invalid DER
 
-            const result = await helper.testVerifyRSAPSS(invalidPublicKey, messageHash, signature)
-            const receipt = await result.wait()
+            const receipt = await helper.testVerifyRSAPSS(invalidPublicKey, messageHash, signature)
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'SignatureVerificationResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'SignatureVerificationResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.valid).to.be.false
+            expect(event.args.valid).to.be.false
 
             console.log('✓ Invalid public key format rejected')
         })
@@ -183,12 +152,15 @@ describe('TEE Precompile (0x900)', function () {
             })
 
             const weakPublicKeyDER = '0x' + weakPubKey.toString('hex')
-            const messageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes('test'))
+            const messageHash = web3.utils.keccak256('test')
 
             const messageHashBuffer = Buffer.from(messageHash.slice(2), 'hex')
-            const sha256Hash = crypto.createHash('sha256').update(messageHashBuffer).digest()
 
-            const signature = crypto.sign(null, sha256Hash, {
+            const sign = crypto.createSign('SHA256')
+            sign.update(messageHashBuffer)
+            sign.end()
+
+            const signature = sign.sign({
                 key: weakPrivKey,
                 padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
                 saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
@@ -196,43 +168,25 @@ describe('TEE Precompile (0x900)', function () {
 
             const signatureHex = '0x' + signature.toString('hex')
 
-            const result = await helper.testVerifyRSAPSS(weakPublicKeyDER, messageHash, signatureHex)
-            const receipt = await result.wait()
+            const receipt = await helper.testVerifyRSAPSS(weakPublicKeyDER, messageHash, signatureHex)
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'SignatureVerificationResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'SignatureVerificationResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.valid).to.be.false
+            expect(event.args.valid).to.be.false
 
             console.log('✓ Weak 1024-bit RSA key rejected (minimum is 2048-bit)')
         })
 
         it('should handle empty inputs gracefully', async function () {
-            const messageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes('test'))
+            const messageHash = web3.utils.keccak256('test')
 
-            const result = await helper.testVerifyRSAPSS('0x', messageHash, '0x')
-            const receipt = await result.wait()
+            const receipt = await helper.testVerifyRSAPSS('0x', messageHash, '0x')
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'SignatureVerificationResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'SignatureVerificationResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.valid).to.be.false
+            expect(event.args.valid).to.be.false
 
             console.log('✓ Empty inputs handled gracefully')
         })
@@ -245,26 +199,17 @@ describe('TEE Precompile (0x900)', function () {
             const dummyCert = '0x0102030405'
             const rootCert = '0x'
 
-            const result = await helper.testVerifyAttestation(
+            const receipt = await helper.testVerifyAttestation(
                 emptyAttestation,
                 dummyKey,
                 dummyCert,
                 rootCert
             )
-            const receipt = await result.wait()
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'PrecompileCallResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'PrecompileCallResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.success).to.be.false
+            expect(event.args.success).to.be.false
 
             console.log('✓ Empty attestation document rejected')
         })
@@ -275,26 +220,17 @@ describe('TEE Precompile (0x900)', function () {
             const dummyCert = '0x0102030405'
             const rootCert = '0x'
 
-            const result = await helper.testVerifyAttestation(
+            const receipt = await helper.testVerifyAttestation(
                 dummyAttestation,
                 emptyKey,
                 dummyCert,
                 rootCert
             )
-            const receipt = await result.wait()
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'PrecompileCallResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'PrecompileCallResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.success).to.be.false
+            expect(event.args.success).to.be.false
 
             console.log('✓ Empty signing public key rejected')
         })
@@ -305,26 +241,17 @@ describe('TEE Precompile (0x900)', function () {
             const emptyCert = '0x'
             const rootCert = '0x'
 
-            const result = await helper.testVerifyAttestation(
+            const receipt = await helper.testVerifyAttestation(
                 dummyAttestation,
                 dummyKey,
                 emptyCert,
                 rootCert
             )
-            const receipt = await result.wait()
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'PrecompileCallResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'PrecompileCallResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.success).to.be.false
+            expect(event.args.success).to.be.false
 
             console.log('✓ Empty TLS certificate rejected')
         })
@@ -335,26 +262,17 @@ describe('TEE Precompile (0x900)', function () {
             const dummyCert = '0x' + Buffer.alloc(100, 0x02).toString('hex')
             const rootCert = '0x'
 
-            const result = await helper.testVerifyAttestation(
+            const receipt = await helper.testVerifyAttestation(
                 invalidAttestation,
                 dummyKey,
                 dummyCert,
                 rootCert
             )
-            const receipt = await result.wait()
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'PrecompileCallResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'PrecompileCallResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.success).to.be.false
+            expect(event.args.success).to.be.false
 
             console.log('✓ Invalid attestation format rejected')
         })
@@ -366,26 +284,17 @@ describe('TEE Precompile (0x900)', function () {
             const normalCert = '0x' + Buffer.alloc(100, 0x02).toString('hex')
             const rootCert = '0x'
 
-            const result = await helper.testVerifyAttestation(
+            const receipt = await helper.testVerifyAttestation(
                 oversizedAttestation,
                 normalKey,
                 normalCert,
                 rootCert
             )
-            const receipt = await result.wait()
 
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = helper.interface.parseLog(log)
-                    return parsed.name === 'PrecompileCallResult'
-                } catch {
-                    return false
-                }
-            })
+            const event = receipt.logs.find(log => log.event === 'PrecompileCallResult')
 
             expect(event).to.not.be.undefined
-            const parsed = helper.interface.parseLog(event)
-            expect(parsed.args.success).to.be.false
+            expect(event.args.success).to.be.false
 
             console.log('✓ Oversized attestation rejected (DoS prevention)')
         })
@@ -412,11 +321,14 @@ describe('TEE Precompile (0x900)', function () {
         })
 
         it('should measure RSA-PSS verification gas usage', async function () {
-            const messageHash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes('test'))
+            const messageHash = web3.utils.keccak256('test')
             const messageHashBuffer = Buffer.from(messageHash.slice(2), 'hex')
-            const sha256Hash = crypto.createHash('sha256').update(messageHashBuffer).digest()
 
-            const signature = crypto.sign(null, sha256Hash, {
+            const sign = crypto.createSign('SHA256')
+            sign.update(messageHashBuffer)
+            sign.end()
+
+            const signature = sign.sign({
                 key: privateKey,
                 padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
                 saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
@@ -424,8 +336,7 @@ describe('TEE Precompile (0x900)', function () {
 
             const signatureHex = '0x' + signature.toString('hex')
 
-            const tx = await helper.estimateRSAPSSGas(publicKeyDER, messageHash, signatureHex)
-            const receipt = await tx.wait()
+            const receipt = await helper.estimateRSAPSSGas(publicKeyDER, messageHash, signatureHex)
 
             console.log('RSA-PSS gas used:', receipt.gasUsed.toString())
             console.log('✓ RSA-PSS gas measurement successful')

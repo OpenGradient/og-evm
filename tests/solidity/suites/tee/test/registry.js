@@ -1,30 +1,28 @@
 const { expect } = require('chai')
-const hre = require('hardhat')
 const crypto = require('crypto')
+const truffleAssert = require('truffle-assertions')
+const TEERegistry = artifacts.require('TEERegistry')
+const TEETestHelper = artifacts.require('TEETestHelper')
 
-describe('TEERegistry', function () {
+contract('TEERegistry', function (accounts) {
     let owner, teeOperator, user1, user2
-    let TEERegistry, registry, TEETestHelper, helper
+    let registry, helper
 
     before(async () => {
-        [owner, teeOperator, user1, user2] = await hre.ethers.getSigners()
+        [owner, teeOperator, user1, user2] = accounts
 
         // Deploy TEERegistry
-        const RegistryFactory = await hre.ethers.getContractFactory('TEERegistry')
-        registry = await RegistryFactory.deploy()
-        await registry.waitForDeployment()
+        registry = await TEERegistry.new()
 
         // Deploy test helper
-        const HelperFactory = await hre.ethers.getContractFactory('TEETestHelper')
-        helper = await HelperFactory.deploy(await registry.getAddress())
-        await helper.waitForDeployment()
+        helper = await TEETestHelper.new(registry.address)
 
-        console.log('TEERegistry deployed at:', await registry.getAddress())
-        console.log('TEETestHelper deployed at:', await helper.getAddress())
+        console.log('TEERegistry deployed at:', registry.address)
+        console.log('TEETestHelper deployed at:', helper.address)
 
         // Grant TEE_OPERATOR role to teeOperator account
         const TEE_OPERATOR_ROLE = await registry.TEE_OPERATOR()
-        await registry.grantRole(TEE_OPERATOR_ROLE, teeOperator.address)
+        await registry.grantRole(TEE_OPERATOR_ROLE, teeOperator)
 
         console.log('Setup complete')
     })
@@ -34,9 +32,9 @@ describe('TEERegistry', function () {
             const DEFAULT_ADMIN_ROLE = await registry.DEFAULT_ADMIN_ROLE()
             const TEE_OPERATOR_ROLE = await registry.TEE_OPERATOR()
 
-            expect(await registry.hasRole(DEFAULT_ADMIN_ROLE, owner.address)).to.be.true
-            expect(await registry.hasRole(TEE_OPERATOR_ROLE, owner.address)).to.be.true
-            expect(await registry.hasRole(TEE_OPERATOR_ROLE, teeOperator.address)).to.be.true
+            expect(await registry.hasRole(DEFAULT_ADMIN_ROLE, owner)).to.be.true
+            expect(await registry.hasRole(TEE_OPERATOR_ROLE, owner)).to.be.true
+            expect(await registry.hasRole(TEE_OPERATOR_ROLE, teeOperator)).to.be.true
 
             console.log('✓ Roles initialized correctly')
         })
@@ -54,9 +52,11 @@ describe('TEERegistry', function () {
         const TYPE_CUSTOM = 2
 
         it('should allow admin to add TEE type', async function () {
-            await expect(registry.addTEEType(TYPE_AWS_NITRO, 'AWS Nitro'))
-                .to.emit(registry, 'TEETypeAdded')
-                .withArgs(TYPE_AWS_NITRO, 'AWS Nitro')
+            const result = await registry.addTEEType(TYPE_AWS_NITRO, 'AWS Nitro')
+
+            truffleAssert.eventEmitted(result, 'TEETypeAdded', (ev) => {
+                return ev.teeType.toString() === TYPE_AWS_NITRO.toString() && ev.name === 'AWS Nitro'
+            })
 
             expect(await registry.isValidTEEType(TYPE_AWS_NITRO)).to.be.true
 
@@ -68,8 +68,10 @@ describe('TEERegistry', function () {
         })
 
         it('should prevent duplicate TEE type', async function () {
-            await expect(registry.addTEEType(TYPE_AWS_NITRO, 'Duplicate'))
-                .to.be.revertedWithCustomError(registry, 'TEETypeExists')
+            await truffleAssert.reverts(
+                registry.addTEEType(TYPE_AWS_NITRO, 'Duplicate'),
+                'TEETypeExists'
+            )
 
             console.log('✓ Duplicate TEE type prevented')
         })
@@ -77,9 +79,9 @@ describe('TEERegistry', function () {
         it('should reject non-admin adding TEE type', async function () {
             const DEFAULT_ADMIN_ROLE = await registry.DEFAULT_ADMIN_ROLE()
 
-            await expect(
-                registry.connect(user1).addTEEType(99, 'Unauthorized')
-            ).to.be.reverted
+            await truffleAssert.reverts(
+                registry.addTEEType(99, 'Unauthorized', { from: user1 })
+            )
 
             console.log('✓ Non-admin cannot add TEE type')
         })
@@ -88,9 +90,11 @@ describe('TEERegistry', function () {
             await registry.addTEEType(TYPE_CUSTOM, 'Custom TEE')
             expect(await registry.isValidTEEType(TYPE_CUSTOM)).to.be.true
 
-            await expect(registry.deactivateTEEType(TYPE_CUSTOM))
-                .to.emit(registry, 'TEETypeDeactivated')
-                .withArgs(TYPE_CUSTOM)
+            const result = await registry.deactivateTEEType(TYPE_CUSTOM)
+
+            truffleAssert.eventEmitted(result, 'TEETypeDeactivated', (ev) => {
+                return ev.teeType.toString() === TYPE_CUSTOM.toString()
+            })
 
             expect(await registry.isValidTEEType(TYPE_CUSTOM)).to.be.false
 
@@ -124,11 +128,11 @@ describe('TEERegistry', function () {
         })
 
         it('should allow admin to approve PCR', async function () {
-            await expect(
-                registry.approvePCR(pcrs, 'v1.0.0', hre.ethers.ZeroHash, 0)
-            )
-                .to.emit(registry, 'PCRApproved')
-                .withArgs(pcrHash, 'v1.0.0')
+            const result = await registry.approvePCR(pcrs, 'v1.0.0', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
+
+            truffleAssert.eventEmitted(result, 'PCRApproved', (ev) => {
+                return ev.pcrHash === pcrHash && ev.version === 'v1.0.0'
+            })
 
             expect(await registry.isPCRApproved(pcrHash)).to.be.true
 
@@ -172,12 +176,14 @@ describe('TEERegistry', function () {
 
             const pcrHashRevoke = await registry.computePCRHash(pcrsRevoke)
 
-            await registry.approvePCR(pcrsRevoke, 'v1.0.0-revoke', hre.ethers.ZeroHash, 0)
+            await registry.approvePCR(pcrsRevoke, 'v1.0.0-revoke', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
             expect(await registry.isPCRApproved(pcrHashRevoke)).to.be.true
 
-            await expect(registry.revokePCR(pcrHashRevoke))
-                .to.emit(registry, 'PCRRevoked')
-                .withArgs(pcrHashRevoke)
+            const result = await registry.revokePCR(pcrHashRevoke)
+
+            truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
+                return ev.pcrHash === pcrHashRevoke
+            })
 
             expect(await registry.isPCRApproved(pcrHashRevoke)).to.be.false
 
@@ -199,9 +205,9 @@ describe('TEERegistry', function () {
                 pcr2: '0x0C'
             }
 
-            await expect(
-                registry.connect(user1).approvePCR(pcrsUnauth, 'unauthorized', hre.ethers.ZeroHash, 0)
-            ).to.be.reverted
+            await truffleAssert.reverts(
+                registry.approvePCR(pcrsUnauth, 'unauthorized', '0x0000000000000000000000000000000000000000000000000000000000000000', 0, { from: user1 })
+            )
 
             console.log('✓ Non-admin cannot approve PCR')
         })
@@ -210,11 +216,13 @@ describe('TEERegistry', function () {
     describe('Certificate Management', function () {
         it('should allow admin to set AWS root certificate', async function () {
             const certData = '0x' + Buffer.from('AWS ROOT CERT', 'utf8').toString('hex')
-            const certHash = hre.ethers.keccak256(certData)
+            const certHash = web3.utils.keccak256(certData)
 
-            await expect(registry.setAWSRootCertificate(certData))
-                .to.emit(registry, 'AWSCertificateUpdated')
-                .withArgs(certHash)
+            const result = await registry.setAWSRootCertificate(certData)
+
+            truffleAssert.eventEmitted(result, 'AWSCertificateUpdated', (ev) => {
+                return ev.certHash === certHash
+            })
 
             const storedCert = await registry.awsRootCertificate()
             expect(storedCert).to.equal(certData)
@@ -225,9 +233,9 @@ describe('TEERegistry', function () {
         it('should reject non-admin setting certificate', async function () {
             const certData = '0x0102030405'
 
-            await expect(
-                registry.connect(user1).setAWSRootCertificate(certData)
-            ).to.be.reverted
+            await truffleAssert.reverts(
+                registry.setAWSRootCertificate(certData, { from: user1 })
+            )
 
             console.log('✓ Non-admin cannot set certificate')
         })
@@ -255,16 +263,17 @@ describe('TEERegistry', function () {
             const dummyAttestation = '0x0102030405'
             const dummyCert = '0x0607080910'
 
-            await expect(
-                registry.connect(user1).registerTEEWithAttestation(
+            await truffleAssert.reverts(
+                registry.registerTEEWithAttestation(
                     dummyAttestation,
                     publicKey,
                     dummyCert,
-                    user1.address,
+                    user1,
                     'https://tee.example.com',
-                    1
+                    1,
+                    { from: user1 }
                 )
-            ).to.be.reverted
+            )
 
             console.log('✓ Non-operator cannot register TEE')
         })
@@ -273,16 +282,18 @@ describe('TEERegistry', function () {
             const dummyAttestation = '0x0102030405'
             const dummyCert = '0x0607080910'
 
-            await expect(
-                registry.connect(teeOperator).registerTEEWithAttestation(
+            await truffleAssert.reverts(
+                registry.registerTEEWithAttestation(
                     dummyAttestation,
                     publicKey,
                     dummyCert,
-                    teeOperator.address,
+                    teeOperator,
                     'https://tee.example.com',
-                    99 // Invalid type
-                )
-            ).to.be.revertedWithCustomError(registry, 'InvalidTEEType')
+                    99, // Invalid type
+                    { from: teeOperator }
+                ),
+                'InvalidTEEType'
+            )
 
             console.log('✓ Invalid TEE type rejected')
         })
@@ -294,7 +305,7 @@ describe('TEERegistry', function () {
                 pcr1: '0x' + Buffer.alloc(48, 0x02).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0x03).toString('hex')
             }
-            await registry.approvePCR(pcrs, 'v1.0.0', hre.ethers.ZeroHash, 0)
+            await registry.approvePCR(pcrs, 'v1.0.0', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
 
             // Add TEE type if not exists
             try {
@@ -306,16 +317,18 @@ describe('TEERegistry', function () {
             const invalidAttestation = '0x' + Buffer.alloc(100, 0xFF).toString('hex')
             const dummyCert = '0x' + Buffer.alloc(100, 0xAA).toString('hex')
 
-            await expect(
-                registry.connect(teeOperator).registerTEEWithAttestation(
+            await truffleAssert.reverts(
+                registry.registerTEEWithAttestation(
                     invalidAttestation,
                     publicKey,
                     dummyCert,
-                    teeOperator.address,
+                    teeOperator,
                     'https://tee.example.com',
-                    1
-                )
-            ).to.be.revertedWithCustomError(registry, 'AttestationInvalid')
+                    1,
+                    { from: teeOperator }
+                ),
+                'AttestationInvalid'
+            )
 
             console.log('✓ Invalid attestation rejected during registration')
         })
@@ -324,7 +337,7 @@ describe('TEERegistry', function () {
     describe('Query Functions', function () {
         it('should compute TEE ID correctly', async function () {
             const testKey = '0x0102030405'
-            const expectedId = hre.ethers.keccak256(testKey)
+            const expectedId = web3.utils.keccak256(testKey)
 
             const computedId = await registry.computeTEEId(testKey)
             expect(computedId).to.equal(expectedId)
@@ -339,8 +352,8 @@ describe('TEERegistry', function () {
                 pcr2: '0x03'
             }
 
-            const expectedHash = hre.ethers.keccak256(
-                hre.ethers.concat([pcrs.pcr0, pcrs.pcr1, pcrs.pcr2])
+            const expectedHash = web3.utils.keccak256(
+                pcrs.pcr0 + pcrs.pcr1.slice(2) + pcrs.pcr2.slice(2)
             )
 
             const computedHash = await registry.computePCRHash(pcrs)
@@ -350,12 +363,12 @@ describe('TEERegistry', function () {
         })
 
         it('should compute message hash correctly', async function () {
-            const inputHash = hre.ethers.keccak256('0x01')
-            const outputHash = hre.ethers.keccak256('0x02')
+            const inputHash = web3.utils.keccak256('0x01')
+            const outputHash = web3.utils.keccak256('0x02')
             const timestamp = Math.floor(Date.now() / 1000)
 
-            const expectedHash = hre.ethers.keccak256(
-                hre.ethers.solidityPacked(
+            const expectedHash = web3.utils.keccak256(
+                web3.eth.abi.encodeParameters(
                     ['bytes32', 'bytes32', 'uint256'],
                     [inputHash, outputHash, timestamp]
                 )
@@ -368,16 +381,18 @@ describe('TEERegistry', function () {
         })
 
         it('should handle getTEE for non-existent TEE', async function () {
-            const nonExistentId = hre.ethers.keccak256('0xDEADBEEF')
+            const nonExistentId = web3.utils.keccak256('0xDEADBEEF')
 
-            await expect(registry.getTEE(nonExistentId))
-                .to.be.revertedWithCustomError(registry, 'TEENotFound')
+            await truffleAssert.reverts(
+                registry.getTEE(nonExistentId),
+                'TEENotFound'
+            )
 
             console.log('✓ Non-existent TEE query handled correctly')
         })
 
         it('should return empty arrays for new owner', async function () {
-            const tees = await registry.getTEEsByOwner(user2.address)
+            const tees = await registry.getTEEsByOwner(user2)
             expect(tees.length).to.equal(0)
 
             console.log('✓ Empty TEE array returned for new owner')
@@ -394,21 +409,23 @@ describe('TEERegistry', function () {
     describe('Access Control', function () {
         it('should enforce DEFAULT_ADMIN_ROLE for sensitive operations', async function () {
             // Test various admin-only functions
-            await expect(registry.connect(user1).addTEEType(99, 'Test'))
-                .to.be.reverted
+            await truffleAssert.reverts(
+                registry.addTEEType(99, 'Test', { from: user1 })
+            )
 
-            await expect(
-                registry.connect(user1).approvePCR(
+            await truffleAssert.reverts(
+                registry.approvePCR(
                     { pcr0: '0x01', pcr1: '0x02', pcr2: '0x03' },
                     'v1',
-                    hre.ethers.ZeroHash,
-                    0
+                    '0x0000000000000000000000000000000000000000000000000000000000000000',
+                    0,
+                    { from: user1 }
                 )
-            ).to.be.reverted
+            )
 
-            await expect(
-                registry.connect(user1).setAWSRootCertificate('0x01')
-            ).to.be.reverted
+            await truffleAssert.reverts(
+                registry.setAWSRootCertificate('0x01', { from: user1 })
+            )
 
             console.log('✓ Admin role enforced correctly')
         })
@@ -417,12 +434,12 @@ describe('TEERegistry', function () {
             const TEE_OPERATOR_ROLE = await registry.TEE_OPERATOR()
 
             // Grant role
-            await registry.grantRole(TEE_OPERATOR_ROLE, user1.address)
-            expect(await registry.hasRole(TEE_OPERATOR_ROLE, user1.address)).to.be.true
+            await registry.grantRole(TEE_OPERATOR_ROLE, user1)
+            expect(await registry.hasRole(TEE_OPERATOR_ROLE, user1)).to.be.true
 
             // Revoke role
-            await registry.revokeRole(TEE_OPERATOR_ROLE, user1.address)
-            expect(await registry.hasRole(TEE_OPERATOR_ROLE, user1.address)).to.be.false
+            await registry.revokeRole(TEE_OPERATOR_ROLE, user1)
+            expect(await registry.hasRole(TEE_OPERATOR_ROLE, user1)).to.be.false
 
             console.log('✓ Role management works correctly')
         })
