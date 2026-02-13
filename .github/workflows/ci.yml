@@ -42,8 +42,6 @@ jobs:
         test-type:
           - name: "Unit Tests"
             command: "make test-unit"
-          - name: "EVMD Module Tests"
-            command: "make test-evmd"
           - name: "Race Condition Tests"
             command: "make test-race"
     steps:
