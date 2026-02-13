@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"time"
 
 	gcrypto "crypto"
 
@@ -166,8 +167,11 @@ func (p *Precompile) verifyAttestation(method *abi.Method, args []interface{}) (
 	// Convert attestation to base64 (expected format)
 	attestationBase64 := base64.StdEncoding.EncodeToString(attestationDoc)
 
+	// Use block timestamp for deterministic certificate validation across all nodes
+	blockTime := time.Unix(int64(evm.Context.Time), 0)
+
 	// Verify attestation document using imported verification logic
-	result, err := VerifyAttestationDocument(attestationBase64, rootCertificate, nil, nil)
+	result, err := VerifyAttestationDocument(attestationBase64, rootCertificate, nil, &blockTime)
 	if err != nil {
 		return method.Outputs.Pack(false, common.Hash{})
 	}
