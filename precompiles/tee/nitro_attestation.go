@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 )
@@ -126,10 +127,12 @@ func ParseNitridingUserData(userData []byte) (*NitridingKeyHashes, error) {
 // ============================================================================
 
 // VerifyAttestationDocument performs full attestation verification using provided root cert
+// If currentTime is nil, uses system time for certificate validation. Set to a specific time for testing.
 func VerifyAttestationDocument(
 	attestationBase64 string,
 	rootCertPEM []byte,
 	expectedNonce []byte,
+	currentTime *time.Time,
 ) (*AttestationResult, error) {
 	result := &AttestationResult{Valid: false}
 
@@ -203,7 +206,7 @@ func VerifyAttestationDocument(
 	}
 
 	// Step 7: Validate certificate chain using provided root cert
-	if err := validateCertificateChain(signingCert, attestDoc.CABundle, rootCertPEM); err != nil {
+	if err := validateCertificateChain(signingCert, attestDoc.CABundle, rootCertPEM, currentTime); err != nil {
 		result.ErrorMessage = fmt.Sprintf("cert chain validation failed: %v", err)
 		return result, err
 	}
@@ -221,9 +224,10 @@ func VerifyAttestationWithPCRCheck(
 	rootCertPEM []byte,
 	expectedPCRs PCRValues384,
 	expectedNonce []byte,
+	currentTime *time.Time,
 ) (*AttestationResult, error) {
 	// First verify attestation
-	result, err := VerifyAttestationDocument(attestationBase64, rootCertPEM, expectedNonce)
+	result, err := VerifyAttestationDocument(attestationBase64, rootCertPEM, expectedNonce, currentTime)
 	if err != nil {
 		return result, err
 	}
@@ -245,8 +249,9 @@ func VerifyAttestationWithPCRCheck(
 func VerifyAttestationWithDefaultCert(
 	attestationBase64 string,
 	expectedNonce []byte,
+	currentTime *time.Time,
 ) (*AttestationResult, error) {
-	return VerifyAttestationDocument(attestationBase64, DefaultAWSNitroRootCertPEM, expectedNonce)
+	return VerifyAttestationDocument(attestationBase64, DefaultAWSNitroRootCertPEM, expectedNonce, currentTime)
 }
 
 // ValidateRootCertificate checks if a certificate is valid PEM format
@@ -418,7 +423,7 @@ func verifyCOSESignatureES384(msg *COSESign1Message, cert *x509.Certificate) err
 }
 
 // validateCertificateChain validates the signing certificate against provided root
-func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte, rootCertPEM []byte) error {
+func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte, rootCertPEM []byte, currentTime *time.Time) error {
 	// Parse root certificate
 	rootPool := x509.NewCertPool()
 	if !rootPool.AppendCertsFromPEM(rootCertPEM) {
@@ -435,11 +440,19 @@ func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte, 
 		intermediatePool.AddCert(cert)
 	}
 
-	// Verify certificate chain
-	_, err := signingCert.Verify(x509.VerifyOptions{
+	// Build verification options
+	verifyOpts := x509.VerifyOptions{
 		Roots:         rootPool,
 		Intermediates: intermediatePool,
-	})
+	}
+
+	// If currentTime is set, use it for certificate validation (useful for testing)
+	if currentTime != nil {
+		verifyOpts.CurrentTime = *currentTime
+	}
+
+	// Verify certificate chain
+	_, err := signingCert.Verify(verifyOpts)
 	if err != nil {
 		return fmt.Errorf("certificate chain verification: %w", err)
 	}

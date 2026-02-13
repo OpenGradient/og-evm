@@ -167,7 +167,7 @@ func (p *Precompile) verifyAttestation(method *abi.Method, args []interface{}) (
 	attestationBase64 := base64.StdEncoding.EncodeToString(attestationDoc)
 
 	// Verify attestation document using imported verification logic
-	result, err := VerifyAttestationDocument(attestationBase64, rootCertificate, nil)
+	result, err := VerifyAttestationDocument(attestationBase64, rootCertificate, nil, nil)
 	if err != nil {
 		return method.Outputs.Pack(false, common.Hash{})
 	}

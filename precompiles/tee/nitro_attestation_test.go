@@ -4,6 +4,7 @@ package tee
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -16,8 +17,12 @@ func TestParseProductionAttestation(t *testing.T) {
 	// Convert to string (it's already base64)
 	attestationBase64 := string(attestationBase64Bytes)
 
+	// Use a fixed time for certificate validation to avoid expiration issues in tests
+	// Certificate is valid between 2026-02-12T17:55:59Z and 2026-02-12T20:56:02Z
+	testTime := time.Date(2026, 2, 12, 19, 0, 0, 0, time.UTC)
+
 	// Verify and parse the attestation document
-	result, err := VerifyAttestationDocument(attestationBase64, nil, nil)
+	result, err := VerifyAttestationDocument(attestationBase64, nil, nil, &testTime)
 	require.NoError(t, err)
 
 	t.Logf("\n=== PRODUCTION ATTESTATION DOCUMENT ===")
