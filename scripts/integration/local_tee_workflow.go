@@ -503,7 +503,7 @@ func deployContract(from string, bytecode []byte) (string, error) {
 	}
 	json.Unmarshal(resp, &result)
 	if result.Error != nil {
-		return "", fmt.Errorf(result.Error.Message)
+		return "", fmt.Errorf("%s", result.Error.Message)
 	}
 	return result.Result, nil
 }
@@ -973,7 +973,7 @@ func ethCall(data []byte) ([]byte, error) {
 	}
 	json.Unmarshal(resp, &result)
 	if result.Error != nil {
-		return nil, fmt.Errorf(result.Error.Message)
+		return nil, fmt.Errorf("%s", result.Error.Message)
 	}
 	if len(result.Result) > 2 {
 		return hex.DecodeString(result.Result[2:])
