@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"math/big"
 	"testing"
+	"time"
 
 	gcrypto "crypto"
 
@@ -15,6 +16,15 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
+
+// newMockEVM creates a minimal EVM context for testing with a specific timestamp
+func newMockEVM(timestamp time.Time) *vm.EVM {
+	return &vm.EVM{
+		Context: vm.BlockContext{
+			Time: uint64(timestamp.Unix()),
+		},
+	}
+}
 
 func TestComputePCRHash(t *testing.T) {
 	t.Parallel()
@@ -439,7 +449,8 @@ func TestVerifyAttestation_InvalidInputs(t *testing.T) {
 				tt.rootCertificate,
 			}
 
-			result, err := p.verifyAttestation(&method, args)
+			mockEVM := newMockEVM(time.Now())
+		result, err := p.verifyAttestation(mockEVM, &method, args)
 			require.NoError(t, err)
 
 			// Unpack result
@@ -539,7 +550,8 @@ func TestVerifyAttestation_KeyBindingValidation(t *testing.T) {
 				[]byte{}, // Use default root cert
 			}
 
-			result, err := p.verifyAttestation(&method, args)
+			mockEVM := newMockEVM(time.Now())
+		result, err := p.verifyAttestation(mockEVM, &method, args)
 			require.NoError(t, err, "precompile should not panic")
 
 			outputs, err := method.Outputs.Unpack(result)
@@ -623,7 +635,8 @@ func TestVerifyAttestation_SizeLimits(t *testing.T) {
 				tt.rootCert,
 			}
 
-			result, err := p.verifyAttestation(&method, args)
+			mockEVM := newMockEVM(time.Now())
+		result, err := p.verifyAttestation(mockEVM, &method, args)
 			require.NoError(t, err, "should handle oversized inputs gracefully")
 
 			outputs, err := method.Outputs.Unpack(result)
