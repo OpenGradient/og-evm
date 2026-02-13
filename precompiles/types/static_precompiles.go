@@ -9,6 +9,7 @@ import (
 
 	ibcutils "github.com/cosmos/evm/ibc"
 	bankprecompile "github.com/cosmos/evm/precompiles/bank"
+
 	"github.com/cosmos/evm/precompiles/bech32"
 	cmn "github.com/cosmos/evm/precompiles/common"
 	distprecompile "github.com/cosmos/evm/precompiles/distribution"
@@ -18,6 +19,8 @@ import (
 	"github.com/cosmos/evm/precompiles/p256"
 	slashingprecompile "github.com/cosmos/evm/precompiles/slashing"
 	stakingprecompile "github.com/cosmos/evm/precompiles/staking"
+	teeprecompile "github.com/cosmos/evm/precompiles/tee"
+
 	erc20Keeper "github.com/cosmos/evm/x/erc20/keeper"
 	transferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
 	channelkeeper "github.com/cosmos/ibc-go/v10/modules/core/04-channel/keeper"
@@ -182,5 +185,16 @@ func (s StaticPrecompiles) WithSlashingPrecompile(
 	)
 
 	s[slashingPrecompile.Address()] = slashingPrecompile
+	return s
+}
+
+func (s StaticPrecompiles) WithTEEPrecompile() StaticPrecompiles {
+	fmt.Println("=== REGISTERING TEE PRECOMPILE ===")
+	teePrecompile, err := teeprecompile.NewPrecompile()
+	if err != nil {
+		panic(fmt.Errorf("failed to instantiate TEE precompile: %w", err))
+	}
+	fmt.Printf("TEE Address: %s\n", teePrecompile.Address().Hex())
+	s[teePrecompile.Address()] = teePrecompile
 	return s
 }
