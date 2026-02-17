@@ -56,6 +56,7 @@ type AttestationResult struct {
 	PublicKey    []byte
 	UserData     []byte
 	PCRs         PCRValues384
+	Timestamp    uint64
 	ErrorMessage string
 }
 
@@ -185,7 +186,10 @@ func VerifyAttestationDocument(
 		PCR2: pcr2,
 	}
 
-	// Step 5: Validate nonce (optional)
+	// Step 5: Store timestamp for replay protection
+	result.Timestamp = attestDoc.Timestamp
+
+	// Step 6: Validate nonce (optional)
 	if len(expectedNonce) > 0 {
 		if err := validateNonce(attestDoc.Nonce, expectedNonce); err != nil {
 			result.ErrorMessage = fmt.Sprintf("nonce validation failed: %v", err)
@@ -193,7 +197,7 @@ func VerifyAttestationDocument(
 		}
 	}
 
-	// Step 6: Verify COSE signature
+	// Step 7: Verify COSE signature
 	signingCert, err := x509.ParseCertificate(attestDoc.Certificate)
 	if err != nil {
 		result.ErrorMessage = fmt.Sprintf("cert parse failed: %v", err)
@@ -205,7 +209,7 @@ func VerifyAttestationDocument(
 		return result, err
 	}
 
-	// Step 7: Validate certificate chain using provided root cert
+	// Step 8: Validate certificate chain using provided root cert
 	if err := validateCertificateChain(signingCert, attestDoc.CABundle, rootCertPEM, currentTime); err != nil {
 		result.ErrorMessage = fmt.Sprintf("cert chain validation failed: %v", err)
 		return result, err
@@ -446,7 +450,6 @@ func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte, 
 		Intermediates: intermediatePool,
 	}
 
-	// If currentTime is set, use it for certificate validation (useful for testing)
 	if currentTime != nil {
 		verifyOpts.CurrentTime = *currentTime
 	}
