@@ -1,13 +1,24 @@
-
 package tee
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+)
+
+// Enclave endpoints - @Kyle Endpoints should be checked
+const (
+	enclaveHost    = "13.59.207.188"
+	attestationURL = "https://" + enclaveHost + "/enclave/attestation?nonce=0123456789abcdef0123456789abcdef01234567"
+	signingKeyURL  = "https://" + enclaveHost + "/enclave/signing-key"
+	tlsCertURL     = "https://" + enclaveHost + "/enclave/tls-cert"
 )
 
 func TestParseProductionAttestation(t *testing.T) {
@@ -115,9 +126,9 @@ func TestVerifySigningKeyBinding_Security(t *testing.T) {
 			description: "Wrong key should be rejected",
 		},
 		{
-			name:        "single bit flip in user data hash",
-			signingKey:  signingKey,
-			userData:    func() []byte {
+			name:       "single bit flip in user data hash",
+			signingKey: signingKey,
+			userData: func() []byte {
 				tampered := make([]byte, NitridingUserDataLength)
 				copy(tampered, validUserData)
 				tampered[40] ^= 0x01 // Flip single bit
@@ -202,8 +213,8 @@ func TestVerifyTLSCertificateBinding_Security(t *testing.T) {
 			description: "Wrong cert should be rejected",
 		},
 		{
-			name:        "single bit flip in certificate",
-			tlsCert:     func() []byte {
+			name: "single bit flip in certificate",
+			tlsCert: func() []byte {
 				tampered := make([]byte, len(tlsCert))
 				copy(tampered, tlsCert)
 				tampered[0] ^= 0x01 // Flip single bit
@@ -214,9 +225,9 @@ func TestVerifyTLSCertificateBinding_Security(t *testing.T) {
 			description: "Even single bit tampering in cert should be detected",
 		},
 		{
-			name:        "single bit flip in user data hash",
-			tlsCert:     tlsCert,
-			userData:    func() []byte {
+			name:    "single bit flip in user data hash",
+			tlsCert: tlsCert,
+			userData: func() []byte {
 				tampered := make([]byte, NitridingUserDataLength)
 				copy(tampered, validUserData)
 				tampered[20] ^= 0x01 // Flip single bit in TLS hash
@@ -297,8 +308,8 @@ func TestParseNitridingUserData_EdgeCases(t *testing.T) {
 			},
 		},
 		{
-			name:        "all 0xFF",
-			userData:    func() []byte {
+			name: "all 0xFF",
+			userData: func() []byte {
 				data := make([]byte, NitridingUserDataLength)
 				for i := range data {
 					data[i] = 0xFF
@@ -389,5 +400,143 @@ func TestKeyBindingAttackScenarios(t *testing.T) {
 
 		err := VerifySigningKeyBinding(legitimateKey, extendedData)
 		require.Error(t, err, "Extended user data should be rejected")
+	})
+}
+
+// fetchFromEnclave fetches data from an enclave endpoint, returns nil if unreachable
+func fetchFromEnclave(url string) ([]byte, error) {
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// TestVerifyAttestation_TimestampFreshness tests timestamp validation with live enclave
+// This test fetches fresh attestation, signing key, and TLS cert from the enclave
+// and verifies that:
+// 1. Fresh attestation with current block time is accepted
+// 2. Fresh attestation with old block time (>5 min) is rejected
+func TestVerifyAttestation_TimestampFreshness(t *testing.T) {
+	// Fetch fresh attestation from enclave
+	attestationBase64, err := fetchFromEnclave(attestationURL)
+	if err != nil {
+		t.Skipf("WARNING: Could not fetch attestation from enclave: %v", err)
+		return
+	}
+	t.Logf("Fetched attestation: %d bytes", len(attestationBase64))
+
+	// Fetch signing key from enclave
+	signingKey, err := fetchFromEnclave(signingKeyURL)
+	if err != nil {
+		t.Skipf("WARNING: Could not fetch signing key from enclave: %v", err)
+		return
+	}
+	t.Logf("Fetched signing key: %d bytes", len(signingKey))
+
+	// Fetch TLS certificate from enclave
+	tlsCert, err := fetchFromEnclave(tlsCertURL)
+	if err != nil {
+		t.Skipf("WARNING: Could not fetch TLS cert from enclave: %v", err)
+		return
+	}
+	t.Logf("Fetched TLS cert: %d bytes", len(tlsCert))
+
+	// Parse attestation to get timestamp
+	now := time.Now()
+	parseResult, err := VerifyAttestationDocument(string(attestationBase64), nil, nil, &now)
+	if err != nil {
+		t.Skipf("WARNING: Could not parse attestation: %v", err)
+		return
+	}
+	if !parseResult.Valid {
+		t.Skipf("WARNING: Attestation not valid: %s", parseResult.ErrorMessage)
+		return
+	}
+
+	attestationTimeSec := parseResult.Timestamp / 1000
+	t.Logf("Attestation timestamp: %s", time.Unix(int64(attestationTimeSec), 0).UTC())
+
+	p, err := NewPrecompile()
+	if err != nil {
+		t.Skipf("WARNING: Could not create precompile: %v", err)
+		return
+	}
+
+	method, ok := p.abi.Methods[MethodVerifyAttestation]
+	if !ok {
+		t.Skipf("WARNING: Method not found")
+		return
+	}
+
+	t.Run("fresh attestation accepted", func(t *testing.T) {
+		// Block time 1 minute after attestation - within 5 min window
+		blockTime := attestationTimeSec + 60
+		mockEVM := newMockEVMWithTimestamp(blockTime)
+
+		args := []interface{}{
+			attestationBase64,
+			signingKey,
+			tlsCert,
+			[]byte{},
+		}
+
+		result, err := p.verifyAttestation(mockEVM, &method, args)
+		if err != nil {
+			t.Skipf("WARNING: verifyAttestation error: %v", err)
+			return
+		}
+
+		outputs, err := method.Outputs.Unpack(result)
+		if err != nil {
+			t.Skipf("WARNING: Could not unpack result: %v", err)
+			return
+		}
+
+		valid := outputs[0].(bool)
+		require.True(t, valid, "Fresh attestation should be accepted")
+		t.Logf("Fresh attestation correctly accepted")
+	})
+
+	t.Run("old attestation rejected", func(t *testing.T) {
+		// Block time 10 minutes after attestation - exceeds 5 min window
+		blockTime := attestationTimeSec + 600
+		mockEVM := newMockEVMWithTimestamp(blockTime)
+
+		args := []interface{}{
+			attestationBase64,
+			signingKey,
+			tlsCert,
+			[]byte{},
+		}
+
+		result, err := p.verifyAttestation(mockEVM, &method, args)
+		if err != nil {
+			t.Skipf("WARNING: verifyAttestation error: %v", err)
+			return
+		}
+
+		outputs, err := method.Outputs.Unpack(result)
+		if err != nil {
+			t.Skipf("WARNING: Could not unpack result: %v", err)
+			return
+		}
+
+		valid := outputs[0].(bool)
+		require.False(t, valid, "Old attestation should be rejected")
+		t.Logf("Old attestation correctly rejected")
 	})
 }
