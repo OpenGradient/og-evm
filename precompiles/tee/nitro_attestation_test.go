@@ -3,23 +3,126 @@ package tee
 import (
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-// Enclave endpoints - @Kyle Endpoints should be checked
+// Enclave endpoints
 const (
 	enclaveHost    = "13.59.207.188"
+	enclavePort    = "443"
 	attestationURL = "https://" + enclaveHost + "/enclave/attestation?nonce=0123456789abcdef0123456789abcdef01234567"
-	signingKeyURL  = "https://" + enclaveHost + "/enclave/signing-key"
-	tlsCertURL     = "https://" + enclaveHost + "/enclave/tls-cert"
+	signingKeyURL  = "https://" + enclaveHost + "/signing-key"
 )
+
+// AttestationResponse is the JSON structure returned by /signing-key
+type AttestationResponse struct {
+	PublicKey string `json:"public_key"`
+}
+
+// fetchFromEnclave fetches raw bytes from an enclave HTTP endpoint.
+func fetchFromEnclave(url string) ([]byte, error) {
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// fetchSigningPublicKey fetches the DER-encoded RSA public key from /signing-key.
+// The endpoint returns JSON: {"public_key": "<PEM>"}
+func fetchSigningPublicKey(host string) ([]byte, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
+
+	url := fmt.Sprintf("https://%s/signing-key", host)
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var attestResp AttestationResponse
+	if err := json.Unmarshal(rawBody, &attestResp); err != nil {
+		return nil, fmt.Errorf("json unmarshal failed: %v", err)
+	}
+
+	// Handle literal \n in JSON string
+	pemStr := strings.ReplaceAll(attestResp.PublicKey, `\n`, "\n")
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		block, _ = pem.Decode(rawBody)
+	}
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM")
+	}
+	return block.Bytes, nil
+}
+
+// fetchTLSCertificate extracts the leaf TLS certificate (DER) from the TLS handshake.
+// This is what Nitriding hashes in user_data[2:34].
+func fetchTLSCertificate(host, port string) ([]byte, error) {
+	conn, err := tls.Dial("tcp", host+":"+port, &tls.Config{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("server presented no certificates")
+	}
+
+	cert := certs[0]
+	if _, err := x509.ParseCertificate(cert.Raw); err != nil {
+		return nil, fmt.Errorf("invalid certificate: %v", err)
+	}
+	return cert.Raw, nil
+}
+
+// decodeAttestationBase64 decodes a base64 attestation document (tries StdEncoding then URLEncoding).
+func decodeAttestationBase64(b64 []byte) ([]byte, error) {
+	raw, err := base64.StdEncoding.DecodeString(string(b64))
+	if err != nil {
+		raw, err = base64.URLEncoding.DecodeString(string(b64))
+		if err != nil {
+			return nil, fmt.Errorf("base64 decode failed: %v", err)
+		}
+	}
+	return raw, nil
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 func TestParseProductionAttestation(t *testing.T) {
 	// Load production attestation document from testdata (already base64-encoded)
@@ -156,7 +259,6 @@ func TestVerifySigningKeyBinding_Security(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			err := VerifySigningKeyBinding(tt.signingKey, tt.userData)
 			if tt.expectError {
 				require.Error(t, err, tt.description)
@@ -241,7 +343,6 @@ func TestVerifyTLSCertificateBinding_Security(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			err := VerifyTLSCertificateBinding(tt.tlsCert, tt.userData)
 			if tt.expectError {
 				require.Error(t, err, tt.description)
@@ -318,7 +419,6 @@ func TestParseNitridingUserData_EdgeCases(t *testing.T) {
 			}(),
 			expectError: false,
 			validateFn: func(t *testing.T, hashes *NitridingKeyHashes) {
-				// Hashes should be extracted regardless of prefix values
 				require.Len(t, hashes.TLSCertHash, 32)
 				require.Len(t, hashes.SigningKeyHash, 32)
 			},
@@ -328,7 +428,6 @@ func TestParseNitridingUserData_EdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			hashes, err := ParseNitridingUserData(tt.userData)
 			if tt.expectError {
 				require.Error(t, err)
@@ -348,7 +447,6 @@ func TestParseNitridingUserData_EdgeCases(t *testing.T) {
 func TestKeyBindingAttackScenarios(t *testing.T) {
 	t.Parallel()
 
-	// Setup valid keys and hashes
 	legitimateKey := []byte("legitimate_signing_key_data_")
 	legitimateKeyHash := sha256.Sum256(legitimateKey)
 
@@ -358,7 +456,6 @@ func TestKeyBindingAttackScenarios(t *testing.T) {
 	t.Run("attacker tries to substitute key with same hash prefix", func(t *testing.T) {
 		t.Parallel()
 
-		// Create user data with legitimate key hash
 		userData := make([]byte, NitridingUserDataLength)
 		copy(userData[0:2], []byte{0x12, 0x20})
 		copy(userData[2:34], make([]byte, 32))
@@ -397,41 +494,16 @@ func TestKeyBindingAttackScenarios(t *testing.T) {
 		copy(userData[36:68], legitimateKeyHash[:])
 
 		extendedData := append(userData, []byte("extra_data")...)
-
 		err := VerifySigningKeyBinding(legitimateKey, extendedData)
 		require.Error(t, err, "Extended user data should be rejected")
 	})
 }
 
-// fetchFromEnclave fetches data from an enclave endpoint, returns nil if unreachable
-func fetchFromEnclave(url string) ([]byte, error) {
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-
-	return io.ReadAll(resp.Body)
-}
-
-// TestVerifyAttestation_TimestampFreshness tests timestamp validation with live enclave
-// This test fetches fresh attestation, signing key, and TLS cert from the enclave
-// and verifies that:
-// 1. Fresh attestation with current block time is accepted
-// 2. Fresh attestation with old block time (>5 min) is rejected
+// TestVerifyAttestation_TimestampFreshness tests timestamp validation with live enclave.
+// Fetches fresh attestation, signing key (via JSON/PEM from /signing-key),
+// and TLS cert (via TLS handshake), then verifies the 5-minute freshness window.
 func TestVerifyAttestation_TimestampFreshness(t *testing.T) {
-	// Fetch fresh attestation from enclave
+	// --- Step 1: fetch fresh attestation (base64 from enclave) ---
 	attestationBase64, err := fetchFromEnclave(attestationURL)
 	if err != nil {
 		t.Skipf("WARNING: Could not fetch attestation from enclave: %v", err)
@@ -439,23 +511,33 @@ func TestVerifyAttestation_TimestampFreshness(t *testing.T) {
 	}
 	t.Logf("Fetched attestation: %d bytes", len(attestationBase64))
 
-	// Fetch signing key from enclave
-	signingKey, err := fetchFromEnclave(signingKeyURL)
+	// Decode base64 → raw COSE bytes for the precompile
+	// (the precompile re-encodes internally, so we must pass raw bytes)
+	attestationRaw, err := decodeAttestationBase64(attestationBase64)
+	if err != nil {
+		t.Skipf("WARNING: Could not decode attestation: %v", err)
+		return
+	}
+	t.Logf("Decoded attestation raw: %d bytes", len(attestationRaw))
+
+	// --- Step 2: fetch signing key (DER from JSON PEM) ---
+	signingKey, err := fetchSigningPublicKey(enclaveHost)
 	if err != nil {
 		t.Skipf("WARNING: Could not fetch signing key from enclave: %v", err)
 		return
 	}
 	t.Logf("Fetched signing key: %d bytes", len(signingKey))
 
-	// Fetch TLS certificate from enclave
-	tlsCert, err := fetchFromEnclave(tlsCertURL)
+	// --- Step 3: fetch TLS cert from TLS handshake ---
+	tlsCert, err := fetchTLSCertificate(enclaveHost, enclavePort)
 	if err != nil {
 		t.Skipf("WARNING: Could not fetch TLS cert from enclave: %v", err)
 		return
 	}
 	t.Logf("Fetched TLS cert: %d bytes", len(tlsCert))
+	t.Logf("TLS cert SHA256: %x", sha256.Sum256(tlsCert))
 
-	// Parse attestation to get timestamp
+	// --- Step 4: parse attestation to get timestamp ---
 	now := time.Now()
 	parseResult, err := VerifyAttestationDocument(string(attestationBase64), nil, nil, &now)
 	if err != nil {
@@ -470,6 +552,24 @@ func TestVerifyAttestation_TimestampFreshness(t *testing.T) {
 	attestationTimeSec := parseResult.Timestamp / 1000
 	t.Logf("Attestation timestamp: %s", time.Unix(int64(attestationTimeSec), 0).UTC())
 
+	// --- Step 5: cross-check TLS cert hash matches user_data ---
+	if len(parseResult.UserData) == NitridingUserDataLength {
+		hashes, err := ParseNitridingUserData(parseResult.UserData)
+		if err == nil {
+			computed := sha256.Sum256(tlsCert)
+			tlsHashArr := [32]byte{}
+			copy(tlsHashArr[:], hashes.TLSCertHash)
+			t.Logf("user_data TLS hash:  %x", hashes.TLSCertHash)
+			t.Logf("computed TLS hash:   %x", computed)
+			if computed != tlsHashArr {
+				t.Logf("WARNING: TLS cert hash mismatch — cert may have rotated since attestation")
+			} else {
+				t.Logf("TLS cert hash matches attestation user_data ✓")
+			}
+		}
+	}
+
+	// --- Step 6: run precompile tests ---
 	p, err := NewPrecompile()
 	if err != nil {
 		t.Skipf("WARNING: Could not create precompile: %v", err)
@@ -483,17 +583,12 @@ func TestVerifyAttestation_TimestampFreshness(t *testing.T) {
 	}
 
 	t.Run("fresh attestation accepted", func(t *testing.T) {
-		// Block time 1 minute after attestation - within 5 min window
+		// Block time 1 minute after attestation — within 5 min window
 		blockTime := attestationTimeSec + 60
 		mockEVM := newMockEVMWithTimestamp(blockTime)
 
-		args := []interface{}{
-			attestationBase64,
-			signingKey,
-			tlsCert,
-			[]byte{},
-		}
-
+		// Pass raw COSE bytes (not base64) — precompile encodes internally
+		args := []interface{}{attestationRaw, signingKey, tlsCert, []byte{}}
 		result, err := p.verifyAttestation(mockEVM, &method, args)
 		if err != nil {
 			t.Skipf("WARNING: verifyAttestation error: %v", err)
@@ -507,22 +602,21 @@ func TestVerifyAttestation_TimestampFreshness(t *testing.T) {
 		}
 
 		valid := outputs[0].(bool)
+		t.Logf("valid: %v", valid)
+		if len(outputs) > 1 {
+			t.Logf("pcrHash: %x", outputs[1])
+		}
+
 		require.True(t, valid, "Fresh attestation should be accepted")
-		t.Logf("Fresh attestation correctly accepted")
+		t.Logf("Fresh attestation correctly accepted ✓")
 	})
 
 	t.Run("old attestation rejected", func(t *testing.T) {
-		// Block time 10 minutes after attestation - exceeds 5 min window
+		// Block time 10 minutes after attestation — exceeds 5 min window
 		blockTime := attestationTimeSec + 600
 		mockEVM := newMockEVMWithTimestamp(blockTime)
 
-		args := []interface{}{
-			attestationBase64,
-			signingKey,
-			tlsCert,
-			[]byte{},
-		}
-
+		args := []interface{}{attestationRaw, signingKey, tlsCert, []byte{}}
 		result, err := p.verifyAttestation(mockEVM, &method, args)
 		if err != nil {
 			t.Skipf("WARNING: verifyAttestation error: %v", err)
@@ -537,6 +631,6 @@ func TestVerifyAttestation_TimestampFreshness(t *testing.T) {
 
 		valid := outputs[0].(bool)
 		require.False(t, valid, "Old attestation should be rejected")
-		t.Logf("Old attestation correctly rejected")
+		t.Logf("Old attestation correctly rejected ✓")
 	})
 }
