@@ -1,7 +1,7 @@
 #!/bin/bash
 
-REGISTRY="0x2a6291325ea4bab7438c465e4b8c166eccc4ea66"
-RPC="http://localhost:8545"
+REGISTRY="0x3d641a2791533b4a0000345ea8d509d01e1ec301"
+RPC="http://13.59.43.94:8545"
 
 echo "=== Fetching Active TEEs ==="
 RESPONSE=$(curl -s -X POST $RPC \
