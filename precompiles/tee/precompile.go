@@ -241,9 +241,9 @@ func (p *Precompile) verifyRSAPSS(method *abi.Method, args []interface{}) ([]byt
 		return method.Outputs.Pack(false)
 	}
 
-	// Configure RSA-PSS options
+	// Configure RSA-PSS options (use Auto to accept any valid salt length)
 	opts := &rsa.PSSOptions{
-		SaltLength: rsa.PSSSaltLengthEqualsHash,
+		SaltLength: rsa.PSSSaltLengthAuto,
 		Hash:       gcrypto.SHA256,
 	}
 
