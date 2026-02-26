@@ -56,7 +56,7 @@ type AttestationResult struct {
 	PublicKey    []byte
 	UserData     []byte
 	PCRs         PCRValues384
-	Timestamp    uint64
+	Timestamp    uint64 // Milliseconds since Unix epoch (from AWS Nitro attestation)
 	ErrorMessage string
 }
 

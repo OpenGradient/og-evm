@@ -34,8 +34,13 @@ const (
 	MaxPCRSize         uint64 = 64        // 64 bytes max per PCR value
 
 	// Attestation freshness limits (replay protection)
-	MaxAttestationAgeSec uint64 = 300 // 5 minutes max age
-	MaxClockSkewSec      uint64 = 60  // 1 minute tolerance for future timestamps
+
+	// MaxAttestationAgeSec defines the maximum acceptable age for attestations (5 minutes).
+	MaxAttestationAgeSec uint64 = 300
+	// MaxClockSkewSec allows up to 1 minute of clock drift between attestation
+	MaxClockSkewSec uint64 = 60
+	// Attestation timestamps must be after this precompile was introduced.
+	minValidTimestampMs uint64 = 1738281600000 // Jan 31, 2026 in milliseconds
 )
 
 // Method names
@@ -188,19 +193,24 @@ func (p *Precompile) verifyAttestation(evm *vm.EVM, method *abi.Method, args []i
 	// We reject attestations that are too old or too far in the future.
 	// =========================================================================
 
-	// Attestation timestamp is in milliseconds, block time is in seconds
-	attestationTimeSec := result.Timestamp / 1000
-	blockTimeSec := evm.Context.Time
-
-	// Check if attestation is too old
-	if attestationTimeSec+MaxAttestationAgeSec < blockTimeSec {
-		// Attestation is older than MaxAttestationAgeSec (5 minutes)
+	// Sanity check: reject attestations with implausible timestamps .
+	// AWS Nitro timestamps are milliseconds since Unix epoch and should be ~1.7 trillion ms.
+	if result.Timestamp < minValidTimestampMs {
 		return method.Outputs.Pack(false, common.Hash{})
 	}
 
-	// Check if attestation is from the future (clock skew protection)
-	if attestationTimeSec > blockTimeSec+MaxClockSkewSec {
-		// Attestation timestamp is more than MaxClockSkewSec (1 minute) in the future
+	// Attestation timestamp from AWS Nitro is in milliseconds since Unix epoch.
+	// Convert to seconds to compare with block timestamp (which is in seconds).
+	attestationTimeSec := result.Timestamp / 1000
+	blockTimeSec := evm.Context.Time
+
+	// Check if attestation is too old (overflow-safe subtraction)
+	if blockTimeSec > attestationTimeSec && blockTimeSec-attestationTimeSec > MaxAttestationAgeSec {
+		return method.Outputs.Pack(false, common.Hash{})
+	}
+
+	// Check if attestation is from the future (overflow-safe subtraction)
+	if attestationTimeSec > blockTimeSec && attestationTimeSec-blockTimeSec > MaxClockSkewSec {
 		return method.Outputs.Pack(false, common.Hash{})
 	}
 

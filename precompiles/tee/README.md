@@ -56,34 +56,37 @@ Uses OpenZeppelin AccessControl:
 | `DEFAULT_ADMIN_ROLE` | Manage PCRs, TEE types, roles |
 | `TEE_OPERATOR` | Register TEEs |
 
+## Environment Variables
+
+| Variable | Required by | Description |
+|---|---|---|
+| `TEE_ENCLAVE_HOST` | Integration tests & scripts | IP or hostname of the live enclave  |
+| `TEE_REGISTRY_ADDRESS` | `local_tee_workflow.go` | Optional — reuse an already-deployed TEERegistry contract |
+
 ## Testing
 
+### Unit Tests
 ```bash
-# Unit tests
 cd precompiles/tee
-go test -v
+go test -v ./...
+```
 
-# Integration test
+### Integration Tests
+Require a live AWS Nitro enclave and a running local node.
+
+```bash
+# Timestamp freshness test (precompile level)
+TEE_ENCLAVE_HOST=127.0.0.1 go test -tags=integration -v -run TestVerifyAttestation_TimestampFreshness ./precompiles/tee/...
+
+# Full TEE registry workflow (deploy, register, local verification)
 cd scripts/integration
-go run test_tee_workflow.go
+TEE_ENCLAVE_HOST=127.0.0.1 go run local_tee_workflow.go
+
+# Reuse existing deployed registry
+TEE_REGISTRY_ADDRESS=0x... TEE_ENCLAVE_HOST=127.0.0.1 go run local_tee_workflow.go
 ```
 
-## Files
-
-```
-precompiles/tee/
-├── precompile.go           # Precompile implementation
-├── precompile_test.go      # Unit tests
-├── nitro_attestation.go    # AWS Nitro verification
-├── abi.json                # Precompile ABI
-└── testdata/
-    └── attestation_doc.bin # Test attestation
-
-contracts/solidity/
-├── TEERegistry.sol         # Main contract
-└── precompiles/tee/
-    └── ITEEVerifier.sol    # Precompile interface
-```
+> Integration tests are excluded from CI via `//go:build integration` tag and skip automatically if `TEE_ENCLAVE_HOST` is not set.
 
 ## TODO
 
@@ -96,3 +99,5 @@ contracts/solidity/
 - [ ] Facilitator (x402): Call `verifySettlement()` before payment
 - [ ] Frontend/dashboard: Download and pin TLS certificates
 - [ ] Monitoring: Track TEE active status
+
+
