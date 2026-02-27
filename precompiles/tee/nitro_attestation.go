@@ -76,6 +76,16 @@ const (
 	NitridingUserDataLength = 68
 	MultihashSHA256Prefix   = 0x12 // SHA256 identifier in multihash
 	MultihashLength32       = 0x20 // 32 bytes length indicator
+
+	// Attestation freshness limits (replay protection)
+
+	// MaxAttestationAgeSec defines the maximum acceptable age for attestations (5 minutes).
+	MaxAttestationAgeSec uint64 = 300
+	// MaxClockSkewSec allows up to 1 minute of clock drift between attestation
+	MaxClockSkewSec uint64 = 60
+	// minValidTimestampMs rejects attestations with implausible timestamps.
+	// Attestation timestamps must be after this precompile was introduced.
+	minValidTimestampMs uint64 = 1738281600000 // Jan 31, 2026 in milliseconds
 )
 
 // DefaultAWSNitroRootCertPEM is the AWS Nitro Attestation PKI root certificate
@@ -188,6 +198,14 @@ func VerifyAttestationDocument(
 
 	// Step 5: Store timestamp for replay protection
 	result.Timestamp = attestDoc.Timestamp
+
+	// Step 5b: Validate attestation timestamp freshness (when block time is provided)
+	if currentTime != nil {
+		if err := validateAttestationTimestamp(result.Timestamp, uint64(currentTime.Unix())); err != nil {
+			result.ErrorMessage = fmt.Sprintf("timestamp validation failed: %v", err)
+			return result, err
+		}
+	}
 
 	// Step 6: Validate nonce (optional)
 	if len(expectedNonce) > 0 {
@@ -458,6 +476,32 @@ func validateCertificateChain(signingCert *x509.Certificate, caBundle [][]byte, 
 	_, err := signingCert.Verify(verifyOpts)
 	if err != nil {
 		return fmt.Errorf("certificate chain verification: %w", err)
+	}
+
+	return nil
+}
+
+// validateAttestationTimestamp checks that the attestation is not too old, not from the future,
+// and has a plausible timestamp value.
+func validateAttestationTimestamp(attestationTimestampMs, blockTimeSec uint64) error {
+	// Sanity check: reject attestations with implausible timestamps.
+	// AWS Nitro timestamps are milliseconds since Unix epoch and should be ~1.7 trillion ms.
+	if attestationTimestampMs < minValidTimestampMs {
+		return fmt.Errorf("attestation timestamp too old: %d < %d", attestationTimestampMs, minValidTimestampMs)
+	}
+
+	// Attestation timestamp from AWS Nitro is in milliseconds since Unix epoch.
+	// Convert to seconds to compare with block timestamp (which is in seconds).
+	attestationTimeSec := attestationTimestampMs / 1000
+
+	// Check if attestation is too old (overflow-safe subtraction)
+	if blockTimeSec > attestationTimeSec && blockTimeSec-attestationTimeSec > MaxAttestationAgeSec {
+		return fmt.Errorf("attestation too old: age %ds exceeds max %ds", blockTimeSec-attestationTimeSec, MaxAttestationAgeSec)
+	}
+
+	// Check if attestation is from the future (overflow-safe subtraction)
+	if attestationTimeSec > blockTimeSec && attestationTimeSec-blockTimeSec > MaxClockSkewSec {
+		return fmt.Errorf("attestation from future: %ds ahead exceeds max skew %ds", attestationTimeSec-blockTimeSec, MaxClockSkewSec)
 	}
 
 	return nil

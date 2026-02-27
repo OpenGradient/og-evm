@@ -33,14 +33,6 @@ const (
 	MinRSAKeySize      uint64 = 256       // 2048 bits min RSA key
 	MaxPCRSize         uint64 = 64        // 64 bytes max per PCR value
 
-	// Attestation freshness limits (replay protection)
-
-	// MaxAttestationAgeSec defines the maximum acceptable age for attestations (5 minutes).
-	MaxAttestationAgeSec uint64 = 300
-	// MaxClockSkewSec allows up to 1 minute of clock drift between attestation
-	MaxClockSkewSec uint64 = 60
-	// Attestation timestamps must be after this precompile was introduced.
-	minValidTimestampMs uint64 = 1738281600000 // Jan 31, 2026 in milliseconds
 )
 
 // Method names
@@ -186,31 +178,6 @@ func (p *Precompile) verifyAttestation(evm *vm.EVM, method *abi.Method, args []i
 	}
 
 	if !result.Valid {
-		return method.Outputs.Pack(false, common.Hash{})
-	}
-
-	// =========================================================================
-	// We reject attestations that are too old or too far in the future.
-	// =========================================================================
-
-	// Sanity check: reject attestations with implausible timestamps .
-	// AWS Nitro timestamps are milliseconds since Unix epoch and should be ~1.7 trillion ms.
-	if result.Timestamp < minValidTimestampMs {
-		return method.Outputs.Pack(false, common.Hash{})
-	}
-
-	// Attestation timestamp from AWS Nitro is in milliseconds since Unix epoch.
-	// Convert to seconds to compare with block timestamp (which is in seconds).
-	attestationTimeSec := result.Timestamp / 1000
-	blockTimeSec := evm.Context.Time
-
-	// Check if attestation is too old (overflow-safe subtraction)
-	if blockTimeSec > attestationTimeSec && blockTimeSec-attestationTimeSec > MaxAttestationAgeSec {
-		return method.Outputs.Pack(false, common.Hash{})
-	}
-
-	// Check if attestation is from the future (overflow-safe subtraction)
-	if attestationTimeSec > blockTimeSec && attestationTimeSec-blockTimeSec > MaxClockSkewSec {
 		return method.Outputs.Pack(false, common.Hash{})
 	}
 

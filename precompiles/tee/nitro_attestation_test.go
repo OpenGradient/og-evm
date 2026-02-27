@@ -19,7 +19,8 @@ func TestParseProductionAttestation(t *testing.T) {
 
 	// Use a fixed time for certificate validation to avoid expiration issues in tests
 	// Certificate is valid between 2026-02-12T17:55:59Z and 2026-02-12T20:56:02Z
-	testTime := time.Date(2026, 2, 12, 19, 0, 0, 0, time.UTC)
+	// Must be within MaxAttestationAgeSec (300s) of the attestation timestamp (~17:56:02 UTC)
+	testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
 
 	// Verify and parse the attestation document
 	result, err := VerifyAttestationDocument(attestationBase64, nil, nil, &testTime)
@@ -65,6 +66,121 @@ func TestParseProductionAttestation(t *testing.T) {
 		pcrHash := computePCRHash(result.PCRs.PCR0, result.PCRs.PCR1, result.PCRs.PCR2)
 		t.Logf("\n--- Computed PCR Hash (Keccak256) ---")
 		t.Logf("PCR Hash: %x", pcrHash)
+	}
+}
+
+// TestValidateAttestationTimestamp tests the timestamp freshness validation
+func TestValidateAttestationTimestamp(t *testing.T) {
+	t.Parallel()
+
+	// Reference block time: Feb 12, 2026 18:00:00 UTC (in seconds)
+	blockTimeSec := uint64(time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC).Unix())
+	// Matching attestation timestamp in milliseconds
+	attestationTimeMs := blockTimeSec * 1000
+
+	tests := []struct {
+		name              string
+		attestationTimeMs uint64
+		blockTimeSec      uint64
+		expectError       bool
+		description       string
+	}{
+		{
+			name:              "fresh attestation accepted",
+			attestationTimeMs: attestationTimeMs,
+			blockTimeSec:      blockTimeSec + 60,
+			expectError:       false,
+			description:       "Attestation 60s old should pass",
+		},
+		{
+			name:              "attestation at exact block time",
+			attestationTimeMs: attestationTimeMs,
+			blockTimeSec:      blockTimeSec,
+			expectError:       false,
+			description:       "Attestation at exact block time should pass",
+		},
+		{
+			name:              "attestation at max age boundary",
+			attestationTimeMs: attestationTimeMs,
+			blockTimeSec:      blockTimeSec + MaxAttestationAgeSec,
+			expectError:       false,
+			description:       "Attestation at exactly max age should pass",
+		},
+		{
+			name:              "attestation exceeds max age by 1s",
+			attestationTimeMs: attestationTimeMs,
+			blockTimeSec:      blockTimeSec + MaxAttestationAgeSec + 1,
+			expectError:       true,
+			description:       "Attestation 1s over max age should be rejected",
+		},
+		{
+			name:              "attestation 10 minutes old",
+			attestationTimeMs: attestationTimeMs,
+			blockTimeSec:      blockTimeSec + 600,
+			expectError:       true,
+			description:       "10-minute-old attestation should be rejected",
+		},
+		{
+			name:              "attestation slightly in future accepted",
+			attestationTimeMs: (blockTimeSec + 30) * 1000,
+			blockTimeSec:      blockTimeSec,
+			expectError:       false,
+			description:       "Attestation 30s in future should pass (within clock skew)",
+		},
+		{
+			name:              "attestation at max clock skew boundary",
+			attestationTimeMs: (blockTimeSec + MaxClockSkewSec) * 1000,
+			blockTimeSec:      blockTimeSec,
+			expectError:       false,
+			description:       "Attestation at exactly max clock skew should pass",
+		},
+		{
+			name:              "attestation exceeds max clock skew by 1s",
+			attestationTimeMs: (blockTimeSec + MaxClockSkewSec + 1) * 1000,
+			blockTimeSec:      blockTimeSec,
+			expectError:       true,
+			description:       "Attestation 1s over max clock skew should be rejected",
+		},
+		{
+			name:              "attestation far in future",
+			attestationTimeMs: (blockTimeSec + 3600) * 1000,
+			blockTimeSec:      blockTimeSec,
+			expectError:       true,
+			description:       "Attestation 1 hour in future should be rejected",
+		},
+		{
+			name:              "timestamp before minimum valid",
+			attestationTimeMs: minValidTimestampMs - 1,
+			blockTimeSec:      blockTimeSec,
+			expectError:       true,
+			description:       "Timestamp before Jan 31, 2026 should be rejected",
+		},
+		{
+			name:              "zero timestamp",
+			attestationTimeMs: 0,
+			blockTimeSec:      blockTimeSec,
+			expectError:       true,
+			description:       "Zero timestamp should be rejected",
+		},
+		{
+			name:              "timestamp at minimum valid",
+			attestationTimeMs: minValidTimestampMs,
+			blockTimeSec:      minValidTimestampMs/1000 + 60,
+			expectError:       false,
+			description:       "Timestamp at exactly minimum valid should pass",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateAttestationTimestamp(tt.attestationTimeMs, tt.blockTimeSec)
+			if tt.expectError {
+				require.Error(t, err, tt.description)
+			} else {
+				require.NoError(t, err, tt.description)
+			}
+		})
 	}
 }
 
