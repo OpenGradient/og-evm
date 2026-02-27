@@ -32,6 +32,7 @@ const (
 	MaxRSAKeySize      uint64 = 1024      // 8192 bits max RSA key
 	MinRSAKeySize      uint64 = 256       // 2048 bits min RSA key
 	MaxPCRSize         uint64 = 64        // 64 bytes max per PCR value
+
 )
 
 // Method names
