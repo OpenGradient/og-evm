@@ -57,7 +57,7 @@ contract FacilitatorSettlementRelay is AccessControl {
     bytes32 public constant SETTLEMENT_RELAY_ROLE = keccak256("SETTLEMENT_RELAY_ROLE");
 
     /// @notice External settlement contract used for cryptographic verification.
-    ISettlementContract public SETTLEMENT_CONTRACT;
+    ISettlementContract public immutable SETTLEMENT_CONTRACT;
 
     /**
      * @notice Emitted when a batch settlement root is relayed.
@@ -93,9 +93,12 @@ contract FacilitatorSettlementRelay is AccessControl {
 
     /**
      * @notice Initializes the relay with an external settlement verifier contract.
+     * @dev Reverts if `_settlement_contract` is the zero address.
      * @param _settlement_contract Address of the deployed settlement contract implementation.
      */
     constructor(address _settlement_contract) {
+        require(_settlement_contract != address(0), "Invalid settlement contract");
+
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(SETTLEMENT_RELAY_ROLE, msg.sender);
 

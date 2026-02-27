@@ -78,6 +78,11 @@ contract FacilitatorSettlementRelayTest is Test {
         assertTrue(relay.hasRole(relay.SETTLEMENT_RELAY_ROLE(), admin));
     }
 
+    function test_Constructor_RevertIfSettlementContractIsZeroAddress() public {
+        vm.expectRevert(bytes("Invalid settlement contract"));
+        new FacilitatorSettlementRelay(address(0));
+    }
+
     // ============ batchSettle Tests ============
 
     function test_BatchSettle_EmitsBatchSettlement() public {
