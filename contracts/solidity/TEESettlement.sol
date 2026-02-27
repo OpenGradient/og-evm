@@ -6,7 +6,7 @@ import "./precompiles/tee/ITEEVerifier.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title TEESettlement - Settlement verification for TEE-signed outputs
-/// @notice Reads TEE public keys from TEERegistry, verifies RSA-PSS signatures,
+/// @notice Reads TEE public keys from TEERegistry, verifies RSA-PSS signatures, and enforces replay protection for settlements.
 contract TEESettlement is AccessControl {
 
     // ============ Constants ============
