@@ -151,6 +151,11 @@ contract TEESettlementTest is Test {
         settlement.setRegistry(address(0x999));
     }
 
+    function test_SetRegistry_RevertIfZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert();
+        settlement.setRegistry(address(0));
+    }
     // ============ computeMessageHash Tests ============
 
     function test_ComputeMessageHash_Deterministic() public view {
