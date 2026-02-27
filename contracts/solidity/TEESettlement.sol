@@ -109,7 +109,12 @@ contract TEESettlement is AccessControl {
         if (!registry.isActive(teeId)) revert TEENotActive(teeId);
 
         // 2. Timestamp bounds
-        uint256 minTs = block.timestamp - MAX_SETTLEMENT_AGE;
+        uint256 minTs;
+        if (block.timestamp < MAX_SETTLEMENT_AGE) {
+            minTs = 0;
+        } else {
+            minTs = block.timestamp - MAX_SETTLEMENT_AGE;
+        }
         uint256 maxTs = block.timestamp + FUTURE_TOLERANCE;
         if (timestamp < minTs) revert TimestampTooOld(timestamp, minTs);
         if (timestamp > maxTs) revert TimestampInFuture(timestamp, maxTs);
