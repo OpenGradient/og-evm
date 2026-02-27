@@ -49,8 +49,8 @@ print(f'  endpoint:      {dyn(2).decode()}')
 print(f'  pcrHash:       0x{result[5*64:6*64]}')
 print(f'  teeType:       {word(6)} (0=LLMProxy 1=Validator)')
 print(f'  active:        {bool(word(7))}')
-print(f'  registeredAt:  {datetime.datetime.utcfromtimestamp(word(8))} UTC')
-print(f'  lastUpdatedAt: {datetime.datetime.utcfromtimestamp(word(9))} UTC')
+print(f'  registeredAt:  {datetime.datetime.fromtimestamp(word(8), tz=datetime.timezone.utc)} UTC')
+print(f'  lastUpdatedAt: {datetime.datetime.fromtimestamp(word(9), tz=datetime.timezone.utc)} UTC')
 "
 
   # Get public key — getPublicKey(bytes32) selector: b1c551ca
