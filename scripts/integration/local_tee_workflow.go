@@ -256,7 +256,7 @@ func main() {
 	fmt.Printf("  🔍 isPCRApproved(filePCRHash=%s) = %v\n", hex.EncodeToString(pcrHash[:]), approved)
 
 	if !approved {
-		fmt.Print("PCRs are not matching")
+		fmt.Print("PCRs do not match")
 		os.Exit(1)
 	}
 	results.Add("PCR v1.0.0 approved", approved, "")
