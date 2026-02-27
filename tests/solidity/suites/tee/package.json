@@ -1,10 +1,11 @@
+
 {
   "name": "tee",
   "version": "1.0.0",
   "author": "OpenGradient team",
   "license": "GPL-3.0-or-later",
   "scripts": {
-    "get-contracts": "mkdir -p ./contracts/cosmos && rsync -avm --exclude='testdata/' --include='*/' --include='*.sol' --exclude='*' ../../../../precompiles/ ./contracts/cosmos/ && cp ../../../../contracts/solidity/TEERegistry.sol ./contracts/cosmos/ && sed -i.bak 's|./precompiles/tee/ITEEVerifier.sol|./tee/ITEEVerifier.sol|g' ./contracts/cosmos/TEERegistry.sol && rm -f ./contracts/cosmos/TEERegistry.sol.bak",
+    "get-contracts": "mkdir -p ./contracts/cosmos && rsync -avm --exclude='testdata/' --include='*/' --include='*.sol' --exclude='*' ../../../../precompiles/ ./contracts/cosmos/ && cp ../../../../contracts/solidity/TEERegistry.sol ./contracts/cosmos/ && cp ../../../../contracts/solidity/TEESettlement.sol ./contracts/cosmos/ && sed -i.bak 's|./precompiles/tee/ITEEVerifier.sol|./tee/ITEEVerifier.sol|g' ./contracts/cosmos/TEERegistry.sol && sed -i.bak 's|./precompiles/tee/ITEEVerifier.sol|./tee/ITEEVerifier.sol|g' ./contracts/cosmos/TEESettlement.sol && rm -f ./contracts/cosmos/*.bak",
     "clean-contracts": "rm -rf ./contracts/cosmos/*",
     "test-ganache": "yarn truffle test",
     "test-cosmos": "yarn get-contracts && yarn truffle test --network cosmos && yarn clean-contracts"
