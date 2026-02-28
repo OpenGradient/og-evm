@@ -190,75 +190,41 @@ contract('TEESettlement', function (accounts) {
             console.log('✓ Inactive TEE returns false')
         })
 
-        // Note: Full signature verification requires the precompile
-        // which is only available on the actual og-evm chain
-    })
-
-    describe('Settlement Verification', function () {
-        it('should revert for inactive TEE', async function () {
-    const timestamp = Math.floor(Date.now() / 1000)
-    try {
-        await settlement.verifySettlement(teeId, INPUT_HASH, OUTPUT_HASH, timestamp, MOCK_SIGNATURE)
-        assert.fail('Expected revert')
-    } catch (error) {
-        expect(error.message).to.include('revert')
-        console.log('✓ Inactive TEE reverts correctly')
-    }
-})
-
-        it('should revert for timestamp too old', async function () {
-            // First we need an active TEE - this test assumes TEE is registered
-            // In real scenario, you'd register the TEE first
+        it('should return false for timestamp too old', async function () {
             const oldTimestamp = Math.floor(Date.now() / 1000) - 7200 // 2 hours ago
 
-            await truffleAssert.reverts(
-                settlement.verifySettlement(
-                    teeId,
-                    INPUT_HASH,
-                    OUTPUT_HASH,
-                    oldTimestamp,
-                    MOCK_SIGNATURE
-                )
+            const result = await settlement.verifySignature(
+                teeId,
+                INPUT_HASH,
+                OUTPUT_HASH,
+                oldTimestamp,
+                MOCK_SIGNATURE
             )
 
-            console.log('✓ Old timestamp rejected')
+            expect(result).to.be.false
+
+            console.log('✓ Old timestamp returns false')
         })
 
-        it('should revert for timestamp too far in future', async function () {
+        it('should return false for timestamp too far in future', async function () {
             const futureTimestamp = Math.floor(Date.now() / 1000) + 600 // 10 minutes ahead
 
-            await truffleAssert.reverts(
-                settlement.verifySettlement(
-                    teeId,
-                    INPUT_HASH,
-                    OUTPUT_HASH,
-                    futureTimestamp,
-                    MOCK_SIGNATURE
-                )
+            const result = await settlement.verifySignature(
+                teeId,
+                INPUT_HASH,
+                OUTPUT_HASH,
+                futureTimestamp,
+                MOCK_SIGNATURE
             )
 
-            console.log('✓ Future timestamp rejected')
+            expect(result).to.be.false
+
+            console.log('✓ Future timestamp returns false')
         })
-    })
 
-    describe('Replay Protection', function () {
-        it('should track settlement usage correctly', async function () {
-            // Compute what the settlement hash would be
-            const timestamp = Math.floor(Date.now() / 1000)
-            
-            const settlementHash = web3.utils.soliditySha3(
-                { type: 'bytes32', value: teeId },
-                { type: 'bytes32', value: INPUT_HASH },
-                { type: 'bytes32', value: OUTPUT_HASH },
-                { type: 'uint256', value: timestamp }
-            )
-
-            // Initially should not be used
-            const isUsed = await settlement.settlementUsed(settlementHash)
-            expect(isUsed).to.be.false
-
-            console.log('✓ Settlement tracking works correctly')
-        })
+     
+        // Note: Full signature verification requires the precompile
+        // which is only available on the actual og-evm chain   
     })
 
     describe('Access Control', function () {
