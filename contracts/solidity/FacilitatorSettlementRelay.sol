@@ -10,23 +10,7 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
  * @dev The relay delegates signature and settlement validation to this external contract.
  */
 interface ISettlementContract {
-    /**
-     * @notice Verifies and records a settlement payload in the settlement contract.
-     * @param teeId Unique identifier of the TEE instance that produced the attestation.
-     * @param inputHash Hash of the settlement input payload.
-     * @param outputHash Hash of the settlement output payload.
-     * @param timestamp Unix timestamp associated with the signed payload.
-     * @param signature Signature over the settlement payload.
-     * @return settlementHash Canonical settlement hash produced by the settlement contract.
-     */
-    function verifySettlement(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp,
-        bytes calldata signature
-    ) external returns (bytes32 settlementHash);
-
+    
     /**
      * @notice Checks whether a settlement payload signature is valid.
      * @param teeId Unique identifier of the TEE instance that produced the attestation.

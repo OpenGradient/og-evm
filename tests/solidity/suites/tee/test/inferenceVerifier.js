@@ -2,11 +2,11 @@ const { expect } = require('chai')
 const crypto = require('crypto')
 const truffleAssert = require('truffle-assertions')
 const TEERegistry = artifacts.require('TEERegistry')
-const TEESettlement = artifacts.require('TEESettlement')
+const TEEInferenceVerifier = artifacts.require('TEEInferenceVerifier')
 
-contract('TEESettlement', function (accounts) {
+contract('TEEInferenceVerifier', function (accounts) {
     let owner, teeOperator, user1
-    let registry, settlement
+    let registry, verifier
     let teeId, publicKey
 
     // Test constants
@@ -20,11 +20,11 @@ contract('TEESettlement', function (accounts) {
         // Deploy TEERegistry
         registry = await TEERegistry.new()
 
-        // Deploy TEESettlement with registry address
-        settlement = await TEESettlement.new(registry.address)
+        // Deploy TEEInferenceVerifier with registry address
+        verifier = await TEEInferenceVerifier.new(registry.address)
 
         console.log('TEERegistry deployed at:', registry.address)
-        console.log('TEESettlement deployed at:', settlement.address)
+        console.log('TEEInferenceVerifier deployed at:', verifier.address)
 
         // Generate a test public key
         const { publicKey: pubKey } = crypto.generateKeyPairSync('rsa', {
@@ -43,35 +43,35 @@ contract('TEESettlement', function (accounts) {
 
     describe('Initialization', function () {
         it('should initialize with correct registry', async function () {
-            const registryAddress = await settlement.registry()
+            const registryAddress = await verifier.registry()
             expect(registryAddress).to.equal(registry.address)
 
             console.log('✓ Registry address set correctly')
         })
 
         it('should grant DEFAULT_ADMIN_ROLE to deployer', async function () {
-            const DEFAULT_ADMIN_ROLE = await settlement.DEFAULT_ADMIN_ROLE()
-            expect(await settlement.hasRole(DEFAULT_ADMIN_ROLE, owner)).to.be.true
+            const DEFAULT_ADMIN_ROLE = await verifier.DEFAULT_ADMIN_ROLE()
+            expect(await verifier.hasRole(DEFAULT_ADMIN_ROLE, owner)).to.be.true
 
             console.log('✓ Admin role granted correctly')
         })
 
         it('should have correct precompile address', async function () {
-            const VERIFIER_ADDRESS = await settlement.VERIFIER()
+            const VERIFIER_ADDRESS = await verifier.VERIFIER()
             expect(VERIFIER_ADDRESS).to.equal('0x0000000000000000000000000000000000000900')
 
             console.log('✓ Precompile address is correct')
         })
 
-        it('should have correct MAX_SETTLEMENT_AGE', async function () {
-            const maxAge = await settlement.MAX_SETTLEMENT_AGE()
+        it('should have correct MAX_INFERENCE_AGE', async function () {
+            const maxAge = await verifier.MAX_INFERENCE_AGE()
             expect(maxAge.toString()).to.equal('3600') // 1 hour in seconds
 
-            console.log('✓ MAX_SETTLEMENT_AGE is 1 hour')
+            console.log('✓ MAX_INFERENCE_AGE is 1 hour')
         })
 
         it('should have correct FUTURE_TOLERANCE', async function () {
-            const tolerance = await settlement.FUTURE_TOLERANCE()
+            const tolerance = await verifier.FUTURE_TOLERANCE()
             expect(tolerance.toString()).to.equal('300') // 5 minutes in seconds
 
             console.log('✓ FUTURE_TOLERANCE is 5 minutes')
@@ -82,18 +82,18 @@ contract('TEESettlement', function (accounts) {
         it('should allow admin to update registry', async function () {
             const newRegistry = await TEERegistry.new()
             
-            const result = await settlement.setRegistry(newRegistry.address)
+            const result = await verifier.setRegistry(newRegistry.address)
 
             truffleAssert.eventEmitted(result, 'RegistryUpdated', (ev) => {
                 return ev.oldRegistry === registry.address && 
                        ev.newRegistry === newRegistry.address
             })
 
-            const currentRegistry = await settlement.registry()
+            const currentRegistry = await verifier.registry()
             expect(currentRegistry).to.equal(newRegistry.address)
 
             // Restore original registry for other tests
-            await settlement.setRegistry(registry.address)
+            await verifier.setRegistry(registry.address)
 
             console.log('✓ Registry updated successfully')
         })
@@ -102,7 +102,7 @@ contract('TEESettlement', function (accounts) {
             const newRegistry = await TEERegistry.new()
 
             await truffleAssert.reverts(
-                settlement.setRegistry(newRegistry.address, { from: user1 })
+                verifier.setRegistry(newRegistry.address, { from: user1 })
             )
 
             console.log('✓ Non-admin cannot update registry')
@@ -119,7 +119,7 @@ contract('TEESettlement', function (accounts) {
                 { type: 'uint256', value: timestamp }
             )
 
-            const computedHash = await settlement.computeMessageHash(
+            const computedHash = await verifier.computeMessageHash(
                 INPUT_HASH,
                 OUTPUT_HASH,
                 timestamp
@@ -133,13 +133,13 @@ contract('TEESettlement', function (accounts) {
         it('should produce different hashes for different inputs', async function () {
             const timestamp = Math.floor(Date.now() / 1000)
 
-            const hash1 = await settlement.computeMessageHash(
+            const hash1 = await verifier.computeMessageHash(
                 INPUT_HASH,
                 OUTPUT_HASH,
                 timestamp
             )
 
-            const hash2 = await settlement.computeMessageHash(
+            const hash2 = await verifier.computeMessageHash(
                 web3.utils.keccak256('different-input'),
                 OUTPUT_HASH,
                 timestamp
@@ -154,13 +154,13 @@ contract('TEESettlement', function (accounts) {
             const timestamp1 = Math.floor(Date.now() / 1000)
             const timestamp2 = timestamp1 + 100
 
-            const hash1 = await settlement.computeMessageHash(
+            const hash1 = await verifier.computeMessageHash(
                 INPUT_HASH,
                 OUTPUT_HASH,
                 timestamp1
             )
 
-            const hash2 = await settlement.computeMessageHash(
+            const hash2 = await verifier.computeMessageHash(
                 INPUT_HASH,
                 OUTPUT_HASH,
                 timestamp2
@@ -177,7 +177,7 @@ contract('TEESettlement', function (accounts) {
             const timestamp = Math.floor(Date.now() / 1000)
 
             // teeId is not registered, so should return false
-            const result = await settlement.verifySignature(
+            const result = await verifier.verifySignature(
                 teeId,
                 INPUT_HASH,
                 OUTPUT_HASH,
@@ -193,7 +193,7 @@ contract('TEESettlement', function (accounts) {
         it('should return false for timestamp too old', async function () {
             const oldTimestamp = Math.floor(Date.now() / 1000) - 7200 // 2 hours ago
 
-            const result = await settlement.verifySignature(
+            const result = await verifier.verifySignature(
                 teeId,
                 INPUT_HASH,
                 OUTPUT_HASH,
@@ -209,7 +209,7 @@ contract('TEESettlement', function (accounts) {
         it('should return false for timestamp too far in future', async function () {
             const futureTimestamp = Math.floor(Date.now() / 1000) + 600 // 10 minutes ahead
 
-            const result = await settlement.verifySignature(
+            const result = await verifier.verifySignature(
                 teeId,
                 INPUT_HASH,
                 OUTPUT_HASH,
@@ -222,30 +222,29 @@ contract('TEESettlement', function (accounts) {
             console.log('✓ Future timestamp returns false')
         })
 
-     
         // Note: Full signature verification requires the precompile
-        // which is only available on the actual og-evm chain   
+        // which is only available on the actual og-evm chain
     })
 
     describe('Access Control', function () {
         it('should enforce DEFAULT_ADMIN_ROLE for setRegistry', async function () {
             await truffleAssert.reverts(
-                settlement.setRegistry(registry.address, { from: user1 })
+                verifier.setRegistry(registry.address, { from: user1 })
             )
 
             console.log('✓ Admin role enforced for setRegistry')
         })
 
         it('should allow role management by admin', async function () {
-            const DEFAULT_ADMIN_ROLE = await settlement.DEFAULT_ADMIN_ROLE()
+            const DEFAULT_ADMIN_ROLE = await verifier.DEFAULT_ADMIN_ROLE()
 
             // Grant role
-            await settlement.grantRole(DEFAULT_ADMIN_ROLE, user1)
-            expect(await settlement.hasRole(DEFAULT_ADMIN_ROLE, user1)).to.be.true
+            await verifier.grantRole(DEFAULT_ADMIN_ROLE, user1)
+            expect(await verifier.hasRole(DEFAULT_ADMIN_ROLE, user1)).to.be.true
 
             // Revoke role
-            await settlement.revokeRole(DEFAULT_ADMIN_ROLE, user1)
-            expect(await settlement.hasRole(DEFAULT_ADMIN_ROLE, user1)).to.be.false
+            await verifier.revokeRole(DEFAULT_ADMIN_ROLE, user1)
+            expect(await verifier.hasRole(DEFAULT_ADMIN_ROLE, user1)).to.be.false
 
             console.log('✓ Role management works correctly')
         })

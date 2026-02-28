@@ -5,21 +5,21 @@ import "./TEERegistry.sol";
 import "./precompiles/tee/ITEEVerifier.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-/// @title TEESettlement - Settlement verification for TEE-signed outputs
+/// @title TEEInferenceVerifier - Verification for TEE-signed inference outputs
 /// @notice Reads TEE public keys from TEERegistry and verifies RSA-PSS signatures with timestamp validation.
-contract TEESettlement is AccessControl {
+contract TEEInferenceVerifier is AccessControl {
 
     // ============ Constants ============
 
     ITEEVerifier public constant VERIFIER =
         ITEEVerifier(0x0000000000000000000000000000000000000900);
 
-    uint256 public constant MAX_SETTLEMENT_AGE = 1 hours;
+    uint256 public constant MAX_INFERENCE_AGE = 1 hours;
     uint256 public constant FUTURE_TOLERANCE = 5 minutes;
 
     // ============ State ============
 
-    /// @notice The registry this settlement contract reads TEE info from
+    /// @notice The registry this contract reads TEE info from
     TEERegistry public registry;
 
     // ============ Events ============
@@ -66,6 +66,7 @@ contract TEESettlement is AccessControl {
 
     /// @notice Verify a TEE signature with timestamp validation
     /// @dev Returns false for invalid signatures, inactive TEEs, or out-of-bounds timestamps.
+
     /// @param teeId Registered TEE identifier
     /// @param inputHash Hash of the inference input
     /// @param outputHash Hash of the inference output
@@ -83,8 +84,8 @@ contract TEESettlement is AccessControl {
         if (!registry.isActive(teeId)) return false;
 
         // 2. Timestamp bounds
-        uint256 minTs = block.timestamp > MAX_SETTLEMENT_AGE 
-            ? block.timestamp - MAX_SETTLEMENT_AGE 
+        uint256 minTs = block.timestamp > MAX_INFERENCE_AGE 
+            ? block.timestamp - MAX_INFERENCE_AGE 
             : 0;
         uint256 maxTs = block.timestamp + FUTURE_TOLERANCE;
         if (timestamp < minTs || timestamp > maxTs) return false;
