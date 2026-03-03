@@ -28,8 +28,8 @@ bytes32 teeId = registry.registerTEEWithAttestation(
     attestationDoc, signingKey, tlsCert, paymentAddr, endpoint, 0
 );
 
-// 3. Facilitator: Verify settlement
-bool valid = registry.verifySettlement(teeId, inputHash, outputHash, timestamp, signature);
+// 3. Verifier: Check TEE inference signature
+bool valid = verifier.verifySignature(teeId, inputHash, outputHash, timestamp, signature);
 
 // 4. Client: Get TLS cert for HTTPS verification
 bytes memory cert = registry.getTLSCertificate(teeId);
@@ -42,7 +42,7 @@ bytes memory cert = registry.getTLSCertificate(teeId);
 | `addTEEType()` | Admin | Add TEE category |
 | `approvePCR()` | Admin | Approve enclave code hash |
 | `registerTEEWithAttestation()` | Operator | Register new TEE |
-| `verifySettlement()` | Facilitator/toBeupdated | Verify & record settlement |
+| `verifySignature()` | TEEInferenceVerifier | Verify TEE inference signature |
 | `getTEE()` | Anyone | Get TEE info |
 | `getTLSCertificate()` | Anyone | Get TLS cert for HTTPS |
 | `isActive()` | Anyone | Check TEE status |
@@ -96,7 +96,7 @@ TEE_REGISTRY_ADDRESS=0x... TEE_ENCLAVE_HOST=127.0.0.1 go run local_tee_workflow.
 
 ### Integration Tasks
 - [ ] LLM Server: 
-- [ ] Facilitator (x402): Call `verifySettlement()` before payment
+- [ ] Facilitator (x402): Call `verifySignature()` via FacilitatorSettlementRelay before payment
 - [ ] Frontend/dashboard: Download and pin TLS certificates
 - [ ] Monitoring: Track TEE active status
 

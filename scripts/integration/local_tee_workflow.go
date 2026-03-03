@@ -77,8 +77,7 @@ var (
 	SEL_DEACTIVATE_TEE = crypto.Keccak256([]byte("deactivateTEE(bytes32)"))[:4]
 	SEL_ACTIVATE_TEE   = crypto.Keccak256([]byte("activateTEE(bytes32)"))[:4]
 
-	SEL_VERIFY_SIGNATURE  = crypto.Keccak256([]byte("verifySignature(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
-	SEL_VERIFY_SETTLEMENT = crypto.Keccak256([]byte("verifySettlement(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
+	SEL_VERIFY_SIGNATURE = crypto.Keccak256([]byte("verifySignature(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
 
 	SEL_GET_TEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
 	SEL_GET_ACTIVE_TEES   = crypto.Keccak256([]byte("getActiveTEEs()"))[:4]

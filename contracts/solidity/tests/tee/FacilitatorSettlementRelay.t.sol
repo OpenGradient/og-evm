@@ -12,16 +12,6 @@ contract MockSettlementContract is ISettlementContract {
         shouldVerify = _shouldVerify;
     }
 
-    function verifySettlement(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp,
-        bytes calldata /* signature */
-    ) external pure override returns (bytes32 settlementHash) {
-        return keccak256(abi.encodePacked(teeId, inputHash, outputHash, timestamp));
-    }
-
     function verifySignature(
         bytes32, /* teeId */
         bytes32, /* inputHash */
