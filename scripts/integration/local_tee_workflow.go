@@ -26,12 +26,13 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/fxamacker/cbor/v2"
 )
 
 const (
-	RPC_URL           = "http://localhost:8545"
-	VERIFIER_ADDRESS  = "0x0000000000000000000000000000000000000900"
-	ENCLAVE_HOST      = "13.59.207.188"
+	RPC_URL          = "http://127.0.0.1:8545"
+	VERIFIER_ADDRESS = "0x0000000000000000000000000000000000000900"
+	ENCLAVE_HOST      = "3.15.214.21"
 	ENCLAVE_PORT      = "443"
 	MEASUREMENTS_PATH = "measurements.txt"
 )
@@ -47,47 +48,37 @@ const TEE_REGISTRY_BYTECODE = "608060405234801561000f575f5ffd5b5061001a5f3361004
 // AccessControl Role Constants
 // ============================================================================
 var (
-	// DEFAULT_ADMIN_ROLE = bytes32(0)
 	DEFAULT_ADMIN_ROLE = [32]byte{}
-	// TEE_OPERATOR = keccak256("TEE_OPERATOR")
-	TEE_OPERATOR_ROLE = crypto.Keccak256Hash([]byte("TEE_OPERATOR"))
+	TEE_OPERATOR_ROLE  = crypto.Keccak256Hash([]byte("TEE_OPERATOR"))
 )
 
 // ============================================================================
 // Method Selectors
 // ============================================================================
 var (
-	// AccessControl (OpenZeppelin)
 	SEL_GRANT_ROLE     = crypto.Keccak256([]byte("grantRole(bytes32,address)"))[:4]
 	SEL_REVOKE_ROLE    = crypto.Keccak256([]byte("revokeRole(bytes32,address)"))[:4]
 	SEL_HAS_ROLE       = crypto.Keccak256([]byte("hasRole(bytes32,address)"))[:4]
 	SEL_GET_ROLE_ADMIN = crypto.Keccak256([]byte("getRoleAdmin(bytes32)"))[:4]
 
-	// TEE Type Management
 	SEL_ADD_TEE_TYPE  = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
 	SEL_IS_VALID_TYPE = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
 	SEL_GET_TEE_TYPES = crypto.Keccak256([]byte("getTEETypes()"))[:4]
 
-	// PCR Management
 	SEL_APPROVE_PCR      = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,bytes32,uint256)"))[:4]
 	SEL_REVOKE_PCR       = crypto.Keccak256([]byte("revokePCR(bytes32)"))[:4]
 	SEL_IS_PCR_APPROVED  = crypto.Keccak256([]byte("isPCRApproved(bytes32)"))[:4]
 	SEL_COMPUTE_PCR_HASH = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	SEL_GET_ACTIVE_PCRS  = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
 
-	// Certificate Management
 	SEL_SET_AWS_ROOT_CERT = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 
-	// TEE Registration
 	SEL_REGISTER_TEE   = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
 	SEL_DEACTIVATE_TEE = crypto.Keccak256([]byte("deactivateTEE(bytes32)"))[:4]
 	SEL_ACTIVATE_TEE   = crypto.Keccak256([]byte("activateTEE(bytes32)"))[:4]
 
-	// Verification
-	SEL_VERIFY_SIGNATURE  = crypto.Keccak256([]byte("verifySignature(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
-	SEL_VERIFY_SETTLEMENT = crypto.Keccak256([]byte("verifySettlement(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
+	SEL_VERIFY_SIGNATURE = crypto.Keccak256([]byte("verifySignature(bytes32,bytes32,bytes32,uint256,bytes)"))[:4]
 
-	// Queries
 	SEL_GET_TEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
 	SEL_GET_ACTIVE_TEES   = crypto.Keccak256([]byte("getActiveTEEs()"))[:4]
 	SEL_GET_TEES_BY_TYPE  = crypto.Keccak256([]byte("getTEEsByType(uint8)"))[:4]
@@ -97,7 +88,6 @@ var (
 	SEL_IS_ACTIVE         = crypto.Keccak256([]byte("isActive(bytes32)"))[:4]
 	SEL_GET_PAYMENT_ADDR  = crypto.Keccak256([]byte("getPaymentAddress(bytes32)"))[:4]
 
-	// Utility
 	SEL_COMPUTE_TEE_ID   = crypto.Keccak256([]byte("computeTEEId(bytes)"))[:4]
 	SEL_COMPUTE_MSG_HASH = crypto.Keccak256([]byte("computeMessageHash(bytes32,bytes32,uint256)"))[:4]
 )
@@ -186,6 +176,12 @@ func main() {
 		rand.Read(pcr0)
 		rand.Read(pcr1)
 		rand.Read(pcr2)
+	} else {
+		// [LOG] Show PCRs loaded from file so we can cross-check against enclave
+		fmt.Printf("  📂 Loaded PCRs from %s:\n", MEASUREMENTS_PATH)
+		fmt.Printf("     PCR0: %s\n", hex.EncodeToString(pcr0))
+		fmt.Printf("     PCR1: %s\n", hex.EncodeToString(pcr1))
+		fmt.Printf("     PCR2: %s\n", hex.EncodeToString(pcr2))
 	}
 
 	// SECTION 1: Role Management (AccessControl)
@@ -193,15 +189,12 @@ func main() {
 	fmt.Println("SECTION 1: Role Management (AccessControl)")
 	fmt.Println("------------------------------------------")
 
-	// Deployer should have DEFAULT_ADMIN_ROLE from constructor
 	hasAdmin, _ := callHasRole(DEFAULT_ADMIN_ROLE, account)
 	results.Add("Deployer has DEFAULT_ADMIN_ROLE", hasAdmin, "")
 
-	// Deployer should have TEE_OPERATOR role from constructor
 	hasOperator, _ := callHasRole(TEE_OPERATOR_ROLE, account)
 	results.Add("Deployer has TEE_OPERATOR role", hasOperator, "")
 
-	// Check non-admin doesn't have role
 	hasAdmin, _ = callHasRole(DEFAULT_ADMIN_ROLE, "0x0000000000000000000000000000000000000001")
 	results.Add("Random address doesn't have admin role", !hasAdmin, "")
 
@@ -239,21 +232,39 @@ func main() {
 	fmt.Println("------------------------------------------")
 
 	pcrHash, _ := callComputePCRHash(pcr0, pcr1, pcr2)
-	fmt.Printf("  📊 PCR Hash: 0x%s\n", hex.EncodeToString(pcrHash[:]))
+	fmt.Printf("  📊 PCR Hash (file measurements): 0x%s\n", hex.EncodeToString(pcrHash[:]))
 
-	approved, _ := callIsPCRApproved(pcrHash)
-	if !approved {
+	// [LOG] Show existing approved PCRs before making any changes
+	fmt.Println("  🔍 Fetching currently approved PCRs from contract...")
+	existingActivePCRs, err := callGetActivePCRs()
+	if err != nil {
+		fmt.Printf("  ⚠️  Could not fetch active PCRs: %v\n", err)
+	} else {
+		fmt.Printf("  📋 Currently approved PCRs (%d):\n", len(existingActivePCRs))
+		for i, p := range existingActivePCRs {
+			fmt.Printf("     [%d] %s\n", i, p)
+		}
+	}
+	if len(existingActivePCRs) == 0 {
 		txHash, err := callApprovePCR(account, pcr0, pcr1, pcr2, "v1.0.0")
 		if err == nil {
 			waitForTx(txHash)
 		}
 	}
-	approved, _ = callIsPCRApproved(pcrHash)
+	approved, _ := callIsPCRApproved(pcrHash)
+	// [LOG] Clearly show the approval status of the PCR we are about to use
+	fmt.Printf("  🔍 isPCRApproved(filePCRHash=%s) = %v\n", hex.EncodeToString(pcrHash[:]), approved)
+
+	if !approved {
+		fmt.Print("PCRs do not match")
+		os.Exit(1)
+	}
 	results.Add("PCR v1.0.0 approved", approved, "")
 
 	fakePCR := make([]byte, 48)
 	rand.Read(fakePCR)
 	fakeHash, _ := callComputePCRHash(fakePCR, pcr1, pcr2)
+	fmt.Printf("  🔍 isPCRApproved(fakePCRHash=%s) = expected false\n", hex.EncodeToString(fakeHash[:]))
 	approved, _ = callIsPCRApproved(fakeHash)
 	results.Add("isPCRApproved returns false for unknown PCR", !approved, "")
 
@@ -264,6 +275,21 @@ func main() {
 	fmt.Println("\n------------------------------------------")
 	fmt.Println("SECTION 4: TEE Registration")
 	fmt.Println("------------------------------------------")
+
+	// Set AWS root certificate before attempting registration
+	fmt.Println("  📜 Setting AWS Nitro root certificate...")
+	awsRootCert, err := getAWSNitroRootCert()
+	if err != nil {
+		fmt.Printf("  ❌ Failed to get AWS root cert: %v\n", err)
+	} else {
+		txHash, err := callSetAWSRootCert(account, awsRootCert)
+		if err != nil {
+			fmt.Printf("  ⚠️  Set AWS root cert failed (may already be set): %v\n", err)
+		} else {
+			waitForTx(txHash)
+			fmt.Printf("  ✅ AWS root cert set (%d bytes)\n", len(awsRootCert))
+		}
+	}
 
 	var registeredTEEId [32]byte
 	var signingPubKeyDER []byte
@@ -280,12 +306,79 @@ func main() {
 		results.Add("Fetch attestation from enclave", true, fmt.Sprintf("%d chars", len(attestationDoc)))
 
 		attestationBytes, _ := base64.StdEncoding.DecodeString(attestationDoc)
+		fmt.Println("  🔍 Extracting PCRs from attestation document...")
+		realPCRs, err := extractPCRsFromAttestation(attestationBytes)
+		if err != nil {
+			fmt.Printf("  ❌ Failed to extract PCRs: %v\n", err)
+		} else {
+			// [LOG] Print all PCRs extracted from the attestation, not just 0-1-2
+			fmt.Printf("  📊 PCRs extracted from attestation (%d total):\n", len(realPCRs))
+			for idx, val := range realPCRs {
+				fmt.Printf("     PCR%d: %s\n", idx, hex.EncodeToString(val))
+			}
 
+			realPCR0 := realPCRs[0]
+			realPCR1 := realPCRs[1]
+			realPCR2 := realPCRs[2]
+
+			// [LOG] Explicit comparison between file PCRs and attestation PCRs
+			fmt.Println("  🔍 Comparing file PCRs vs attestation PCRs:")
+			fmt.Printf("     PCR0 match: %v  (file=%s | attest=%s)\n",
+				hex.EncodeToString(pcr0) == hex.EncodeToString(realPCR0),
+				hex.EncodeToString(pcr0), hex.EncodeToString(realPCR0))
+			fmt.Printf("     PCR1 match: %v  (file=%s | attest=%s)\n",
+				hex.EncodeToString(pcr1) == hex.EncodeToString(realPCR1),
+				hex.EncodeToString(pcr1), hex.EncodeToString(realPCR1))
+			fmt.Printf("     PCR2 match: %v  (file=%s | attest=%s)\n",
+				hex.EncodeToString(pcr2) == hex.EncodeToString(realPCR2),
+				hex.EncodeToString(pcr2), hex.EncodeToString(realPCR2))
+
+			// Approve the REAL PCRs from the enclave
+			realPCRHash, _ := callComputePCRHash(realPCR0, realPCR1, realPCR2)
+			fmt.Printf("  📊 Real enclave PCR hash: 0x%s\n", hex.EncodeToString(realPCRHash[:]))
+
+			realApproved, _ := callIsPCRApproved(realPCRHash)
+			fmt.Printf("  🔍 isPCRApproved(realPCRHash) = %v\n", realApproved)
+
+			if !realApproved {
+				fmt.Println("  📝 Approving real enclave PCRs...")
+				txHash, err := callApprovePCR(account, realPCR0, realPCR1, realPCR2, "enclave-v1")
+				if err == nil {
+					waitForTx(txHash)
+					// [LOG] Verify the approval actually stuck
+					postApproval, _ := callIsPCRApproved(realPCRHash)
+					fmt.Printf("  ✅ Real PCRs approved — post-approval isPCRApproved=%v\n", postApproval)
+				} else {
+					fmt.Printf("  ❌ Failed to approve real PCRs: %v\n", err)
+				}
+			} else {
+				fmt.Println("  ✅ Real PCRs already approved")
+			}
+
+			// [LOG] Dump final state of active PCRs right before registration attempt
+			fmt.Println("  🔍 Active PCRs in contract (pre-registration):")
+			preRegPCRs, err := callGetActivePCRs()
+			if err != nil {
+				fmt.Printf("     ⚠️  Could not fetch: %v\n", err)
+			} else {
+				for i, p := range preRegPCRs {
+					fmt.Printf("     [%d] %s\n", i, p)
+				}
+			}
+		}
+
+		fmt.Printf("  🔍 About to call fetchSigningPublicKey with host: %s\n", ENCLAVE_HOST)
 		signingPubKeyDER, err = fetchSigningPublicKey(ENCLAVE_HOST)
+		fmt.Printf("  🔍 fetchSigningPublicKey returned: err=%v, keyLen=%d\n", err, len(signingPubKeyDER))
 		if err != nil {
 			results.Add("Fetch signing public key", false, err.Error())
 		} else {
 			results.Add("Fetch signing public key", true, fmt.Sprintf("%d bytes", len(signingPubKeyDER)))
+
+			// [LOG] Show the TEE ID that will be derived from the signing key
+			expectedTeeId := crypto.Keccak256Hash(signingPubKeyDER)
+			fmt.Printf("  🔑 Signing key SHA256: %x\n", sha256.Sum256(signingPubKeyDER))
+			fmt.Printf("  🆔 Expected TEE ID (keccak256(signingKey)): 0x%s\n", hex.EncodeToString(expectedTeeId[:]))
 
 			tlsCertDER, err := fetchTLSCertificate(ENCLAVE_HOST, ENCLAVE_PORT)
 			if err != nil {
@@ -293,8 +386,11 @@ func main() {
 			} else {
 				results.Add("Fetch TLS certificate", true, fmt.Sprintf("%d bytes", len(tlsCertDER)))
 
-				expectedTeeId := crypto.Keccak256Hash(signingPubKeyDER)
+				// [LOG] Show TLS cert fingerprint for cross-check
+				fmt.Printf("  🔏 TLS cert SHA256: %x\n", sha256.Sum256(tlsCertDER))
+
 				isActive, _ := callIsActive(expectedTeeId)
+				fmt.Printf("  🔍 isActive(expectedTeeId) = %v\n", isActive)
 
 				if isActive {
 					fmt.Println("  ℹ️  TEE already registered")
@@ -303,14 +399,19 @@ func main() {
 					results.Add("TEE already registered", true, "")
 				} else {
 					endpoint := fmt.Sprintf("https://%s", ENCLAVE_HOST)
-					fmt.Printf("    📦 Attestation: %d bytes\n", len(attestationBytes))
-					fmt.Printf("    📦 SigningKey: %d bytes\n", len(signingPubKeyDER))
-					fmt.Printf("    📦 TLSCert: %d bytes\n", len(tlsCertDER))
-					fmt.Printf("    📦 Endpoint: %s\n", endpoint)
+
+					// [LOG] Summarize all registration inputs before the call
+					fmt.Println("  📦 Registration inputs:")
+					fmt.Printf("     attestation:  %d bytes\n", len(attestationBytes))
+					fmt.Printf("     signingKey:   %d bytes (SHA256=%x)\n", len(signingPubKeyDER), sha256.Sum256(signingPubKeyDER))
+					fmt.Printf("     tlsCert:      %d bytes (SHA256=%x)\n", len(tlsCertDER), sha256.Sum256(tlsCertDER))
+					fmt.Printf("     paymentAddr:  %s\n", account)
+					fmt.Printf("     endpoint:     %s\n", endpoint)
+					fmt.Printf("     teeType:      0\n")
 
 					txHash, err := callRegisterTEE(account, attestationBytes, signingPubKeyDER, tlsCertDER, account, endpoint, 0)
 					if err != nil {
-						fmt.Printf("    ❌ Error details: %v\n", err)
+						fmt.Printf("    ❌ Registration error: %v\n", err)
 						results.Add("Register TEE with attestation", false, err.Error())
 					} else {
 						fmt.Printf("    📤 Tx hash: %s\n", txHash)
@@ -319,6 +420,19 @@ func main() {
 						if success {
 							registrationSuccess = true
 							registeredTEEId = expectedTeeId
+
+							// [LOG] Verify post-registration state
+							fmt.Printf("  ✅ Registration succeeded — verifying on-chain state...\n")
+							postActive, _ := callIsActive(registeredTEEId)
+							fmt.Printf("     isActive(teeId)=%v\n", postActive)
+						} else {
+							// [LOG] On failure, dump current PCR state to diagnose mismatch
+							fmt.Println("  ❌ Registration failed — dumping PCR state for diagnosis:")
+							failPCRs, _ := callGetActivePCRs()
+							fmt.Printf("     Active PCRs in contract (%d):\n", len(failPCRs))
+							for i, p := range failPCRs {
+								fmt.Printf("       [%d] %s\n", i, p)
+							}
 						}
 					}
 				}
@@ -337,6 +451,14 @@ func main() {
 
 		storedKey, err := callGetPublicKey(registeredTEEId)
 		keyMatches := err == nil && bytes.Equal(storedKey, signingPubKeyDER)
+		// [LOG] Show key comparison detail when it fails
+		if !keyMatches {
+			fmt.Printf("  ⚠️  Key mismatch — stored=%d bytes, expected=%d bytes\n", len(storedKey), len(signingPubKeyDER))
+			if len(storedKey) > 0 {
+				fmt.Printf("     stored SHA256:   %x\n", sha256.Sum256(storedKey))
+			}
+			fmt.Printf("     expected SHA256: %x\n", sha256.Sum256(signingPubKeyDER))
+		}
 		results.Add("getPublicKey returns correct key", keyMatches, "")
 
 		storedCert, err := callGetTLSCertificate(registeredTEEId)
@@ -567,36 +689,90 @@ func fetchSigningPublicKey(host string) ([]byte, error) {
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
 
-	resp, err := client.Get(fmt.Sprintf("https://%s/attestation", host))
+	url := fmt.Sprintf("https://%s/signing-key", host)
+	fmt.Printf("    🔍 Fetching signing key from: %s\n", url)
+
+	resp, err := client.Get(url)
 	if err != nil {
+		fmt.Printf("    ❌ HTTP request failed: %v\n", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	var attestResp AttestationResponse
-	if err := json.NewDecoder(resp.Body).Decode(&attestResp); err != nil {
+	fmt.Printf("    📋 HTTP Status: %d\n", resp.StatusCode)
+	fmt.Printf("    📋 Content-Type: %s\n", resp.Header.Get("Content-Type"))
+
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("    ❌ Failed to read body: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("    📋 Raw response (%d bytes): %s\n", len(rawBody), string(rawBody))
 
-	block, _ := pem.Decode([]byte(attestResp.PublicKey))
+	var attestResp AttestationResponse
+	if err := json.Unmarshal(rawBody, &attestResp); err != nil {
+		fmt.Printf("    ❌ JSON parse failed: %v\n", err)
+		return nil, fmt.Errorf("json unmarshal failed: %v", err)
+	}
+	fmt.Printf("    📋 public_key field (%d chars):\n%s\n", len(attestResp.PublicKey), attestResp.PublicKey)
+
+	// Fix literal \n in JSON string vs real newlines
+	pemStr := strings.ReplaceAll(attestResp.PublicKey, `\n`, "\n")
+
+	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
+		// Last resort: try raw body as PEM directly
+		fmt.Printf("    ⚠️  JSON PEM decode failed, trying raw body as PEM\n")
+		block, _ = pem.Decode(rawBody)
+	}
+	if block == nil {
+		fmt.Printf("    ❌ PEM decode returned nil\n")
 		return nil, fmt.Errorf("failed to decode PEM")
 	}
+
+	fmt.Printf("    ✅ PEM block type: %s, DER size: %d bytes\n", block.Type, len(block.Bytes))
 	return block.Bytes, nil
 }
 
 func fetchTLSCertificate(host, port string) ([]byte, error) {
-	conn, err := tls.Dial("tcp", host+":"+port, &tls.Config{InsecureSkipVerify: true})
+	addr := host + ":" + port
+	fmt.Printf("    🔌 Connecting to %s via TLS...\n", addr)
+
+	conn, err := tls.Dial("tcp", addr, &tls.Config{
+		InsecureSkipVerify: true, // enclave uses self-signed cert
+	})
 	if err != nil {
+		fmt.Printf("    ❌ TLS Dial failed: %v\n", err)
 		return nil, err
 	}
 	defer conn.Close()
+	fmt.Printf("    ✅ TLS connection established\n")
 
-	certs := conn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		return nil, fmt.Errorf("no certificates")
+	state := conn.ConnectionState()
+	fmt.Printf("    📋 TLS version: 0x%x\n", state.Version)
+	fmt.Printf("    📋 Certificates in chain: %d\n", len(state.PeerCertificates))
+
+	if len(state.PeerCertificates) == 0 {
+		return nil, fmt.Errorf("server presented no certificates")
 	}
-	return certs[0].Raw, nil
+
+	cert := state.PeerCertificates[0]
+	fmt.Printf("    📄 Subject:   %s\n", cert.Subject)
+	fmt.Printf("    📄 Issuer:    %s\n", cert.Issuer)
+	fmt.Printf("    📄 NotBefore: %s\n", cert.NotBefore)
+	fmt.Printf("    📄 NotAfter:  %s\n", cert.NotAfter)
+	fmt.Printf("    📄 PublicKey: %T\n", cert.PublicKey)
+	fmt.Printf("    📄 Raw size:  %d bytes\n", len(cert.Raw))
+	fmt.Printf("    📄 SHA256:    %x\n", sha256.Sum256(cert.Raw))
+
+	// Sanity check — parse back to confirm valid DER
+	if _, err := x509.ParseCertificate(cert.Raw); err != nil {
+		fmt.Printf("    ❌ Failed to parse cert back: %v\n", err)
+		return nil, fmt.Errorf("invalid certificate: %v", err)
+	}
+	fmt.Printf("    ✅ Certificate valid and parsed successfully\n")
+
+	return cert.Raw, nil
 }
 
 func loadPCRMeasurements() ([]byte, []byte, []byte, error) {
@@ -614,6 +790,39 @@ func loadPCRMeasurements() ([]byte, []byte, []byte, error) {
 	pcr1, _ := hex.DecodeString(m.Measurements.PCR1)
 	pcr2, _ := hex.DecodeString(m.Measurements.PCR2)
 	return pcr0, pcr1, pcr2, nil
+}
+
+// ============================================================================
+// AWS NITRO ROOT CERTIFICATE
+// ============================================================================
+
+func getAWSNitroRootCert() ([]byte, error) {
+	const awsNitroRootPEM = `-----BEGIN CERTIFICATE-----
+MIICETCCAZagAwIBAgIRAPkxdWgbkK/hHUbMtOTn+FYwCgYIKoZIzj0EAwMwSTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoMBkFtYXpvbjEMMAoGA1UECwwDQVdTMRswGQYD
+VQQDDBJhd3Mubml0cm8tZW5jbGF2ZXMwHhcNMTkxMDI4MTMyODA1WhcNNDkxMDI4
+MTQyODA1WjBJMQswCQYDVQQGEwJVUzEPMA0GA1UECgwGQW1hem9uMQwwCgYDVQQL
+DANBV1MxGzAZBgNVBAMMEmF3cy5uaXRyby1lbmNsYXZlczB2MBAGByqGSM49AgEG
+BSuBBAAiA2IABPwCVOumCMHzaHDimtqQvkY4MpJzbolL//Zy2YlES1BR5TSksfbb
+48C8WBoyt7F2Bw7eEtaaP+ohG2bnUs990d0JX28TcPQXCEPZ3BABIeTPYwEoCWZE
+h8l5YoQwTcU/9KNCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUkCW1DdkF
+R+eWw5b6cp3PmanfS5YwDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMDA2kAMGYC
+MQCjfy+Rocm9Xue4YnwWmNJVA44fA0P5W2OpYow9OYCVRaEevL8uO1XYru5xtMPW
+rfMCMQCi85sWBbJwKKXdS6BptQFuZbT73o/gBh1qUxl/nNr12UO8Yfwr6wPLb+6N
+IwLz3/Y=
+-----END CERTIFICATE-----`
+
+	block, _ := pem.Decode([]byte(awsNitroRootPEM))
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode AWS Nitro root cert PEM")
+	}
+
+	if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+		return nil, fmt.Errorf("invalid AWS Nitro root cert: %v", err)
+	}
+
+	fmt.Printf("    ✅ AWS Nitro root cert: %d bytes DER\n", len(block.Bytes))
+	return []byte(awsNitroRootPEM), nil
 }
 
 // ============================================================================
@@ -775,6 +984,17 @@ func callGetActivePCRs() ([]string, error) {
 		}
 	}
 	return pcrs, nil
+}
+
+// ============================================================================
+// CONTRACT CALLS - AWS Root Certificate
+// ============================================================================
+
+func callSetAWSRootCert(from string, certDER []byte) (string, error) {
+	bytesType, _ := abi.NewType("bytes", "", nil)
+	args := abi.Arguments{{Type: bytesType}}
+	encoded, _ := args.Pack(certDER)
+	return sendTx(from, append(SEL_SET_AWS_ROOT_CERT, encoded...))
 }
 
 // ============================================================================
@@ -1095,4 +1315,29 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func extractPCRsFromAttestation(attestationBytes []byte) (map[int][]byte, error) {
+	// COSE Sign1 structure: [protected, unprotected, payload, signature]
+	var cose []cbor.RawMessage
+	if err := cbor.Unmarshal(attestationBytes, &cose); err != nil {
+		return nil, fmt.Errorf("COSE unmarshal: %v", err)
+	}
+	if len(cose) != 4 {
+		return nil, fmt.Errorf("expected 4 COSE elements, got %d", len(cose))
+	}
+
+	var payload []byte
+	if err := cbor.Unmarshal(cose[2], &payload); err != nil {
+		return nil, fmt.Errorf("payload unmarshal: %v", err)
+	}
+
+	var doc struct {
+		PCRs map[int][]byte `cbor:"pcrs"`
+	}
+	if err := cbor.Unmarshal(payload, &doc); err != nil {
+		return nil, fmt.Errorf("doc unmarshal: %v", err)
+	}
+
+	return doc.PCRs, nil
 }

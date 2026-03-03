@@ -56,31 +56,27 @@ Tests the TEERegistry contract lifecycle and management functions.
   - Role enforcement across all admin functions
   - Role management (grant/revoke)
 
-### 3. Settlement Tests (`settlement.js`)
-Tests the settlement verification flow and cryptographic operations.
+### 3. Inference Verifier Tests (`inferenceVerifier.js`)
+Tests the TEEInferenceVerifier contract for signature verification with timestamp validation.
 
 **Coverage:**
+- **Initialization**
+  - Registry address setup
+  - Admin role assignment
+  - Precompile address and time constants
+- **Registry Management**
+  - Admin registry update
+  - Non-admin rejection
 - **Hash Computation**
   - Message hash format (keccak256(inputHash || outputHash || timestamp))
-  - Settlement hash format (keccak256(teeId || inputHash || outputHash || timestamp))
-  - Consistency checks
+  - Consistency checks across different inputs/timestamps
 - **Signature Verification**
-  - Non-existent TEE handling
-  - Message hash format validation
-- **Timestamp Validation**
+  - Inactive TEE returns false
   - Old timestamp rejection (> 1 hour)
   - Future timestamp rejection (> 5 minutes)
-  - Valid window acceptance
-- **Replay Protection**
-  - Settlement hash uniqueness
-  - Settlement usage tracking
-  - Parameter variation testing
-- **Integration Flow**
-  - Complete signature generation and verification flow
-  - End-to-end cryptographic operations
-- **Configuration**
-  - Time constant verification
-  - Precompile address verification
+- **Access Control**
+  - Role enforcement for setRegistry
+  - Role grant/revoke management
 
 ## Test Helper Contract
 
@@ -89,7 +85,6 @@ Tests the settlement verification flow and cryptographic operations.
 - Registry function wrappers
 - Gas estimation helpers
 - Hash computation utilities
-- Settlement tracking helpers
 
 ## Running Tests
 
@@ -107,8 +102,8 @@ npx hardhat test test/precompile.js --network cosmos
 # Registry tests only
 npx hardhat test test/registry.js --network cosmos
 
-# Settlement tests only
-npx hardhat test test/settlement.js --network cosmos
+# Inference verifier tests only
+npx hardhat test test/inferenceVerifier.js --network cosmos
 ```
 
 ## Requirements
@@ -144,12 +139,11 @@ Since generating valid attestation documents requires actual AWS Nitro hardware,
 - The cryptographic signature verification (RSA-PSS)
 
 ### Signature Flow
-The correct flow for TEE settlement verification:
+The correct flow for TEE inference verification:
 1. TEE computes: `messageHash = keccak256(inputHash || outputHash || timestamp)`
 2. TEE signs: `signature = RSA-PSS(SHA256(messageHash), privateKey)`
-3. Contract verifies: `verifyRSAPSS(publicKey, messageHash, signature)`
-4. Settlement hash computed: `keccak256(teeId || inputHash || outputHash || timestamp)`
-5. Replay protection enforced via `settlementUsed[settlementHash]`
+3. TEEInferenceVerifier checks: TEE active, timestamp in bounds, then calls `verifyRSAPSS(publicKey, messageHash, signature)`
+4. FacilitatorSettlementRelay calls `verifySignature()` and emits settlement events
 
 ### Gas Costs
 - `verifyAttestation`: ~500,000 gas (expensive due to crypto operations)
@@ -169,9 +163,8 @@ The correct flow for TEE settlement verification:
 | Registry Roles | ✅ Full |
 | TEE Types | ✅ Full |
 | PCR Management | ✅ Full |
-| Settlement Verification | ✅ Full (logic and validation) |
+| Inference Verification | ✅ Full (logic and validation) |
 | Timestamp Validation | ✅ Full |
-| Replay Protection | ✅ Full |
 | Query Functions | ✅ Full |
 | Access Control | ✅ Full |
 
