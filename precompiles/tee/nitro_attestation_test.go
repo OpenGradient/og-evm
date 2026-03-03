@@ -2,12 +2,21 @@ package tee
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/require"
 )
+
+// base64DecodeAttestation is a helper to decode the base64 attestation doc for testing.
+func base64DecodeAttestation(b64 string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(b64)
+}
 
 func TestParseProductionAttestation(t *testing.T) {
 	// Load production attestation document from testdata (already base64-encoded)
@@ -67,6 +76,94 @@ func TestParseProductionAttestation(t *testing.T) {
 		t.Logf("\n--- Computed PCR Hash (Keccak256) ---")
 		t.Logf("PCR Hash: %x", pcrHash)
 	}
+}
+
+// TestProductionAttestationParsing_Regression pins the exact parsed output of the production
+// attestation document. If CBOR/COSE decoding, PCR extraction, user_data parsing, or PCR hash
+// computation changes, this test will catch it.
+func TestProductionAttestationParsing_Regression(t *testing.T) {
+	attestationBase64Bytes, err := os.ReadFile("testdata/attestation_doc.bin")
+	require.NoError(t, err)
+
+	// Certificate valid window: 2026-02-12T17:55:59Z to 2026-02-12T20:56:02Z
+	// Attestation timestamp ~17:56:02 UTC
+	testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+
+	result, err := VerifyAttestationDocument(string(attestationBase64Bytes), nil, nil, &testTime)
+	require.NoError(t, err)
+	require.True(t, result.Valid, "attestation should be valid; error: %s", result.ErrorMessage)
+
+	// --- Pin exact PCR values (SHA-384, 48 bytes each) ---
+	expectedPCR0, _ := hex.DecodeString("9baef83909784e4d2cb84466c02931bb8125e948b62029029e80bfa1698bfd7069408e4ab20d1c99c859e8f774cce0ff")
+	expectedPCR1, _ := hex.DecodeString("4b4d5b3661b3efc12920900c80e126e4ce783c522de6c02a2a5bf7af3a2b9327b86776f188e4be1c1c404a129dbda493")
+	expectedPCR2, _ := hex.DecodeString("769925c8ae0c5c2d1aa86de149213b1c5dec642557bf0c426c6581f0e562a042d1c7d2578443515d103f74ce55337666")
+
+	require.Equal(t, expectedPCR0, result.PCRs.PCR0, "PCR0 mismatch — CBOR parsing may have changed")
+	require.Equal(t, expectedPCR1, result.PCRs.PCR1, "PCR1 mismatch — CBOR parsing may have changed")
+	require.Equal(t, expectedPCR2, result.PCRs.PCR2, "PCR2 mismatch — CBOR parsing may have changed")
+
+	// --- Pin exact user_data (68 bytes, Nitriding dual-key format) ---
+	expectedUserData, _ := hex.DecodeString("1220b735546536e78ee12beea2d384fcda35f7491446c6858f79fa7ad5e4ae89b49f1220abf9d7453422eb419fc1391604b070a81bd6a61f4d9ae0ee71ab24d77670c154")
+	require.Equal(t, expectedUserData, result.UserData, "user_data mismatch — CBOR or Nitriding format parsing may have changed")
+
+	// --- Pin exact public key ---
+	expectedPublicKey, _ := hex.DecodeString("64756d6d79") // "dummy"
+	require.Equal(t, expectedPublicKey, result.PublicKey, "public_key mismatch")
+
+	// --- Pin Nitriding parsed hashes ---
+	require.Len(t, result.UserData, NitridingUserDataLength)
+	hashes, err := ParseNitridingUserData(result.UserData)
+	require.NoError(t, err)
+
+	expectedTLSHash, _ := hex.DecodeString("b735546536e78ee12beea2d384fcda35f7491446c6858f79fa7ad5e4ae89b49f")
+	expectedSigningHash, _ := hex.DecodeString("abf9d7453422eb419fc1391604b070a81bd6a61f4d9ae0ee71ab24d77670c154")
+	require.Equal(t, expectedTLSHash, hashes.TLSCertHash, "TLS cert hash mismatch — Nitriding user_data parsing may have changed")
+	require.Equal(t, expectedSigningHash, hashes.SigningKeyHash, "signing key hash mismatch — Nitriding user_data parsing may have changed")
+
+	// --- Pin exact PCR hash (Keccak256 of pcr0||pcr1||pcr2) ---
+	expectedPCRHash := common.HexToHash("8082af22571613eabd5dad9c7e857c4f16154ded3d387386d8193b53906f6a24")
+	actualPCRHash := computePCRHash(result.PCRs.PCR0, result.PCRs.PCR1, result.PCRs.PCR2)
+	require.Equal(t, expectedPCRHash, actualPCRHash, "PCR hash mismatch — Keccak256 computation may have changed")
+}
+
+// TestCOSESign1Decoding_Regression ensures the COSE Sign1 envelope is decoded correctly
+// and the inner attestation document has the expected structure.
+func TestCOSESign1Decoding_Regression(t *testing.T) {
+	attestationBase64Bytes, err := os.ReadFile("testdata/attestation_doc.bin")
+	require.NoError(t, err)
+
+	// Decode base64 → raw COSE bytes
+	attestationBytes, err := base64DecodeAttestation(string(attestationBase64Bytes))
+	require.NoError(t, err)
+
+	// Decode COSE Sign1 envelope
+	coseMsg, err := decodeCOSESign1(attestationBytes)
+	require.NoError(t, err)
+
+	// The COSE structure must have all four fields populated
+	require.NotEmpty(t, coseMsg.ProtectedHeader, "protected header must not be empty")
+	require.NotEmpty(t, coseMsg.Payload, "payload must not be empty")
+	require.NotEmpty(t, coseMsg.Signature, "signature must not be empty")
+
+	// ECDSA P-384 signature should be exactly 96 bytes (r||s, 48 each)
+	require.Len(t, coseMsg.Signature, P384SignatureLength,
+		"COSE signature must be %d bytes for ES384", P384SignatureLength)
+
+	// Re-decode the payload to verify stable CBOR round-trip
+	var attestDoc AttestationDocument
+	err = cbor.Unmarshal(coseMsg.Payload, &attestDoc)
+	require.NoError(t, err)
+
+	require.Equal(t, "i-0340e0cb833504eb6-enc019c12d31f78864d", attestDoc.ModuleID,
+		"module_id mismatch — CBOR decoding may have changed")
+	require.Equal(t, "SHA384", attestDoc.Digest)
+	require.NotEmpty(t, attestDoc.PCRs, "PCR map must not be empty")
+	// PCR0, PCR1, PCR2 must exist (these are the ones we use for pcrHash)
+	require.Contains(t, attestDoc.PCRs, 0, "PCR0 must be present")
+	require.Contains(t, attestDoc.PCRs, 1, "PCR1 must be present")
+	require.Contains(t, attestDoc.PCRs, 2, "PCR2 must be present")
+	require.NotEmpty(t, attestDoc.Certificate, "attestation signing certificate must be present")
+	require.NotEmpty(t, attestDoc.CABundle, "CA bundle must be present")
 }
 
 // TestValidateAttestationTimestamp tests the timestamp freshness validation
