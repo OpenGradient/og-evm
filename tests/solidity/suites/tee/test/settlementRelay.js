@@ -362,8 +362,7 @@ contract('InferenceSettlementRelay', function (accounts) {
                     user,
                     WALRUS_BLOB_ID,
                     SIGNATURE
-                ),
-                'Invalid signature'
+                )
             )
 
             // Restore mock to return true

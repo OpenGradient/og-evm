@@ -256,8 +256,16 @@ contract('TEERegistry', function (accounts) {
             expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.true
 
             // Advance time past the grace period
-            await web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_increaseTime', params: [shortGracePeriod + 1], id: Date.now() }, () => {})
-            await web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_mine', params: [], id: Date.now() }, () => {})
+            await new Promise((resolve, reject) => {
+                web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_increaseTime', params: [shortGracePeriod + 1], id: Date.now() }, (err, res) => {
+                    if (err) reject(err); else resolve(res);
+                });
+            })
+            await new Promise((resolve, reject) => {
+                web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_mine', params: [], id: Date.now() }, (err, res) => {
+                    if (err) reject(err); else resolve(res);
+                });
+            })
 
             // The expiry PCR should now be rejected
             expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.false
