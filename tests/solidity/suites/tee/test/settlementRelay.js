@@ -1,9 +1,11 @@
 const { expect } = require('chai')
+const crypto = require('crypto')
 const truffleAssert = require('truffle-assertions')
 const InferenceSettlementRelay = artifacts.require('InferenceSettlementRelay')
 const TEEInferenceVerifier = artifacts.require('TEEInferenceVerifier')
 const TEERegistry = artifacts.require('TEERegistry')
 const MockTEEInferenceVerifier = artifacts.require('MockTEEInferenceVerifier')
+const MockTEERegistry = artifacts.require('MockTEERegistry')
 
 contract('InferenceSettlementRelay', function (accounts) {
     let owner, user
@@ -386,6 +388,143 @@ contract('InferenceSettlementRelay', function (accounts) {
             )
 
             console.log('✓ Non-relay role rejected even with valid mock signature')
+        })
+    })
+
+    // ============ Integration: settleIndividual end-to-end (registry → verifier → relay) ============
+
+    describe('settleIndividual end-to-end integration', function () {
+        let intRegistry, intVerifier, intRelay
+        let privateKey, publicKeyDER, intTeeId
+
+        const TEE_TYPE_NITRO = 1
+        const TLS_CERT = '0x' + Buffer.alloc(100, 0xAA).toString('hex')
+        const ENDPOINT = 'https://tee.example.com'
+        const PCR_HASH = web3.utils.keccak256('test-pcr')
+
+        before(async () => {
+            // Generate RSA key pair for signing
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' },
+                privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+            })
+            publicKeyDER = '0x' + keyPair.publicKey.toString('hex')
+            privateKey = keyPair.privateKey
+
+            // Deploy mock registry (bypasses attestation precompile)
+            intRegistry = await MockTEERegistry.new()
+            await intRegistry.addTEEType(TEE_TYPE_NITRO, 'AWS Nitro')
+
+            // Register and activate TEE
+            await intRegistry.registerTEEForTesting(
+                publicKeyDER, TLS_CERT, user, ENDPOINT, TEE_TYPE_NITRO, PCR_HASH
+            )
+            intTeeId = await intRegistry.computeTEEId(publicKeyDER)
+            await intRegistry.activateTEE(intTeeId)
+
+            // Deploy real verifier pointing at mock registry
+            intVerifier = await TEEInferenceVerifier.new(intRegistry.address)
+
+            // Deploy relay pointing at real verifier
+            intRelay = await InferenceSettlementRelay.new(intVerifier.address)
+
+            console.log('Integration setup: registry →', intRegistry.address,
+                'verifier →', intVerifier.address, 'relay →', intRelay.address)
+        })
+
+        // Helper: produce a valid RSA-PSS signature over (inputHash, outputHash, timestamp)
+        function signSettlement(inputHash, outputHash, timestamp) {
+            const messageHash = web3.utils.soliditySha3(
+                { type: 'bytes32', value: inputHash },
+                { type: 'bytes32', value: outputHash },
+                { type: 'uint256', value: timestamp }
+            )
+            const buf = Buffer.from(messageHash.slice(2), 'hex')
+            const sign = crypto.createSign('SHA256')
+            sign.update(buf)
+            sign.end()
+            const sig = sign.sign({
+                key: privateKey,
+                padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+                saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
+            })
+            return '0x' + sig.toString('hex')
+        }
+
+        it('should settle individual inference end-to-end', async function () {
+            const block = await web3.eth.getBlock('latest')
+            const timestamp = block.timestamp
+            const walrusBlobId = web3.utils.asciiToHex('integration_blob')
+            const signature = signSettlement(INPUT_HASH, OUTPUT_HASH, timestamp)
+
+            const result = await intRelay.settleIndividual(
+                intTeeId, INPUT_HASH, OUTPUT_HASH, timestamp, user, walrusBlobId, signature
+            )
+
+            truffleAssert.eventEmitted(result, 'IndividualSettlement', (ev) => {
+                return ev.teeId === intTeeId &&
+                       ev.ethAddress === user &&
+                       ev.inputHash === INPUT_HASH &&
+                       ev.outputHash === OUTPUT_HASH &&
+                       ev.timestamp.toNumber() === timestamp &&
+                       ev.signature === signature
+            })
+
+            console.log('✓ End-to-end settleIndividual succeeded')
+        })
+
+        it('should revert end-to-end when TEE is deactivated', async function () {
+            await intRegistry.deactivateTEE(intTeeId)
+
+            const block = await web3.eth.getBlock('latest')
+            const timestamp = block.timestamp
+            const signature = signSettlement(INPUT_HASH, OUTPUT_HASH, timestamp)
+
+            await truffleAssert.reverts(
+                intRelay.settleIndividual(
+                    intTeeId, INPUT_HASH, OUTPUT_HASH, timestamp, user,
+                    web3.utils.asciiToHex('blob'), signature
+                )
+            )
+
+            // Re-activate for subsequent tests
+            await intRegistry.activateTEE(intTeeId)
+
+            console.log('✓ Deactivated TEE rejected in end-to-end flow')
+        })
+
+        it('should revert end-to-end with expired timestamp', async function () {
+            const block = await web3.eth.getBlock('latest')
+            const expiredTimestamp = block.timestamp - 7200 // 2 hours ago (> MAX_INFERENCE_AGE)
+            const signature = signSettlement(INPUT_HASH, OUTPUT_HASH, expiredTimestamp)
+
+            await truffleAssert.reverts(
+                intRelay.settleIndividual(
+                    intTeeId, INPUT_HASH, OUTPUT_HASH, expiredTimestamp, user,
+                    web3.utils.asciiToHex('blob'), signature
+                )
+            )
+
+            console.log('✓ Expired timestamp rejected in end-to-end flow')
+        })
+
+        it('should revert end-to-end with wrong signature', async function () {
+            const block = await web3.eth.getBlock('latest')
+            const timestamp = block.timestamp
+            // Sign over different data than what we submit
+            const wrongSignature = signSettlement(
+                web3.utils.keccak256('wrong-input'), OUTPUT_HASH, timestamp
+            )
+
+            await truffleAssert.reverts(
+                intRelay.settleIndividual(
+                    intTeeId, INPUT_HASH, OUTPUT_HASH, timestamp, user,
+                    web3.utils.asciiToHex('blob'), wrongSignature
+                )
+            )
+
+            console.log('✓ Wrong signature rejected in end-to-end flow')
         })
     })
 })
