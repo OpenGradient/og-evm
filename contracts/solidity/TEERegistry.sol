@@ -92,7 +92,6 @@ contract TEERegistry is AccessControl {
     error NotTEEOwner();
     error AttestationInvalid(string reason);
     error KeyBindingFailed(string reason);
-    error InvalidSignature();
 
     // ============ Constructor ============
 
@@ -293,21 +292,7 @@ contract TEERegistry is AccessControl {
         delete _activeTEEIndex[teeId];
     }
 
-    // ============ Verification ============
-    
-    function verifySignature(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp,
-        bytes calldata signature
-    ) public view returns (bool) {
-        TEEInfo storage tee = tees[teeId];
-        if (!tee.active) return false;
-
-        bytes32 messageHash = computeMessageHash(inputHash, outputHash, timestamp);
-        return VERIFIER.verifyRSAPSS(tee.publicKey, messageHash, signature);
-    }
+    // ============ Utilities ============
 
     function computeMessageHash(
         bytes32 inputHash,

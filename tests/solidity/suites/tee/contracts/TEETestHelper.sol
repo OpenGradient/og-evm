@@ -113,16 +113,6 @@ contract TEETestHelper {
 
     // ============ Verification Wrappers ============
 
-    function verifySignature(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp,
-        bytes calldata signature
-    ) external view returns (bool) {
-        return registry.verifySignature(teeId, inputHash, outputHash, timestamp, signature);
-    }
-
     function computeMessageHash(
         bytes32 inputHash,
         bytes32 outputHash,

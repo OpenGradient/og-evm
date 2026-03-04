@@ -3,45 +3,20 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-
-/**
- * @title ISettlementContract
- * @notice Interface for the settlement verification contract consumed by the relay.
- * @dev The relay delegates signature and settlement validation to this external contract.
- */
-interface ISettlementContract {
-    
-    /**
-     * @notice Checks whether a settlement payload signature is valid.
-     * @param teeId Unique identifier of the TEE instance that produced the attestation.
-     * @param inputHash Hash of the settlement input payload.
-     * @param outputHash Hash of the settlement output payload.
-     * @param timestamp Unix timestamp associated with the signed payload.
-     * @param signature Signature over the settlement payload.
-     * @return True if the signature is valid for the provided payload.
-     */
-    function verifySignature(
-        bytes32 teeId,
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp,
-        bytes calldata signature
-    ) external view returns (bool);
-
-}
+import "./TEEInferenceVerifier.sol";
 
 /**
  * @title FacilitatorSettlementRelay
  * @notice Emits settlement-related events after optional signature validation.
  * @dev This relay is intended as an integration boundary between off-chain facilitators
- * and on-chain consumers. Signature validation is delegated to `SETTLEMENT_CONTRACT`.
+ * and on-chain consumers. Signature validation is delegated to `TEEInferenceVerifier`.
  */
 contract FacilitatorSettlementRelay is AccessControl {
     /// @notice Role identifier for accounts authorized to perform relay settlement actions.
     bytes32 public constant SETTLEMENT_RELAY_ROLE = keccak256("SETTLEMENT_RELAY_ROLE");
 
-    /// @notice External settlement contract used for cryptographic verification.
-    ISettlementContract public immutable SETTLEMENT_CONTRACT;
+    /// @notice TEEInferenceVerifier used for cryptographic and timestamp verification.
+    TEEInferenceVerifier public immutable SETTLEMENT_CONTRACT;
 
     /**
      * @notice Emitted when a batch settlement root is relayed.
@@ -76,9 +51,9 @@ contract FacilitatorSettlementRelay is AccessControl {
     );
 
     /**
-     * @notice Initializes the relay with an external settlement verifier contract.
+     * @notice Initializes the relay with a TEEInferenceVerifier contract.
      * @dev Reverts if `_settlement_contract` is the zero address.
-     * @param _settlement_contract Address of the deployed settlement contract implementation.
+     * @param _settlement_contract Address of the deployed TEEInferenceVerifier.
      */
     constructor(address _settlement_contract) {
         require(_settlement_contract != address(0), "Invalid settlement contract");
@@ -86,7 +61,7 @@ contract FacilitatorSettlementRelay is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(SETTLEMENT_RELAY_ROLE, msg.sender);
 
-        SETTLEMENT_CONTRACT = ISettlementContract(_settlement_contract);
+        SETTLEMENT_CONTRACT = TEEInferenceVerifier(_settlement_contract);
     }
 
     // --- WRITE FUNCTIONS (Only Relay Role) ---

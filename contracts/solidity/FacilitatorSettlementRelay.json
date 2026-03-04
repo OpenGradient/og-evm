@@ -239,7 +239,7 @@
 		"name": "SETTLEMENT_CONTRACT",
 		"outputs": [
 			{
-				"internalType": "contract ISettlementContract",
+				"internalType": "contract TEEInferenceVerifier",
 				"name": "",
 				"type": "address"
 			}
