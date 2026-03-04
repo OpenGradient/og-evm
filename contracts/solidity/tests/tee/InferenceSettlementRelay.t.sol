@@ -2,11 +2,11 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../../FacilitatorSettlementRelay.sol";
+import "../../InferenceSettlementRelay.sol";
 
-/// @title FacilitatorSettlementRelay Test Suite
-contract FacilitatorSettlementRelayTest is Test {
-    FacilitatorSettlementRelay public relay;
+/// @title InferenceSettlementRelay Test Suite
+contract InferenceSettlementRelayTest is Test {
+    InferenceSettlementRelay public relay;
     address public mockSettlement;
 
     address public admin = address(0x1);
@@ -43,7 +43,7 @@ contract FacilitatorSettlementRelayTest is Test {
         );
 
         vm.prank(admin);
-        relay = new FacilitatorSettlementRelay(mockSettlement);
+        relay = new InferenceSettlementRelay(mockSettlement);
     }
 
     // ============ Constructor Tests ============
@@ -59,7 +59,7 @@ contract FacilitatorSettlementRelayTest is Test {
 
     function test_Constructor_RevertIfSettlementContractIsZeroAddress() public {
         vm.expectRevert(bytes("Invalid settlement contract"));
-        new FacilitatorSettlementRelay(address(0));
+        new InferenceSettlementRelay(address(0));
     }
 
     // ============ batchSettle Tests ============

@@ -6,12 +6,12 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./TEEInferenceVerifier.sol";
 
 /**
- * @title FacilitatorSettlementRelay
+ * @title InferenceSettlementRelay
  * @notice Emits settlement-related events after optional signature validation.
  * @dev This relay is intended as an integration boundary between off-chain facilitators
  * and on-chain consumers. Signature validation is delegated to `TEEInferenceVerifier`.
  */
-contract FacilitatorSettlementRelay is AccessControl {
+contract InferenceSettlementRelay is AccessControl {
     /// @notice Role identifier for accounts authorized to perform relay settlement actions.
     bytes32 public constant SETTLEMENT_RELAY_ROLE = keccak256("SETTLEMENT_RELAY_ROLE");
 
