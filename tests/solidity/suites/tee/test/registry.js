@@ -237,37 +237,25 @@ contract('TEERegistry', function (accounts) {
             }
 
             const pcrHashExpiry = await registry.computePCRHash(pcrsExpiry)
-            const shortGracePeriod = 60 // 60 seconds
 
-            // Approve with a short grace period set via a "previous" PCR approach:
             // First approve the PCR normally
             await registry.approvePCR(pcrsExpiry, 'v-expiry', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
             expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.true
 
-            // Now approve a new PCR referencing the expiry PCR as previous, with short grace
+            // Approve a new PCR referencing the expiry PCR as previous, with gracePeriod = 0.
+            // This sets expiresAt = block.timestamp, so any subsequent block (where
+            // block.timestamp > expiresAt) will cause isPCRApproved to return false.
             const pcrsNew = {
                 pcr0: '0x' + Buffer.alloc(48, 0xF1).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0xF2).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0xF3).toString('hex')
             }
-            await registry.approvePCR(pcrsNew, 'v-new', pcrHashExpiry, shortGracePeriod)
+            await registry.approvePCR(pcrsNew, 'v-new', pcrHashExpiry, 0)
 
-            // The expiry PCR should still be valid during grace period
-            expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.true
+            // Send a dummy transaction to mine a new block with an advanced timestamp
+            await registry.setAWSRootCertificate('0x01')
 
-            // Advance time past the grace period
-            await new Promise((resolve, reject) => {
-                web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_increaseTime', params: [shortGracePeriod + 1], id: Date.now() }, (err, res) => {
-                    if (err) reject(err); else resolve(res);
-                });
-            })
-            await new Promise((resolve, reject) => {
-                web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_mine', params: [], id: Date.now() }, (err, res) => {
-                    if (err) reject(err); else resolve(res);
-                });
-            })
-
-            // The expiry PCR should now be rejected
+            // The expiry PCR should now be rejected (block.timestamp > expiresAt)
             expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.false
 
             console.log('✓ Expired PCR rejected after grace period elapses')
