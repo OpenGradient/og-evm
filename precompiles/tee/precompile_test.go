@@ -658,6 +658,102 @@ func TestVerifyAttestation_SizeLimits(t *testing.T) {
 	}
 }
 
+// TestRun_VerifyAttestation_Integration tests the Run() method with verifyAttestation selector
+func TestRun_VerifyAttestation_Integration(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewPrecompile()
+	require.NoError(t, err)
+
+	method, ok := p.abi.Methods[MethodVerifyAttestation]
+	require.True(t, ok)
+
+	mockEVM := newMockEVM(time.Now())
+
+	tests := []struct {
+		name           string
+		attestationDoc []byte
+		signingKey     []byte
+		tlsCert        []byte
+		rootCert       []byte
+		expectValid    bool
+	}{
+		{
+			name:           "invalid attestation via Run",
+			attestationDoc: []byte("invalid_cose_data"),
+			signingKey:     []byte("test_key"),
+			tlsCert:        []byte("test_cert"),
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+		{
+			name:           "empty attestation via Run",
+			attestationDoc: []byte{},
+			signingKey:     []byte("test_key"),
+			tlsCert:        []byte("test_cert"),
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+		{
+			name:           "empty signing key via Run",
+			attestationDoc: []byte("some_data"),
+			signingKey:     []byte{},
+			tlsCert:        []byte("test_cert"),
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+		{
+			name:           "empty TLS cert via Run",
+			attestationDoc: []byte("some_data"),
+			signingKey:     []byte("test_key"),
+			tlsCert:        []byte{},
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+		{
+			name:           "oversized attestation via Run",
+			attestationDoc: make([]byte, MaxAttestationSize+1),
+			signingKey:     []byte("test_key"),
+			tlsCert:        []byte("test_cert"),
+			rootCert:       []byte{},
+			expectValid:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Pack inputs using the ABI method
+			input, err := method.Inputs.Pack(
+				tt.attestationDoc,
+				tt.signingKey,
+				tt.tlsCert,
+				tt.rootCert,
+			)
+			require.NoError(t, err)
+
+			// Prepend method selector
+			fullInput := append(method.ID, input...)
+
+			contract := &vm.Contract{
+				Input: fullInput,
+			}
+
+			result, err := p.Run(mockEVM, contract, true)
+			require.NoError(t, err, "Run should not error for valid ABI input")
+
+			// Unpack result
+			outputs, err := method.Outputs.Unpack(result)
+			require.NoError(t, err)
+			require.Len(t, outputs, 2)
+
+			valid := outputs[0].(bool)
+			require.Equal(t, tt.expectValid, valid)
+		})
+	}
+}
+
 // TestComputePCRHash_SizeLimits tests PCR size validation
 func TestComputePCRHash_SizeLimits(t *testing.T) {
 	t.Parallel()

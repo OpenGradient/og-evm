@@ -2,6 +2,7 @@ package tee
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"testing"
 	"time"
@@ -497,5 +498,440 @@ func TestKeyBindingAttackScenarios(t *testing.T) {
 		extendedData := append(userData, []byte("extra_data")...)
 		err := VerifySigningKeyBinding(legitimateKey, extendedData)
 		require.Error(t, err, "Extended user data should be rejected")
+	})
+}
+
+// TestConstantTimeEqual tests the constant-time byte comparison function
+func TestConstantTimeEqual(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		a        []byte
+		b        []byte
+		expected bool
+	}{
+		{
+			name:     "equal slices",
+			a:        []byte{0x01, 0x02, 0x03, 0x04},
+			b:        []byte{0x01, 0x02, 0x03, 0x04},
+			expected: true,
+		},
+		{
+			name:     "different content same length",
+			a:        []byte{0x01, 0x02, 0x03, 0x04},
+			b:        []byte{0x01, 0x02, 0x03, 0x05},
+			expected: false,
+		},
+		{
+			name:     "different lengths",
+			a:        []byte{0x01, 0x02, 0x03},
+			b:        []byte{0x01, 0x02, 0x03, 0x04},
+			expected: false,
+		},
+		{
+			name:     "both empty",
+			a:        []byte{},
+			b:        []byte{},
+			expected: true,
+		},
+		{
+			name:     "one empty one not",
+			a:        []byte{},
+			b:        []byte{0x01},
+			expected: false,
+		},
+		{
+			name:     "both nil",
+			a:        nil,
+			b:        nil,
+			expected: true,
+		},
+		{
+			name:     "nil vs empty",
+			a:        nil,
+			b:        []byte{},
+			expected: true, // len(nil) == len([]byte{}) == 0
+		},
+		{
+			name:     "single byte equal",
+			a:        []byte{0xFF},
+			b:        []byte{0xFF},
+			expected: true,
+		},
+		{
+			name:     "single byte differ",
+			a:        []byte{0xFE},
+			b:        []byte{0xFF},
+			expected: false,
+		},
+		{
+			name:     "48-byte PCR values equal",
+			a:        make([]byte, 48),
+			b:        make([]byte, 48),
+			expected: true,
+		},
+		{
+			name: "48-byte PCR values differ in last byte",
+			a:    make([]byte, 48),
+			b: func() []byte {
+				b := make([]byte, 48)
+				b[47] = 0x01
+				return b
+			}(),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := constantTimeEqual(tt.a, tt.b)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestComparePCRs tests PCR comparison logic
+func TestComparePCRs(t *testing.T) {
+	t.Parallel()
+
+	pcr0 := []byte("pcr0_value_48_bytes_padded_to_fill_sha384_hash!!")[:48]
+	pcr1 := []byte("pcr1_value_48_bytes_padded_to_fill_sha384_hash!!")[:48]
+	pcr2 := []byte("pcr2_value_48_bytes_padded_to_fill_sha384_hash!!")[:48]
+
+	tests := []struct {
+		name        string
+		extracted   PCRValues384
+		expected    PCRValues384
+		expectError bool
+		errContains string
+	}{
+		{
+			name:        "all PCRs match",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expectError: false,
+		},
+		{
+			name:        "PCR0 mismatch",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: pcr1, PCR1: pcr1, PCR2: pcr2},
+			expectError: true,
+			errContains: "PCR0 mismatch",
+		},
+		{
+			name:        "PCR1 mismatch",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: pcr0, PCR1: pcr0, PCR2: pcr2},
+			expectError: true,
+			errContains: "PCR1 mismatch",
+		},
+		{
+			name:        "PCR2 mismatch",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr0},
+			expectError: true,
+			errContains: "PCR2 mismatch",
+		},
+		{
+			name:        "nil expected PCRs skips comparison",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: nil, PCR1: nil, PCR2: nil},
+			expectError: false,
+		},
+		{
+			name:        "empty expected PCRs skips comparison",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: []byte{}, PCR1: []byte{}, PCR2: []byte{}},
+			expectError: false,
+		},
+		{
+			name:        "partial check PCR0 only",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: pcr0, PCR1: nil, PCR2: nil},
+			expectError: false,
+		},
+		{
+			name:        "partial check PCR2 only mismatch",
+			extracted:   PCRValues384{PCR0: pcr0, PCR1: pcr1, PCR2: pcr2},
+			expected:    PCRValues384{PCR0: nil, PCR1: nil, PCR2: pcr0},
+			expectError: true,
+			errContains: "PCR2 mismatch",
+		},
+		{
+			name:        "error message includes hex of extracted PCR",
+			extracted:   PCRValues384{PCR0: []byte{0xDE, 0xAD}, PCR1: nil, PCR2: nil},
+			expected:    PCRValues384{PCR0: []byte{0xBE, 0xEF}, PCR1: nil, PCR2: nil},
+			expectError: true,
+			errContains: hex.EncodeToString([]byte{0xDE, 0xAD}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := comparePCRs(tt.extracted, tt.expected)
+			if tt.expectError {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					require.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateNonce tests nonce validation for replay protection
+func TestValidateNonce(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		docNonce      []byte
+		expectedNonce []byte
+		expectError   bool
+		errContains   string
+	}{
+		{
+			name:          "nil expected nonce skips validation",
+			docNonce:      []byte("some_nonce"),
+			expectedNonce: nil,
+			expectError:   false,
+		},
+		{
+			name:          "empty expected nonce skips validation",
+			docNonce:      []byte("some_nonce"),
+			expectedNonce: []byte{},
+			expectError:   false,
+		},
+		{
+			name:          "matching nonces",
+			docNonce:      []byte("matching_nonce_value"),
+			expectedNonce: []byte("matching_nonce_value"),
+			expectError:   false,
+		},
+		{
+			name:          "mismatched nonces",
+			docNonce:      []byte("nonce_a"),
+			expectedNonce: []byte("nonce_b"),
+			expectError:   true,
+			errContains:   "nonce mismatch",
+		},
+		{
+			name:          "missing doc nonce when expected",
+			docNonce:      nil,
+			expectedNonce: []byte("expected_nonce"),
+			expectError:   true,
+			errContains:   "missing nonce",
+		},
+		{
+			name:          "empty doc nonce when expected",
+			docNonce:      []byte{},
+			expectedNonce: []byte("expected_nonce"),
+			expectError:   true,
+			errContains:   "missing nonce",
+		},
+		{
+			name:          "both nil",
+			docNonce:      nil,
+			expectedNonce: nil,
+			expectError:   false,
+		},
+		{
+			name:          "different lengths",
+			docNonce:      []byte("short"),
+			expectedNonce: []byte("much_longer_nonce"),
+			expectError:   true,
+			errContains:   "nonce mismatch",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateNonce(tt.docNonce, tt.expectedNonce)
+			if tt.expectError {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					require.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateRootCertificate tests root certificate validation
+func TestValidateRootCertificate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		certPEM     []byte
+		expectError bool
+	}{
+		{
+			name:        "valid AWS Nitro root cert",
+			certPEM:     DefaultAWSNitroRootCertPEM,
+			expectError: false,
+		},
+		{
+			name:        "empty certificate",
+			certPEM:     []byte{},
+			expectError: true,
+		},
+		{
+			name:        "nil certificate",
+			certPEM:     nil,
+			expectError: true,
+		},
+		{
+			name:        "invalid PEM data",
+			certPEM:     []byte("not a valid PEM certificate"),
+			expectError: true,
+		},
+		{
+			name:        "truncated PEM",
+			certPEM:     DefaultAWSNitroRootCertPEM[:100],
+			expectError: true,
+		},
+		{
+			name: "valid PEM header but invalid content",
+			certPEM: []byte(`-----BEGIN CERTIFICATE-----
+aW52YWxpZCBjZXJ0aWZpY2F0ZSBkYXRh
+-----END CERTIFICATE-----`),
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidateRootCertificate(tt.certPEM)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestVerifyAttestationWithDefaultCert tests the default-cert convenience wrapper
+func TestVerifyAttestationWithDefaultCert(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid base64 returns error", func(t *testing.T) {
+		t.Parallel()
+		testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+		result, err := VerifyAttestationWithDefaultCert("not_valid_base64!!!", nil, &testTime)
+		require.Error(t, err)
+		require.False(t, result.Valid)
+	})
+
+	t.Run("valid base64 but invalid COSE returns error", func(t *testing.T) {
+		t.Parallel()
+		testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+		// Valid base64 encoding of "invalid data"
+		result, err := VerifyAttestationWithDefaultCert("aW52YWxpZCBkYXRh", nil, &testTime)
+		require.Error(t, err)
+		require.False(t, result.Valid)
+	})
+
+	t.Run("matches VerifyAttestationDocument with default cert", func(t *testing.T) {
+		t.Parallel()
+		testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+
+		// Both should return the same error for invalid input
+		resultDefault, errDefault := VerifyAttestationWithDefaultCert("aW52YWxpZCBkYXRh", nil, &testTime)
+		resultExplicit, errExplicit := VerifyAttestationDocument("aW52YWxpZCBkYXRh", DefaultAWSNitroRootCertPEM, nil, &testTime)
+
+		require.Equal(t, resultDefault.Valid, resultExplicit.Valid)
+		require.Equal(t, resultDefault.ErrorMessage, resultExplicit.ErrorMessage)
+		// Both should error the same way
+		if errDefault != nil {
+			require.Error(t, errExplicit)
+		}
+	})
+}
+
+// TestVerifyAttestationWithPCRCheck tests attestation verification with PCR matching
+func TestVerifyAttestationWithPCRCheck(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid attestation fails before PCR check", func(t *testing.T) {
+		t.Parallel()
+		testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+		expectedPCRs := PCRValues384{
+			PCR0: make([]byte, 48),
+			PCR1: make([]byte, 48),
+			PCR2: make([]byte, 48),
+		}
+		result, err := VerifyAttestationWithPCRCheck("aW52YWxpZCBkYXRh", nil, expectedPCRs, nil, &testTime)
+		require.Error(t, err)
+		require.False(t, result.Valid)
+	})
+
+	t.Run("uses production attestation with matching PCRs", func(t *testing.T) {
+		attestationBase64Bytes, err := os.ReadFile("testdata/attestation_doc.bin")
+		require.NoError(t, err)
+		attestationBase64 := string(attestationBase64Bytes)
+
+		testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+
+		// First get the actual PCRs from the attestation
+		result, err := VerifyAttestationDocument(attestationBase64, nil, nil, &testTime)
+		require.NoError(t, err)
+		require.True(t, result.Valid)
+
+		// Now verify with matching PCRs
+		resultWithPCR, err := VerifyAttestationWithPCRCheck(
+			attestationBase64, nil, result.PCRs, nil, &testTime,
+		)
+		require.NoError(t, err)
+		require.True(t, resultWithPCR.Valid)
+	})
+
+	t.Run("uses production attestation with mismatched PCRs", func(t *testing.T) {
+		attestationBase64Bytes, err := os.ReadFile("testdata/attestation_doc.bin")
+		require.NoError(t, err)
+		attestationBase64 := string(attestationBase64Bytes)
+
+		testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+
+		// Use wrong PCR values
+		wrongPCRs := PCRValues384{
+			PCR0: make([]byte, 48),
+			PCR1: make([]byte, 48),
+			PCR2: make([]byte, 48),
+		}
+		wrongPCRs.PCR0[0] = 0xFF // Ensure it differs
+
+		result, err := VerifyAttestationWithPCRCheck(
+			attestationBase64, nil, wrongPCRs, nil, &testTime,
+		)
+		require.Error(t, err)
+		require.False(t, result.Valid)
+		require.Contains(t, result.ErrorMessage, "PCR validation failed")
+	})
+
+	t.Run("nil expected PCRs skips PCR comparison", func(t *testing.T) {
+		attestationBase64Bytes, err := os.ReadFile("testdata/attestation_doc.bin")
+		require.NoError(t, err)
+		attestationBase64 := string(attestationBase64Bytes)
+
+		testTime := time.Date(2026, 2, 12, 18, 0, 0, 0, time.UTC)
+
+		// Empty PCRs should skip comparison and pass
+		emptyPCRs := PCRValues384{}
+		result, err := VerifyAttestationWithPCRCheck(
+			attestationBase64, nil, emptyPCRs, nil, &testTime,
+		)
+		require.NoError(t, err)
+		require.True(t, result.Valid)
 	})
 }
