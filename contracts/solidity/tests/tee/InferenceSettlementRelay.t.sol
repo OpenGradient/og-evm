@@ -2,31 +2,12 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../../FacilitatorSettlementRelay.sol";
+import "../../InferenceSettlementRelay.sol";
 
-/// @title Mock Settlement Contract for relay tests
-contract MockSettlementContract is ISettlementContract {
-    bool public shouldVerify = true;
-
-    function setShouldVerify(bool _shouldVerify) external {
-        shouldVerify = _shouldVerify;
-    }
-
-    function verifySignature(
-        bytes32, /* teeId */
-        bytes32, /* inputHash */
-        bytes32, /* outputHash */
-        uint256, /* timestamp */
-        bytes calldata /* signature */
-    ) external view override returns (bool) {
-        return shouldVerify;
-    }
-}
-
-/// @title FacilitatorSettlementRelay Test Suite
-contract FacilitatorSettlementRelayTest is Test {
-    FacilitatorSettlementRelay public relay;
-    MockSettlementContract public mockSettlement;
+/// @title InferenceSettlementRelay Test Suite
+contract InferenceSettlementRelayTest is Test {
+    InferenceSettlementRelay public relay;
+    address public mockSettlement;
 
     address public admin = address(0x1);
     address public user = address(0x2);
@@ -51,16 +32,24 @@ contract FacilitatorSettlementRelayTest is Test {
     );
 
     function setUp() public {
-        mockSettlement = new MockSettlementContract();
+        mockSettlement = makeAddr("mockSettlement");
+        // Deploy contract code at the mock address so the cast to TEEInferenceVerifier succeeds
+        vm.etch(mockSettlement, hex"00");
+        // Default: verifySignature returns true
+        vm.mockCall(
+            mockSettlement,
+            abi.encodeWithSelector(TEEInferenceVerifier.verifySignature.selector),
+            abi.encode(true)
+        );
 
         vm.prank(admin);
-        relay = new FacilitatorSettlementRelay(address(mockSettlement));
+        relay = new InferenceSettlementRelay(mockSettlement);
     }
 
     // ============ Constructor Tests ============
 
     function test_Constructor_SetsSettlementContract() public view {
-        assertEq(address(relay.SETTLEMENT_CONTRACT()), address(mockSettlement));
+        assertEq(address(relay.SETTLEMENT_CONTRACT()), mockSettlement);
     }
 
     function test_Constructor_GrantsRoles() public view {
@@ -70,7 +59,7 @@ contract FacilitatorSettlementRelayTest is Test {
 
     function test_Constructor_RevertIfSettlementContractIsZeroAddress() public {
         vm.expectRevert(bytes("Invalid settlement contract"));
-        new FacilitatorSettlementRelay(address(0));
+        new InferenceSettlementRelay(address(0));
     }
 
     // ============ batchSettle Tests ============
@@ -129,7 +118,11 @@ contract FacilitatorSettlementRelayTest is Test {
     }
 
     function test_SettleIndividual_RevertIfInvalidSignature() public {
-        mockSettlement.setShouldVerify(false);
+        vm.mockCall(
+            mockSettlement,
+            abi.encodeWithSelector(TEEInferenceVerifier.verifySignature.selector),
+            abi.encode(false)
+        );
 
         vm.startPrank(admin);
         vm.expectRevert(bytes("Invalid signature"));
