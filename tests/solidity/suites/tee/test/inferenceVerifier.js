@@ -42,6 +42,21 @@ contract('TEEInferenceVerifier', function (accounts) {
     })
 
     describe('Initialization', function () {
+        it('should revert constructor with zero address', async function () {
+            try {
+                await TEEInferenceVerifier.new('0x0000000000000000000000000000000000000000')
+                assert.fail('Expected deployment to fail')
+            } catch (error) {
+                expect(
+                    error.message.includes('InvalidRegistryAddress') ||
+                    error.message.includes("couldn't be stored") ||
+                    error.message.includes('revert')
+                ).to.be.true
+            }
+
+            console.log('✓ Constructor rejects zero address')
+        })
+
         it('should initialize with correct registry', async function () {
             const registryAddress = await verifier.registry()
             expect(registryAddress).to.equal(registry.address)
@@ -106,6 +121,14 @@ contract('TEEInferenceVerifier', function (accounts) {
             )
 
             console.log('✓ Non-admin cannot update registry')
+        })
+
+        it('should revert setRegistry with zero address', async function () {
+            await truffleAssert.reverts(
+                verifier.setRegistry('0x0000000000000000000000000000000000000000')
+            )
+
+            console.log('✓ setRegistry rejects zero address')
         })
     })
 

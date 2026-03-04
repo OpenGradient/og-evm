@@ -100,6 +100,14 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ TEE type deactivated successfully')
         })
 
+        it('should reject non-admin deactivating TEE type', async function () {
+            await truffleAssert.reverts(
+                registry.deactivateTEEType(TYPE_AWS_NITRO, { from: user1 })
+            )
+
+            console.log('✓ Non-admin cannot deactivate TEE type')
+        })
+
         it('should list all TEE types', async function () {
             const result = await registry.getTEETypes()
             const typeIds = result.typeIds || result[0]
@@ -211,6 +219,50 @@ contract('TEERegistry', function (accounts) {
             )
 
             console.log('✓ Non-admin cannot approve PCR')
+        })
+
+        it('should reject non-admin revoking PCR', async function () {
+            await truffleAssert.reverts(
+                registry.revokePCR(pcrHash, { from: user1 })
+            )
+
+            console.log('✓ Non-admin cannot revoke PCR')
+        })
+
+        it('should reject expired PCR after grace period elapses', async function () {
+            const pcrsExpiry = {
+                pcr0: '0x' + Buffer.alloc(48, 0xE1).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0xE2).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0xE3).toString('hex')
+            }
+
+            const pcrHashExpiry = await registry.computePCRHash(pcrsExpiry)
+            const shortGracePeriod = 60 // 60 seconds
+
+            // Approve with a short grace period set via a "previous" PCR approach:
+            // First approve the PCR normally
+            await registry.approvePCR(pcrsExpiry, 'v-expiry', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
+            expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.true
+
+            // Now approve a new PCR referencing the expiry PCR as previous, with short grace
+            const pcrsNew = {
+                pcr0: '0x' + Buffer.alloc(48, 0xF1).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0xF2).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0xF3).toString('hex')
+            }
+            await registry.approvePCR(pcrsNew, 'v-new', pcrHashExpiry, shortGracePeriod)
+
+            // The expiry PCR should still be valid during grace period
+            expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.true
+
+            // Advance time past the grace period
+            await web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_increaseTime', params: [shortGracePeriod + 1], id: Date.now() }, () => {})
+            await web3.currentProvider.send({ jsonrpc: '2.0', method: 'evm_mine', params: [], id: Date.now() }, () => {})
+
+            // The expiry PCR should now be rejected
+            expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.false
+
+            console.log('✓ Expired PCR rejected after grace period elapses')
         })
     })
 
