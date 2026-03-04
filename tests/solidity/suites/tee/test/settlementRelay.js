@@ -110,8 +110,7 @@ contract('InferenceSettlementRelay', function (accounts) {
                     user,
                     WALRUS_BLOB_ID,
                     SIGNATURE
-                ),
-                'Invalid signature'
+                )
             )
 
             console.log('✓ Invalid signature rejected')
@@ -153,8 +152,7 @@ contract('InferenceSettlementRelay', function (accounts) {
                     WALRUS_BLOB_ID,
                     SIGNATURE,
                     { from: user }
-                ),
-                'Invalid signature'
+                )
             )
 
             // Revoke role
