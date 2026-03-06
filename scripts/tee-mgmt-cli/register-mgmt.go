@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
@@ -27,8 +28,17 @@ import (
 // Configuration (from .env file or environment)
 // ============================================================================
 
+var (
+	RPC_URL              string
+	TEE_REGISTRY_ADDRESS string
+	PRIVATE_KEY          string
+)
+
 func init() {
 	loadEnvFile(".env")
+	RPC_URL = getEnvOrDefault("RPC_URL", "http://13.59.43.94:8545")
+	TEE_REGISTRY_ADDRESS = getEnvOrDefault("TEE_REGISTRY_ADDRESS", "0x3d641a2791533b4a0000345ea8d509d01e1ec301")
+	PRIVATE_KEY = os.Getenv("TEE_PRIVATE_KEY")
 }
 
 func loadEnvFile(filename string) {
@@ -52,12 +62,6 @@ func loadEnvFile(filename string) {
 		}
 	}
 }
-
-var (
-	RPC_URL              = getEnvOrDefault("TEE_RPC_URL", "http://13.59.43.94:8545")
-	TEE_REGISTRY_ADDRESS = getEnvOrDefault("TEE_REGISTRY_ADDRESS", "0x3d641a2791533b4a0000345ea8d509d01e1ec301")
-	PRIVATE_KEY          = os.Getenv("TEE_PRIVATE_KEY")
-)
 
 // ============================================================================
 // AccessControl Role Constants
@@ -229,7 +233,11 @@ func cmdList() {
 }
 
 func cmdShow(teeIdStr string) {
-	teeId := parseBytes32(teeIdStr)
+	teeId, err := parseBytes32(teeIdStr)
+	if err != nil {
+		fatal("Invalid TEE ID: %v", err)
+	}
+
 	fmt.Printf("=== TEE Details: 0x%s ===\n", hex.EncodeToString(teeId[:]))
 
 	info, err := callGetTEE(teeId)
@@ -334,7 +342,10 @@ func cmdRegister() {
 }
 
 func cmdDeactivate(teeIdStr string) {
-	teeId := parseBytes32(teeIdStr)
+	teeId, err := parseBytes32(teeIdStr)
+	if err != nil {
+		fatal("Invalid TEE ID: %v", err)
+	}
 	account, _ := getAccountAddress()
 
 	log("Deactivating TEE: 0x%s", hex.EncodeToString(teeId[:]))
@@ -347,7 +358,10 @@ func cmdDeactivate(teeIdStr string) {
 }
 
 func cmdActivate(teeIdStr string) {
-	teeId := parseBytes32(teeIdStr)
+	teeId, err := parseBytes32(teeIdStr)
+	if err != nil {
+		fatal("Invalid TEE ID: %v", err)
+	}
 	account, _ := getAccountAddress()
 
 	log("Activating TEE: 0x%s", hex.EncodeToString(teeId[:]))
@@ -382,8 +396,13 @@ func cmdPCRApprove() {
 	gracePeriod.SetString(getEnvOrDefault("GRACE_PERIOD", "0"), 10)
 
 	var prevPCR [32]byte
+	var err error
 	if p := os.Getenv("PREVIOUS_PCR"); p != "" {
-		prevPCR = parseBytes32(p)
+		prevPCR, err = parseBytes32(p)
+
+		if err != nil {
+			fatal("Invalid prevPCR : %v", err)
+		}
 	}
 
 	pcrHash, _ := callComputePCRHash(pcr0, pcr1, pcr2)
@@ -402,7 +421,11 @@ func cmdPCRApprove() {
 }
 
 func cmdPCRRevoke(hashStr string) {
-	pcrHash := parseBytes32(hashStr)
+	pcrHash, err := parseBytes32(hashStr)
+	if err != nil {
+		fatal("Invalid pcrHash : %v", err)
+	}
+
 	account, _ := getAccountAddress()
 
 	log("Revoking PCR: 0x%s", hex.EncodeToString(pcrHash[:]))
@@ -415,7 +438,11 @@ func cmdPCRRevoke(hashStr string) {
 }
 
 func cmdPCRCheck(hashStr string) {
-	pcrHash := parseBytes32(hashStr)
+	pcrHash, err := parseBytes32(hashStr)
+	if err != nil {
+		fatal("Invalid pcrHash : %v", err)
+	}
+
 	approved, _ := callIsPCRApproved(pcrHash)
 	if approved {
 		fmt.Printf("✅ PCR 0x%s is APPROVED\n", hex.EncodeToString(pcrHash[:]))
@@ -580,7 +607,7 @@ func printHelp() {
 Usage: %s <command> [args]
 
 Config (.env file or environment):
-  TEE_RPC_URL           RPC endpoint
+  RPC_URL           RPC endpoint
   TEE_REGISTRY_ADDRESS  Contract address
   TEE_PRIVATE_KEY       Private key for signing
 
@@ -637,27 +664,56 @@ func callGetActiveTEEs() ([]string, error) {
 func callGetTEE(teeId [32]byte) (*TEEInfo, error) {
 	data := encodeBytes32(SEL_GET_TEE, teeId)
 	result, err := ethCall(data)
-	if err != nil || len(result) < 320 {
-		return nil, fmt.Errorf("TEE not found")
+	if err != nil {
+		return nil, err
 	}
 
+	// Define return struct matching the contract's tuple order
+	type TEEData struct {
+		Owner          common.Address
+		PaymentAddress common.Address
+		Endpoint       string
+		PCRHash        [32]byte
+		TEEType        uint8
+		IsActive       bool
+		RegisteredAt   *big.Int
+		LastUpdatedAt  *big.Int
+	}
+
+	// Define the ABI type for unpacking
+	tupleType, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
+		{Name: "owner", Type: "address"},
+		{Name: "paymentAddress", Type: "address"},
+		{Name: "endpoint", Type: "string"},
+		{Name: "pcrHash", Type: "bytes32"},
+		{Name: "teeType", Type: "uint8"},
+		{Name: "isActive", Type: "bool"},
+		{Name: "registeredAt", Type: "uint256"},
+		{Name: "lastUpdatedAt", Type: "uint256"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ABI type: %v", err)
+	}
+
+	args := abi.Arguments{{Type: tupleType}}
+
+	var decoded TEEData
+	err = args.Unpack(&decoded, result)
+	// to do to resolve
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode TEE data: %v", err)
+	}
+
+	// Convert to TEEInfo struct
 	info := &TEEInfo{
-		Owner:          common.BytesToAddress(result[12:32]),
-		PaymentAddress: common.BytesToAddress(result[44:64]),
-		TEEType:        uint8(result[223]),
-		IsActive:       result[255] == 1,
-		RegisteredAt:   time.Unix(new(big.Int).SetBytes(result[256:288]).Int64(), 0),
-		LastUpdatedAt:  time.Unix(new(big.Int).SetBytes(result[288:320]).Int64(), 0),
-	}
-	copy(info.PCRHash[:], result[160:192])
-
-	// Decode endpoint
-	offset := new(big.Int).SetBytes(result[64:96]).Uint64()
-	if offset < uint64(len(result)) {
-		length := new(big.Int).SetBytes(result[offset : offset+32]).Uint64()
-		if offset+32+length <= uint64(len(result)) {
-			info.Endpoint = string(result[offset+32 : offset+32+length])
-		}
+		Owner:          decoded.Owner,
+		PaymentAddress: decoded.PaymentAddress,
+		Endpoint:       decoded.Endpoint,
+		PCRHash:        decoded.PCRHash,
+		TEEType:        decoded.TEEType,
+		IsActive:       decoded.IsActive,
+		RegisteredAt:   time.Unix(decoded.RegisteredAt.Int64(), 0),
+		LastUpdatedAt:  time.Unix(decoded.LastUpdatedAt.Int64(), 0),
 	}
 	return info, nil
 }
@@ -854,23 +910,42 @@ func sendTxUnlocked(from string, data []byte) (string, error) {
 func sendTxSigned(data []byte) (string, error) {
 	client, err := ethclient.Dial(RPC_URL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to connect: %v", err)
 	}
 	defer client.Close()
 
-	key, _ := crypto.HexToECDSA(strings.TrimPrefix(PRIVATE_KEY, "0x"))
+	key, err := crypto.HexToECDSA(strings.TrimPrefix(PRIVATE_KEY, "0x"))
+	if err != nil {
+		return "", fmt.Errorf("invalid private key: %v", err)
+	}
 	from := crypto.PubkeyToAddress(key.PublicKey)
 
-	nonce, _ := client.PendingNonceAt(context.Background(), from)
-	gasPrice, _ := client.SuggestGasPrice(context.Background())
-	chainID, _ := client.NetworkID(context.Background())
+	nonce, err := client.PendingNonceAt(context.Background(), from)
+	if err != nil {
+		return "", fmt.Errorf("failed to get nonce: %v", err)
+	}
+
+	gasPrice, err := client.SuggestGasPrice(context.Background())
+	if err != nil {
+		return "", fmt.Errorf("failed to suggest gas price: %v", err)
+	}
+
+	chainID, err := client.NetworkID(context.Background())
+	if err != nil {
+		return "", fmt.Errorf("failed to get chain ID: %v", err)
+	}
 
 	tx := types.NewTransaction(nonce, common.HexToAddress(TEE_REGISTRY_ADDRESS), big.NewInt(0), 5000000, gasPrice, data)
-	signed, _ := types.SignTx(tx, types.NewEIP155Signer(chainID), key)
-
-	if err := client.SendTransaction(context.Background(), signed); err != nil {
-		return "", err
+	signed, err := types.SignTx(tx, types.NewEIP155Signer(chainID), key)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign transaction: %v", err)
 	}
+
+	err = client.SendTransaction(context.Background(), signed)
+	if err != nil {
+		return "", fmt.Errorf("failed to send transaction: %v", err)
+	}
+
 	return signed.Hash().Hex(), nil
 }
 
@@ -904,8 +979,8 @@ func rpcCall(method string, params interface{}) ([]byte, error) {
 
 func generateNonce() string {
 	b := make([]byte, 20)
-	for i := range b {
-		b[i] = byte(time.Now().UnixNano() >> (i * 8))
+	if _, err := rand.Read(b); err != nil {
+		fatal("Failed to generate nonce: %v", err)
 	}
 	return hex.EncodeToString(b)
 }
@@ -987,15 +1062,31 @@ func getEnvOrDefault(key, def string) string {
 	return def
 }
 
-func parseBytes32(s string) [32]byte {
+func parseBytes32(s string) ([32]byte, error) {
+	var result [32]byte
 	s = strings.TrimPrefix(s, "0x")
+
+	// Validate length: exactly 64 hex chars (32 bytes)
+	if len(s) > 64 {
+		return result, fmt.Errorf("input too long: %d chars (max 64)", len(s))
+	}
+
+	// Pad with zeros on the left (common for hash parsing)
 	for len(s) < 64 {
 		s = "0" + s
 	}
-	decoded, _ := hex.DecodeString(s)
-	var result [32]byte
+
+	decoded, err := hex.DecodeString(s)
+	if err != nil {
+		return result, fmt.Errorf("invalid hex: %v", err)
+	}
+
+	if len(decoded) != 32 {
+		return result, fmt.Errorf("invalid length: got %d bytes, expected 32", len(decoded))
+	}
+
 	copy(result[:], decoded)
-	return result
+	return result, nil
 }
 
 func parseUint(s string) uint64 {

@@ -85,8 +85,6 @@ cp .env.example .env
 # Compute PCR hash only
 ./tee-cli pcr-compute
 
-# Fetch and display measurements from enclave
-./tee-cli pcr-fetch
 ```
 
 ### TEE Types
