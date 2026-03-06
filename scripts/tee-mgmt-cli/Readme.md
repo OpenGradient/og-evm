@@ -1,6 +1,6 @@
 # TEE Registry CLI
 
-A dev command-line tool for managing the TEE Registry  on OpenGradient.
+A dev command-line tool for managing the TEE Registry on OpenGradient.
 
 ## Quick Start
 
