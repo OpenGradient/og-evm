@@ -14,7 +14,14 @@ var client *registry.Client
 
 var rootCmd = &cobra.Command{
 	Use:   "tee-cli",
-	Short: "TEE Registry Management CLI",
+	Short: "CLI for managing the OpenGradient TEE Registry contract",
+	Long: `CLI for managing the OpenGradient TEE Registry contract.
+
+Supports TEE registration/lifecycle, PCR approval, role management,
+TEE type configuration, and AWS root certificate setup.
+
+Global connection flags can also be set via environment variables
+(RPC_URL, TEE_REGISTRY_ADDRESS, TEE_PRIVATE_KEY) or a .env file.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		rpcURL, _ := cmd.Flags().GetString("rpc-url")
 		registryAddr, _ := cmd.Flags().GetString("registry")
@@ -34,9 +41,9 @@ func Execute() {
 func init() {
 	loadEnvFile(".env")
 
-	rootCmd.PersistentFlags().String("rpc-url", getEnvOrDefault("RPC_URL", "http://13.59.43.94:8545"), "RPC endpoint URL")
-	rootCmd.PersistentFlags().String("registry", getEnvOrDefault("TEE_REGISTRY_ADDRESS", "0x3d641a2791533b4a0000345ea8d509d01e1ec301"), "TEE Registry contract address")
-	rootCmd.PersistentFlags().String("private-key", os.Getenv("TEE_PRIVATE_KEY"), "Private key for signing transactions")
+	rootCmd.PersistentFlags().String("rpc-url", getEnvOrDefault("RPC_URL", "https://ogevmdevnet.opengradient.ai"), "OpenGradient network RPC endpoint URL")
+	rootCmd.PersistentFlags().String("registry", getEnvOrDefault("TEE_REGISTRY_ADDRESS", "0x3d641a2791533b4a0000345ea8d509d01e1ec301"), "TEE Registry contract address (hex)")
+	rootCmd.PersistentFlags().String("private-key", os.Getenv("TEE_PRIVATE_KEY"), "Private key for signing transactions (hex, omit 0x prefix)")
 }
 
 func loadEnvFile(filename string) {

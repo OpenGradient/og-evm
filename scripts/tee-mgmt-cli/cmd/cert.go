@@ -13,12 +13,12 @@ import (
 
 var certCmd = &cobra.Command{
 	Use:   "cert",
-	Short: "Certificate management commands",
+	Short: "Manage root certificates used for TEE attestation verification",
 }
 
 var certSetAWSCmd = &cobra.Command{
 	Use:   "set-aws <cert_file>",
-	Short: "Set AWS root certificate",
+	Short: "Set the AWS Nitro Enclaves root certificate (PEM or DER)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		certData, err := os.ReadFile(args[0])

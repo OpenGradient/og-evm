@@ -11,12 +11,12 @@ import (
 var typeCmd = &cobra.Command{
 	Use:     "type",
 	Aliases: []string{"types"},
-	Short:   "TEE type management commands",
+	Short:   "Manage TEE type definitions (e.g. LLMProxy, Validator)",
 }
 
 var typeListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List TEE types",
+	Short: "List all registered TEE types",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("=== TEE Types ===")
 		for i := uint8(0); i <= 10; i++ {
@@ -30,7 +30,7 @@ var typeListCmd = &cobra.Command{
 
 var typeAddCmd = &cobra.Command{
 	Use:   "add <type_id> <name>",
-	Short: "Add a TEE type",
+	Short: "Register a new TEE type with the given numeric ID and name",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		typeId := uint8(registry.ParseUint(args[0]))
@@ -50,7 +50,7 @@ var typeAddCmd = &cobra.Command{
 
 var typeDeactivateCmd = &cobra.Command{
 	Use:   "deactivate <type_id>",
-	Short: "Deactivate a TEE type",
+	Short: "Deactivate a TEE type so it can no longer be used for new registrations",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		typeId := uint8(registry.ParseUint(args[0]))

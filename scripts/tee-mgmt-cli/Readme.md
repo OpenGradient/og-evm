@@ -1,161 +1,101 @@
 # TEE Registry CLI
 
-A dev command-line tool for managing the TEE Registry on OpenGradient.
+Command-line tool for managing the TEE Registry contract on the OpenGradient network.
 
 ## Quick Start
 
 ```bash
-# 1. Copy environment file
-cp .env.example .env
-
-# 2. Edit with your settings
-nano .env
-
-# 3. Build
+cp .env.example .env   # configure registry address, private key
 go build -o tee-cli
-
-# 4. Run
-./tee-cli list
+./tee-cli tee list
 ```
 
-## Installation
-
-### Prerequisites
+## Prerequisites
 
 - Go 1.21+
-- Access to OpenGradient RPC endpoint
-
-### Build
-
-```bash
-go build -o tee-cli
-```
+- Access to the OpenGradient network
+- A funded account (for write operations)
 
 ## Configuration
 
-Copy `.env.example` to `.env` and configure:
+Connection settings can be provided via flags, environment variables, or a `.env` file.
+Flags take precedence over env vars, which take precedence over `.env` defaults.
 
-```bash
-cp .env.example .env
-```
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TEE_RPC_URL` | RPC endpoint | `http://13.59.43.94:8545` |
-| `TEE_REGISTRY_ADDRESS` | Contract address | `0x3d641a2791533b4a...` |
-| `TEE_PRIVATE_KEY` | Private key for signing | (uses node account if empty) |
-| `ENCLAVE_HOST` | Enclave hostname | - |
-| `ENCLAVE_PORT` | Enclave port | `443` |
-| `MEASUREMENTS_FILE` | Path to measurements.txt | `measurements.txt` |
+| Flag | Env Var | Description |
+|------|---------|-------------|
+| `--rpc-url` | `RPC_URL` | OpenGradient RPC endpoint |
+| `--registry` | `TEE_REGISTRY_ADDRESS` | TEE Registry contract address |
+| `--private-key` | `TEE_PRIVATE_KEY` | Private key for signing transactions |
 
 ## Commands
 
-### TEE Management
+### `tee` — TEE Instance Management
 
 ```bash
-# List all active TEEs
-./tee-cli list
-
-# Show TEE details
-./tee-cli show <tee_id>
-
-# Register new TEE from enclave
-./tee-cli register
-
-# Activate/Deactivate TEE
-./tee-cli activate <tee_id>
-./tee-cli deactivate <tee_id>
+tee-cli tee list                          # List all active TEEs
+tee-cli tee show <tee_id>                 # Show TEE details (owner, endpoint, PCR, keys)
+tee-cli tee register --enclave-host HOST  # Register a new TEE from an enclave
+tee-cli tee activate <tee_id>             # Re-activate a deactivated TEE
+tee-cli tee deactivate <tee_id>           # Deactivate a TEE
 ```
 
-### PCR Management
+Registration flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--enclave-host` | *(required)* | Enclave hostname or IP |
+| `--enclave-port` | `443` | Enclave TLS port |
+| `--payment-address` | sender address | Payment address for the TEE |
+| `--endpoint` | `https://<enclave-host>` | Public endpoint URL |
+| `--tee-type` | `0` | TEE type ID (0=LLMProxy, 1=Validator) |
+
+### `pcr` — PCR Measurement Management
 
 ```bash
-# List approved PCRs
-./tee-cli pcr-list
-
-# Approve PCR (from measurements file or env vars)
-./tee-cli pcr-approve
-
-# Check if PCR is approved
-./tee-cli pcr-check <pcr_hash>
-
-# Revoke PCR
-./tee-cli pcr-revoke <pcr_hash>
-
-# Compute PCR hash only
-./tee-cli pcr-compute
-
+tee-cli pcr list                          # List approved PCR hashes
+tee-cli pcr check <pcr_hash>              # Check if a PCR hash is approved
+tee-cli pcr compute -m measurements.json  # Compute PCR hash without submitting
+tee-cli pcr approve -m measurements.json  # Approve PCR measurements on-chain
+tee-cli pcr revoke <pcr_hash>             # Revoke an approved PCR hash
 ```
 
-### TEE Types
+PCR values can be provided via a measurements JSON file (`-m`) or individual flags (`--pcr0`, `--pcr1`, `--pcr2`).
+
+Approve flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-m`, `--measurements-file` | | Path to measurements JSON |
+| `--pcr0`, `--pcr1`, `--pcr2` | | Individual PCR hex values |
+| `-v`, `--version` | `v1.0.0` | Version label |
+| `--grace-period` | `0` | Seconds before previous PCR is revoked |
+| `--previous-pcr` | | PCR hash being rotated out (bytes32 hex) |
+
+### `type` — TEE Type Definitions
 
 ```bash
-# List TEE types
-./tee-cli type-list
-
-# Add new type
-./tee-cli type-add 0 LLMProxy
-./tee-cli type-add 1 Validator
-
-# Deactivate type
-./tee-cli type-deactivate <type_id>
+tee-cli type list                         # List registered TEE types
+tee-cli type add <type_id> <name>         # Add a new TEE type
+tee-cli type deactivate <type_id>         # Deactivate a TEE type
 ```
 
-### Role Management
+### `role` — Access Control
 
 ```bash
-# Check role
-./tee-cli check-role admin <address>
-./tee-cli check-role operator <address>
-
-# Grant roles
-./tee-cli add-admin <address>
-./tee-cli add-operator <address>
-
-# Revoke roles
-./tee-cli revoke-admin <address>
-./tee-cli revoke-operator <address>
+tee-cli role check <admin|operator> <addr>  # Check if address has role
+tee-cli role grant-admin <addr>             # Grant DEFAULT_ADMIN_ROLE
+tee-cli role grant-operator <addr>          # Grant TEE_OPERATOR role
+tee-cli role revoke-admin <addr>            # Revoke DEFAULT_ADMIN_ROLE
+tee-cli role revoke-operator <addr>         # Revoke TEE_OPERATOR role
 ```
 
-
-## Examples
-
-### Register a TEE
+### `cert` — Root Certificates
 
 ```bash
-# Using .env file
-./tee-cli register
-
-# Or with inline env vars
-ENCLAVE_HOST=13.59.207.188 ./tee-cli register
-```
-
-### Approve PCR Measurements
-
-```bash
-# From measurements.txt file
-./tee-cli pcr-approve
-
-# From environment variables
-PCR0=abc123... PCR1=def456... PCR2=789... PCR_VERSION=v1.0.0 ./tee-cli pcr-approve
-
-# With rotation (grace period for old PCR)
-PREVIOUS_PCR=0xoldpcrhash GRACE_PERIOD=86400 ./tee-cli pcr-approve
-```
-
-### Using Private Key
-
-```bash
-# Set in .env file
-TEE_PRIVATE_KEY=0xf621c7ef...
-
-# Or inline
-TEE_PRIVATE_KEY=0xf621c7ef... ./tee-cli add-operator 0xNewAddress
+tee-cli cert set-aws <cert_file>          # Set AWS Nitro Enclaves root cert (PEM or DER)
 ```
 
 ## Measurements File Format
-
-The `measurements.txt` file should be JSON:
 
 ```json
 {
@@ -169,19 +109,8 @@ The `measurements.txt` file should be JSON:
 
 ## Troubleshooting
 
-### "no unlocked accounts available"
+**"no unlocked accounts available"** — Set `--private-key` or `TEE_PRIVATE_KEY`.
 
-Either:
-1. Set `TEE_PRIVATE_KEY` in `.env`
-2. Or ensure the node has unlocked accounts
+**"failed to connect to RPC"** — Verify `--rpc-url` is correct and reachable.
 
-### "failed to connect to RPC"
-
-Check `TEE_RPC_URL` is correct and accessible.
-
-### Transaction reverts
-
-Check that your account has:
-- Required role (admin/operator)
-- Sufficient balance for gas
-
+**Transaction reverts** — Ensure your account has the required role (admin/operator) and sufficient balance for gas.

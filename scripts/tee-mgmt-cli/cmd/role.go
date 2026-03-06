@@ -11,12 +11,12 @@ import (
 
 var roleCmd = &cobra.Command{
 	Use:   "role",
-	Short: "Role management commands",
+	Short: "Manage access control roles (admin, operator)",
 }
 
 var roleGrantAdminCmd = &cobra.Command{
 	Use:   "grant-admin <address>",
-	Short: "Grant admin role",
+	Short: "Grant DEFAULT_ADMIN_ROLE to an address",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		account, _ := client.GetAccountAddress()
@@ -33,7 +33,7 @@ var roleGrantAdminCmd = &cobra.Command{
 
 var roleGrantOperatorCmd = &cobra.Command{
 	Use:   "grant-operator <address>",
-	Short: "Grant operator role",
+	Short: "Grant TEE_OPERATOR role to an address",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		account, _ := client.GetAccountAddress()
@@ -50,7 +50,7 @@ var roleGrantOperatorCmd = &cobra.Command{
 
 var roleRevokeAdminCmd = &cobra.Command{
 	Use:   "revoke-admin <address>",
-	Short: "Revoke admin role",
+	Short: "Revoke DEFAULT_ADMIN_ROLE from an address",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		account, _ := client.GetAccountAddress()
@@ -67,7 +67,7 @@ var roleRevokeAdminCmd = &cobra.Command{
 
 var roleRevokeOperatorCmd = &cobra.Command{
 	Use:   "revoke-operator <address>",
-	Short: "Revoke operator role",
+	Short: "Revoke TEE_OPERATOR role from an address",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		account, _ := client.GetAccountAddress()
@@ -84,7 +84,7 @@ var roleRevokeOperatorCmd = &cobra.Command{
 
 var roleCheckCmd = &cobra.Command{
 	Use:   "check <admin|operator> <address>",
-	Short: "Check if address has role",
+	Short: "Check whether an address has a specific role",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var roleBytes [32]byte

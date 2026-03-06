@@ -13,12 +13,12 @@ import (
 
 var teeCmd = &cobra.Command{
 	Use:   "tee",
-	Short: "TEE management commands",
+	Short: "Manage TEE instances (register, activate, deactivate, inspect)",
 }
 
 var teeListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List active TEEs",
+	Short: "List all active TEEs in the registry",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("=== Active TEEs in Registry ===")
 		fmt.Printf("Registry: %s\n", client.RegistryAddress)
@@ -39,7 +39,7 @@ var teeListCmd = &cobra.Command{
 
 var teeShowCmd = &cobra.Command{
 	Use:   "show <tee_id>",
-	Short: "Show TEE details",
+	Short: "Show detailed info for a TEE (owner, endpoint, PCR, keys, TLS cert)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teeId, err := registry.ParseBytes32(args[0])
@@ -84,7 +84,7 @@ var teeShowCmd = &cobra.Command{
 
 var teeRegisterCmd = &cobra.Command{
 	Use:   "register",
-	Short: "Register a TEE with attestation",
+	Short: "Register a new TEE by fetching its attestation document from the enclave",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		enclaveHost, _ := cmd.Flags().GetString("enclave-host")
 		enclavePort, _ := cmd.Flags().GetString("enclave-port")
@@ -161,7 +161,7 @@ var teeRegisterCmd = &cobra.Command{
 
 var teeDeactivateCmd = &cobra.Command{
 	Use:   "deactivate <tee_id>",
-	Short: "Deactivate a TEE",
+	Short: "Deactivate a TEE (requires admin or operator role)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teeId, err := registry.ParseBytes32(args[0])
@@ -183,7 +183,7 @@ var teeDeactivateCmd = &cobra.Command{
 
 var teeActivateCmd = &cobra.Command{
 	Use:   "activate <tee_id>",
-	Short: "Activate a TEE",
+	Short: "Re-activate a previously deactivated TEE",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teeId, err := registry.ParseBytes32(args[0])
@@ -204,11 +204,11 @@ var teeActivateCmd = &cobra.Command{
 }
 
 func init() {
-	teeRegisterCmd.Flags().String("enclave-host", "", "Enclave host address (required)")
-	teeRegisterCmd.Flags().String("enclave-port", "443", "Enclave port")
-	teeRegisterCmd.Flags().String("payment-address", "", "Payment address (defaults to sender)")
-	teeRegisterCmd.Flags().String("endpoint", "", "TEE endpoint URL (defaults to https://<enclave-host>)")
-	teeRegisterCmd.Flags().Uint8("tee-type", 0, "TEE type ID")
+	teeRegisterCmd.Flags().String("enclave-host", "", "Enclave hostname or IP (required)")
+	teeRegisterCmd.Flags().String("enclave-port", "443", "Enclave TLS port for certificate fetch")
+	teeRegisterCmd.Flags().String("payment-address", "", "Payment address for the TEE (defaults to sender)")
+	teeRegisterCmd.Flags().String("endpoint", "", "Public endpoint URL for the TEE (defaults to https://<enclave-host>)")
+	teeRegisterCmd.Flags().Uint8("tee-type", 0, "TEE type ID (e.g. 0=LLMProxy, 1=Validator)")
 	teeRegisterCmd.MarkFlagRequired("enclave-host")
 
 	teeCmd.AddCommand(teeListCmd, teeShowCmd, teeRegisterCmd, teeDeactivateCmd, teeActivateCmd)

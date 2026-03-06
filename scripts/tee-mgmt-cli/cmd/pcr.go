@@ -12,12 +12,12 @@ import (
 
 var pcrCmd = &cobra.Command{
 	Use:   "pcr",
-	Short: "PCR management commands",
+	Short: "Manage PCR (Platform Configuration Register) measurement approvals",
 }
 
 var pcrListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List approved PCRs",
+	Short: "List all currently approved PCR hashes",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("=== Active PCRs ===")
 		pcrs, err := client.GetActivePCRs()
@@ -34,7 +34,7 @@ var pcrListCmd = &cobra.Command{
 
 var pcrApproveCmd = &cobra.Command{
 	Use:   "approve",
-	Short: "Approve PCR measurements",
+	Short: "Approve a set of PCR measurements (PCR0, PCR1, PCR2) for TEE attestation",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		measurementsFile, _ := cmd.Flags().GetString("measurements-file")
 		pcr0Hex, _ := cmd.Flags().GetString("pcr0")
@@ -77,7 +77,7 @@ var pcrApproveCmd = &cobra.Command{
 
 var pcrRevokeCmd = &cobra.Command{
 	Use:   "revoke <pcr_hash>",
-	Short: "Revoke a PCR",
+	Short: "Revoke a previously approved PCR hash",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pcrHash, err := registry.ParseBytes32(args[0])
@@ -99,7 +99,7 @@ var pcrRevokeCmd = &cobra.Command{
 
 var pcrCheckCmd = &cobra.Command{
 	Use:   "check <pcr_hash>",
-	Short: "Check if a PCR is approved",
+	Short: "Check whether a PCR hash is currently approved",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pcrHash, err := registry.ParseBytes32(args[0])
@@ -119,7 +119,7 @@ var pcrCheckCmd = &cobra.Command{
 
 var pcrComputeCmd = &cobra.Command{
 	Use:   "compute",
-	Short: "Compute hash from measurements",
+	Short: "Compute the keccak256 hash from PCR0/PCR1/PCR2 measurements without submitting",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		measurementsFile, _ := cmd.Flags().GetString("measurements-file")
 		pcr0Hex, _ := cmd.Flags().GetString("pcr0")
@@ -137,17 +137,17 @@ var pcrComputeCmd = &cobra.Command{
 }
 
 func addPCRFlags(cmd *cobra.Command) {
-	cmd.Flags().StringP("measurements-file", "m", "", "Path to measurements JSON file")
-	cmd.Flags().String("pcr0", "", "PCR0 hex value")
-	cmd.Flags().String("pcr1", "", "PCR1 hex value")
-	cmd.Flags().String("pcr2", "", "PCR2 hex value")
+	cmd.Flags().StringP("measurements-file", "m", "", "Path to measurements JSON file (alternative to --pcr0/1/2)")
+	cmd.Flags().String("pcr0", "", "PCR0 measurement (hex)")
+	cmd.Flags().String("pcr1", "", "PCR1 measurement (hex)")
+	cmd.Flags().String("pcr2", "", "PCR2 measurement (hex)")
 }
 
 func init() {
 	addPCRFlags(pcrApproveCmd)
-	pcrApproveCmd.Flags().StringP("version", "v", "v1.0.0", "PCR version string")
-	pcrApproveCmd.Flags().String("grace-period", "0", "Grace period in seconds")
-	pcrApproveCmd.Flags().String("previous-pcr", "", "Previous PCR hash (bytes32)")
+	pcrApproveCmd.Flags().StringP("version", "v", "v1.0.0", "Version label for this PCR set")
+	pcrApproveCmd.Flags().String("grace-period", "0", "Grace period in seconds before the previous PCR is revoked")
+	pcrApproveCmd.Flags().String("previous-pcr", "", "PCR hash being rotated out (bytes32 hex)")
 
 	addPCRFlags(pcrComputeCmd)
 
