@@ -60,7 +60,10 @@ contract TEERegistry is AccessControl {
     
     // AWS Root Certificate
     bytes public awsRootCertificate;
-    
+
+    // Heartbeat: max allowed age of the signed timestamp vs block.timestamp.
+    uint256 public heartbeatMaxAge = 1800; // 30 minutes default
+
     // TEE Storage
     mapping(bytes32 => TEEInfo) public tees;
     bytes32[] private _activeTEEList;
@@ -78,6 +81,7 @@ contract TEERegistry is AccessControl {
     event TEEDeactivated(bytes32 indexed teeId);
     event TEEActivated(bytes32 indexed teeId);
     event AWSCertificateUpdated(bytes32 indexed certHash);
+    event HeartbeatReceived(bytes32 indexed teeId, uint256 timestamp);
 
     // ============ Errors ============
 
@@ -92,6 +96,9 @@ contract TEERegistry is AccessControl {
     error NotTEEOwner();
     error AttestationInvalid(string reason);
     error KeyBindingFailed(string reason);
+    error HeartbeatSignatureInvalid();
+    error HeartbeatTimestampTooOld();
+    error HeartbeatTimestampInFuture();
 
     // ============ Constructor ============
 
@@ -235,7 +242,7 @@ contract TEERegistry is AccessControl {
             teeType: teeType,
             active: true,
             registeredAt: block.timestamp,
-            lastUpdatedAt: block.timestamp
+            lastUpdatedAt: block.timestamp,
         });
 
         // Add to indexes
@@ -290,6 +297,43 @@ contract TEERegistry is AccessControl {
         
         _activeTEEList.pop();
         delete _activeTEEIndex[teeId];
+    }
+
+    // ============ Heartbeat ============
+
+    /// @notice Submit a signed heartbeat for a registered TEE.
+    /// @dev Signature is RSA-PSS-SHA256 over keccak256(abi.encodePacked(teeId, timestamp)).
+    ///      Anyone can relay the tx, but only the TEE holding the RSA private key
+    ///      can produce a valid signature.
+    /// @param teeId     - The registered TEE identifier (keccak256 of its public key).
+    /// @param timestamp  - Unix timestamp included in the signed payload.
+    /// @param signature  - RSA-PSS signature bytes.
+    function heartbeat(
+        bytes32 teeId,
+        uint256 timestamp,
+        bytes calldata signature
+    ) external {
+        TEEInfo storage tee = tees[teeId];
+        if (tee.registeredAt == 0) revert TEENotFound();
+        if (!tee.active) revert TEENotActive();
+
+        // Reject stale or future signed timestamps.
+        if (timestamp > block.timestamp) revert HeartbeatTimestampInFuture();
+        if (block.timestamp - timestamp > heartbeatMaxAge) revert HeartbeatTimestampTooOld();
+
+        // Verify RSA-PSS signature using the TEE's stored public key
+        bytes32 messageHash = keccak256(abi.encodePacked(teeId, timestamp));
+        bool valid = VERIFIER.verifyRSAPSS(tee.publicKey, messageHash, signature);
+        if (!valid) revert HeartbeatSignatureInvalid();
+
+        tee.lastUpdatedAt = block.timestamp;
+
+        emit HeartbeatReceived(teeId, timestamp);
+    }
+
+    /// @notice Update the max allowed age for heartbeat timestamps.
+    function setHeartbeatMaxAge(uint256 maxAge) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        heartbeatMaxAge = maxAge;
     }
 
     // ============ Utilities ============
