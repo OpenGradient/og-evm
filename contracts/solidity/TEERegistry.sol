@@ -242,7 +242,7 @@ contract TEERegistry is AccessControl {
             teeType: teeType,
             active: true,
             registeredAt: block.timestamp,
-            lastUpdatedAt: block.timestamp,
+            lastUpdatedAt: block.timestamp
         });
 
         // Add to indexes
