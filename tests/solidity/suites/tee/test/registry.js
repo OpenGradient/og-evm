@@ -252,7 +252,6 @@ contract('TEERegistry', function (accounts) {
 
             // Send a dummy transaction to mine a new block with an advanced timestamp
             await registry.setAWSRootCertificate('0x01')
-            await registry.setAWSRootCertificate('0x01')
 
             // The expiry PCR should now be rejected (block.timestamp > expiresAt)
             expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.false
