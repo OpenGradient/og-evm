@@ -238,6 +238,216 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         })
     })
 
+    // ============ PCR Enforcement Tests ============
+
+    describe('PCR enforcement on activateTEE', function () {
+        let pcrTeeId, pcrPublicKey
+
+        before(async function () {
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            pcrPublicKey = '0x' + keyPair.publicKey.toString('hex')
+        })
+
+        it('should revert activateTEE when PCR is immediately revoked', async function () {
+            // Approve a fresh PCR
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0xA1).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0xA2).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0xA3).toString('hex')
+            }
+            await registry.approvePCR(pcrs, 'v-revoke-activate', TEE_TYPE_NITRO)
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            // Register TEE (inactive) with this PCR
+            await registry.registerTEEForTesting(
+                pcrPublicKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, pcrHash, { from: teeOperator }
+            )
+            pcrTeeId = await registry.computeTEEId(pcrPublicKey)
+
+            // Revoke the PCR immediately
+            await registry.revokePCR(pcrHash, 0)
+            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+
+            // activateTEE should revert with PCRNotApproved
+            await truffleAssert.reverts(
+                registry.activateTEE(pcrTeeId, { from: teeOperator })
+            )
+
+            expect(await registry.isActive(pcrTeeId)).to.be.false
+
+            console.log('✓ activateTEE reverts when PCR is revoked')
+        })
+
+        it('should revert activateTEE when PCR grace period has expired', async function () {
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0xB1).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0xB2).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0xB3).toString('hex')
+            }
+            await registry.approvePCR(pcrs, 'v-expire-activate', TEE_TYPE_NITRO)
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            const pubKey = '0x' + keyPair.publicKey.toString('hex')
+
+            // Register TEE (inactive) with this PCR
+            await registry.registerTEEForTesting(
+                pubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, pcrHash, { from: teeOperator }
+            )
+            const teeId = await registry.computeTEEId(pubKey)
+
+            // Revoke with grace period of 1 second
+            await registry.revokePCR(pcrHash, 1)
+
+            // Still valid during grace period
+            expect(await registry.isPCRApproved(pcrHash)).to.be.true
+
+            // Mine a block to advance timestamp past the grace period
+            await registry.setAWSRootCertificate('0x01')
+
+            // Now expired
+            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+
+            // activateTEE should revert with PCRExpired
+            await truffleAssert.reverts(
+                registry.activateTEE(teeId, { from: teeOperator })
+            )
+
+            expect(await registry.isActive(teeId)).to.be.false
+
+            console.log('✓ activateTEE reverts when PCR grace period expired')
+        })
+
+        it('should revert activateTEE when PCR type does not match TEE type', async function () {
+            // Add a second TEE type
+            const TEE_TYPE_OTHER = 3
+            await registry.addTEEType(TEE_TYPE_OTHER, 'Other TEE')
+
+            // Approve a PCR only for TEE_TYPE_OTHER
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0xC1).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0xC2).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0xC3).toString('hex')
+            }
+            await registry.approvePCR(pcrs, 'v-type-mismatch', TEE_TYPE_OTHER)
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            const pubKey = '0x' + keyPair.publicKey.toString('hex')
+
+            // Register TEE as TEE_TYPE_NITRO but with a PCR approved for TEE_TYPE_OTHER
+            await registry.registerTEEForTesting(
+                pubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, pcrHash, { from: teeOperator }
+            )
+            const teeId = await registry.computeTEEId(pubKey)
+
+            // activateTEE should revert with PCRTypeMismatch
+            await truffleAssert.reverts(
+                registry.activateTEE(teeId, { from: teeOperator })
+            )
+
+            expect(await registry.isActive(teeId)).to.be.false
+
+            console.log('✓ activateTEE reverts on PCR type mismatch')
+        })
+    })
+
+    describe('PCR enforcement on heartbeat', function () {
+        it('should revert heartbeat when PCR is revoked after activation', async function () {
+            // Approve a fresh PCR
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0xD1).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0xD2).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0xD3).toString('hex')
+            }
+            await registry.approvePCR(pcrs, 'v-heartbeat-revoke', TEE_TYPE_NITRO)
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            const pubKey = '0x' + keyPair.publicKey.toString('hex')
+
+            // Register and activate TEE with valid PCR
+            await registry.registerTEEForTesting(
+                pubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, pcrHash, { from: teeOperator }
+            )
+            const teeId = await registry.computeTEEId(pubKey)
+            await registry.activateTEE(teeId, { from: teeOperator })
+            expect(await registry.isActive(teeId)).to.be.true
+
+            // Now revoke the PCR
+            await registry.revokePCR(pcrHash, 0)
+            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+
+            // TEE is still marked active in storage (lazy enforcement)
+            expect(await registry.isActive(teeId)).to.be.true
+
+            // heartbeat should revert at _requirePCRValidForTEE before reaching signature check
+            const timestamp = Math.floor(Date.now() / 1000)
+            const dummySignature = '0x' + Buffer.alloc(256, 0xFF).toString('hex')
+
+            await truffleAssert.reverts(
+                registry.heartbeat(teeId, timestamp, dummySignature)
+            )
+
+            console.log('✓ heartbeat reverts when PCR is revoked (lazy enforcement)')
+        })
+
+        it('should revert heartbeat when PCR grace period has expired', async function () {
+            // Approve a fresh PCR
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0xE1).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0xE2).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0xE3).toString('hex')
+            }
+            await registry.approvePCR(pcrs, 'v-heartbeat-expire', TEE_TYPE_NITRO)
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            const pubKey = '0x' + keyPair.publicKey.toString('hex')
+
+            // Register and activate
+            await registry.registerTEEForTesting(
+                pubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, pcrHash, { from: teeOperator }
+            )
+            const teeId = await registry.computeTEEId(pubKey)
+            await registry.activateTEE(teeId, { from: teeOperator })
+            expect(await registry.isActive(teeId)).to.be.true
+
+            // Revoke with 1-second grace period
+            await registry.revokePCR(pcrHash, 1)
+
+            // Mine a block to advance past grace period
+            await registry.setAWSRootCertificate('0x02')
+
+            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+
+            // heartbeat should revert with PCRExpired
+            const timestamp = Math.floor(Date.now() / 1000)
+            const dummySignature = '0x' + Buffer.alloc(256, 0xFF).toString('hex')
+
+            await truffleAssert.reverts(
+                registry.heartbeat(teeId, timestamp, dummySignature)
+            )
+
+            console.log('✓ heartbeat reverts when PCR grace period expired')
+        })
+    })
+
     // ============ Query Function Tests ============
 
     describe('Query functions', function () {
