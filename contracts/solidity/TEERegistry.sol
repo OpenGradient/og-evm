@@ -114,8 +114,8 @@ contract TEERegistry is AccessControl {
     // ============ Modifiers ============
 
     modifier onlyTEEOwnerOrAdmin(bytes32 teeId) {
-        TEEInfo storage tee = tees[teeId];
-        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
+        if (tees[teeId].registeredAt == 0) revert TEENotFound();
+        if (tees[teeId].owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
         if (!hasRole(TEE_OPERATOR, msg.sender) && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
         _;
     }
@@ -309,7 +309,6 @@ contract TEERegistry is AccessControl {
     
     function deactivateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
-        if (tee.registeredAt == 0) revert TEENotFound();
         if (!tee.active) return;
 
         tee.active = false;
@@ -320,7 +319,6 @@ contract TEERegistry is AccessControl {
 
     function activateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
-        if (tee.registeredAt == 0) revert TEENotFound();
         if (tee.active) return;
 
         _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
