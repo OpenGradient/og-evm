@@ -476,22 +476,57 @@ contract('TEERegistry', function (accounts) {
     })
 
     describe('PCR Revocation Security', function () {
-        it('should prevent duplicate PCR registration', async function () {
+        it('should allow re-approval of active PCR (e.g. to update version)', async function () {
             const pcrs = {
                 pcr0: '0x' + Buffer.alloc(48, 0x20).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x21).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0x22).toString('hex')
             }
+            const pcrHash = await registry.computePCRHash(pcrs)
 
-            // First approval should succeed
+            // First approval
             await registry.approvePCR(pcrs, 'v-duplicate-test', 1)
+            expect(await registry.isPCRApproved(pcrHash)).to.be.true
 
-            // Second approval with same PCRs should fail
-            await truffleAssert.reverts(
-                registry.approvePCR(pcrs, 'v-duplicate-test-2', 1)
-            )
+            // Re-approval should succeed and update version
+            const result = await registry.approvePCR(pcrs, 'v-duplicate-test-2', 1)
 
-            console.log('✓ Duplicate PCR registration prevented')
+            truffleAssert.eventEmitted(result, 'PCRApproved', (ev) => {
+                return ev.pcrHash === pcrHash && ev.version === 'v-duplicate-test-2'
+            })
+
+            const pcrInfo = await registry.approvedPCRs(pcrHash)
+            expect(pcrInfo.version).to.equal('v-duplicate-test-2')
+
+            console.log('✓ Re-approval of active PCR updates version')
+        })
+
+        it('should allow re-approval to cancel pending grace-period revocation', async function () {
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0x23).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0x24).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0x28).toString('hex')
+            }
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            // Approve, then revoke with grace period
+            await registry.approvePCR(pcrs, 'v-grace-cancel', 1)
+            await registry.revokePCR(pcrHash, 3600)
+
+            // Still valid during grace period, but expiresAt is set
+            const infoBefore = await registry.approvedPCRs(pcrHash)
+            expect(infoBefore.expiresAt.toNumber()).to.be.greaterThan(0)
+
+            // Re-approve to cancel the pending revocation
+            await registry.approvePCR(pcrs, 'v-grace-cancel-fixed', 1)
+
+            // expiresAt should be reset to 0
+            const infoAfter = await registry.approvedPCRs(pcrHash)
+            expect(infoAfter.expiresAt.toString()).to.equal('0')
+            expect(infoAfter.active).to.be.true
+            expect(infoAfter.version).to.equal('v-grace-cancel-fixed')
+
+            console.log('✓ Re-approval cancels pending grace-period revocation')
         })
 
         it('should allow re-approval of revoked PCR', async function () {

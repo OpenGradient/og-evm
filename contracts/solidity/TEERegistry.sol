@@ -160,10 +160,6 @@ contract TEERegistry is AccessControl {
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
         bytes32 pcrHash = computePCRHash(pcrs);
-
-        // Allow re-approval of revoked/expired PCRs, but not currently active ones
-        if (isPCRApproved(pcrHash)) revert PCRAlreadyExists();
-
         bool isNew = approvedPCRs[pcrHash].approvedAt == 0;
 
         approvedPCRs[pcrHash] = ApprovedPCR({
