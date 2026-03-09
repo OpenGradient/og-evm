@@ -1,24 +1,31 @@
-name: Deploy to AWS
+name: Push Image to AWS
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    name: Build and Deploy
+  build-and-push:
+    name: Build and Push Image
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     environment: production
 
     env:
-      ECS_CLUSTER: MemChat
-      ECS_SERVICE: memchat-evm-devnet
       ECR_REPOSITORY: memchat/og-evm-devnet
-      IMAGE_TAG: latest
       AWS_REGION: us-east-2
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set image tag from git ref
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "IMAGE_TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE_TAG=${GITHUB_SHA::8}" >> "$GITHUB_ENV"
+          fi
 
       - name: Set up AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -37,19 +44,4 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG . -f ./contrib/images/evmd-env/Dockerfile
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "Docker image successfully pushed to ECR!"
-
-      - name: Force new deployment on Amazon ECS
-        run: |
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --force-new-deployment > /dev/null
-          echo "New ECS deployment started!"
-
-      - name: AWS LINKS TO VIEW DEPLOYMENT
-        run: |
-          echo "View deployment progress here - https://us-east-2.console.aws.amazon.com/ecs/v2/clusters/MemChat/services/memchat-evm-devnet/tasks?region=us-east-2"
-
-      - name: Wait for ECS service to stabilize
-        run: |
-          echo "Waiting for ECS service to stabilize..."
-          aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_SERVICE
-          echo "✅ ECS service is now stable and deployment is complete!"
+          echo "Image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
