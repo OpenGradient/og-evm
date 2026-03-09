@@ -60,6 +60,8 @@ type TEEInfo struct {
 	Owner          common.Address
 	PaymentAddress common.Address
 	Endpoint       string
+	PublicKey      []byte
+	TLSCertificate []byte
 	PCRHash        [32]byte
 	TEEType        uint8
 	IsActive       bool
@@ -161,6 +163,8 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "owner", Type: "address"},
 		{Name: "paymentAddress", Type: "address"},
 		{Name: "endpoint", Type: "string"},
+		{Name: "publicKey", Type: "bytes"},
+		{Name: "tlsCertificate", Type: "bytes"},
 		{Name: "pcrHash", Type: "bytes32"},
 		{Name: "teeType", Type: "uint8"},
 		{Name: "isActive", Type: "bool"},
@@ -187,6 +191,8 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		Owner          common.Address `json:"owner"`
 		PaymentAddress common.Address `json:"paymentAddress"`
 		Endpoint       string         `json:"endpoint"`
+		PublicKey      []byte         `json:"publicKey"`
+		TlsCertificate []byte         `json:"tlsCertificate"`
 		PcrHash        [32]byte       `json:"pcrHash"`
 		TeeType        uint8          `json:"teeType"`
 		IsActive       bool           `json:"isActive"`
@@ -198,6 +204,8 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		Owner:          s.Owner,
 		PaymentAddress: s.PaymentAddress,
 		Endpoint:       s.Endpoint,
+		PublicKey:      s.PublicKey,
+		TLSCertificate: s.TlsCertificate,
 		PCRHash:        s.PcrHash,
 		TEEType:        s.TeeType,
 		IsActive:       s.IsActive,
