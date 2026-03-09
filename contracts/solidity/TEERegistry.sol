@@ -55,9 +55,14 @@ contract TEERegistry is AccessControl {
     mapping(uint8 => TEETypeInfo) public teeTypes;
     uint8[] private _teeTypeList;
     
-    // PCR Registry
-    mapping(bytes32 => ApprovedPCR) public approvedPCRs;
-    bytes32[] private _pcrList;
+    // PCR Registry: teeType => pcrHash => ApprovedPCR
+    mapping(uint8 => mapping(bytes32 => ApprovedPCR)) public approvedPCRs;
+
+    struct PCRKey {
+        bytes32 pcrHash;
+        uint8 teeType;
+    }
+    PCRKey[] private _pcrList;
     
     // AWS Root Certificate
     bytes public awsRootCertificate;
@@ -96,7 +101,6 @@ contract TEERegistry is AccessControl {
     error PCRNotApproved();
     error PCRExpired();
     error PCRAlreadyExists();
-    error PCRTypeMismatch();
     error TEEAlreadyExists();
     error TEENotFound();
     error TEENotActive();
@@ -160,9 +164,9 @@ contract TEERegistry is AccessControl {
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
         bytes32 pcrHash = computePCRHash(pcrs);
-        bool isNew = approvedPCRs[pcrHash].approvedAt == 0;
+        bool isNew = approvedPCRs[teeType][pcrHash].approvedAt == 0;
 
-        approvedPCRs[pcrHash] = ApprovedPCR({
+        approvedPCRs[teeType][pcrHash] = ApprovedPCR({
             active: true,
             teeType: teeType,
             approvedAt: block.timestamp,
@@ -171,7 +175,7 @@ contract TEERegistry is AccessControl {
         });
 
         if (isNew) {
-            _pcrList.push(pcrHash);
+            _pcrList.push(PCRKey({pcrHash: pcrHash, teeType: teeType}));
         }
 
         emit PCRApproved(pcrHash, teeType, version);
@@ -181,11 +185,11 @@ contract TEERegistry is AccessControl {
     /// @dev TEEs using this PCR are caught lazily at activateTEE() and heartbeat()
     /// @param pcrHash The PCR hash to revoke
     /// @param gracePeriod Seconds until revocation takes effect (0 = immediate)
-    function revokePCR(bytes32 pcrHash, uint256 gracePeriod) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function revokePCR(bytes32 pcrHash, uint8 teeType, uint256 gracePeriod) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (gracePeriod == 0) {
-            approvedPCRs[pcrHash].active = false;
+            approvedPCRs[teeType][pcrHash].active = false;
         } else {
-            approvedPCRs[pcrHash].expiresAt = block.timestamp + gracePeriod;
+            approvedPCRs[teeType][pcrHash].expiresAt = block.timestamp + gracePeriod;
         }
         emit PCRRevoked(pcrHash, gracePeriod);
     }
@@ -193,24 +197,18 @@ contract TEERegistry is AccessControl {
     /// @notice Check if a PCR is currently approved and not expired
     /// @param pcrHash The PCR hash to check
     /// @return bool True if approved and not expired
-    function isPCRApproved(bytes32 pcrHash) public view returns (bool) {
-        ApprovedPCR storage pcr = approvedPCRs[pcrHash];
+    function isPCRApproved(uint8 teeType, bytes32 pcrHash) public view returns (bool) {
+        ApprovedPCR storage pcr = approvedPCRs[teeType][pcrHash];
         if (!pcr.active) return false;
         if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) return false;
         return true;
     }
 
-    /// @dev Reverts with specific error for expired vs revoked/unknown PCRs
-    function _requirePCRApproved(bytes32 pcrHash) private view {
-        ApprovedPCR storage pcr = approvedPCRs[pcrHash];
+    /// @dev Reverts if PCR is not approved for the given TEE type
+    function _requirePCRValidForTEE(bytes32 pcrHash, uint8 teeType) private view {
+        ApprovedPCR storage pcr = approvedPCRs[teeType][pcrHash];
         if (!pcr.active) revert PCRNotApproved();
         if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) revert PCRExpired();
-    }
-
-    /// @dev Checks PCR validity AND that it matches the expected TEE type
-    function _requirePCRValidForTEE(bytes32 pcrHash, uint8 teeType) private view {
-        _requirePCRApproved(pcrHash);
-        if (approvedPCRs[pcrHash].teeType != teeType) revert PCRTypeMismatch();
     }
 
     /// @notice Compute PCR hash from measurements
@@ -221,17 +219,17 @@ contract TEERegistry is AccessControl {
     }
 
     /// @notice Get all currently active (approved and not expired) PCRs
-    /// @return bytes32[] Array of active PCR hashes
-    function getActivePCRs() external view returns (bytes32[] memory) {
+    /// @return PCRKey[] Array of active PCR keys (pcrHash + teeType)
+    function getActivePCRs() external view returns (PCRKey[] memory) {
         uint256 count = 0;
         for (uint256 i = 0; i < _pcrList.length; i++) {
-            if (isPCRApproved(_pcrList[i])) count++;
+            if (isPCRApproved(_pcrList[i].teeType, _pcrList[i].pcrHash)) count++;
         }
-        
-        bytes32[] memory result = new bytes32[](count);
+
+        PCRKey[] memory result = new PCRKey[](count);
         uint256 j = 0;
         for (uint256 i = 0; i < _pcrList.length; i++) {
-            if (isPCRApproved(_pcrList[i])) {
+            if (isPCRApproved(_pcrList[i].teeType, _pcrList[i].pcrHash)) {
                 result[j++] = _pcrList[i];
             }
         }
