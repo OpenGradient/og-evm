@@ -416,24 +416,6 @@ contract TEERegistry is AccessControl {
         return _teesByOwner[owner];
     }
 
-    function getPublicKey(bytes32 teeId) external view returns (bytes memory) {
-        if (tees[teeId].registeredAt == 0) revert TEENotFound();
-        return tees[teeId].publicKey;
-    }
-
-    function getTLSCertificate(bytes32 teeId) external view returns (bytes memory) {
-        if (tees[teeId].registeredAt == 0) revert TEENotFound();
-        return tees[teeId].tlsCertificate;
-    }
-
-    function isActive(bytes32 teeId) external view returns (bool) {
-        return tees[teeId].active;
-    }
-
-    function getPaymentAddress(bytes32 teeId) external view returns (address) {
-        if (tees[teeId].registeredAt == 0) revert TEENotFound();
-        return tees[teeId].paymentAddress;
-    }
 
     function computeTEEId(bytes calldata publicKey) external pure returns (bytes32) {
         return keccak256(publicKey);
