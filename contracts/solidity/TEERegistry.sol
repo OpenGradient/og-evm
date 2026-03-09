@@ -207,6 +207,12 @@ contract TEERegistry is AccessControl {
         if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) revert PCRExpired();
     }
 
+    /// @dev Checks PCR validity AND that it matches the expected TEE type
+    function _requirePCRValidForTEE(bytes32 pcrHash, uint8 teeType) private view {
+        _requirePCRApproved(pcrHash);
+        if (approvedPCRs[pcrHash].teeType != teeType) revert PCRTypeMismatch();
+    }
+
     /// @notice Compute PCR hash from measurements
     /// @param pcrs The PCR measurements
     /// @return bytes32 Hash of the concatenated PCRs
@@ -266,8 +272,7 @@ contract TEERegistry is AccessControl {
         if (!valid) revert AttestationInvalid("Attestation verification failed");
 
         // Verify PCR is approved and matches the TEE type
-        if (!isPCRApproved(pcrHash)) revert PCRNotApproved();
-        if (approvedPCRs[pcrHash].teeType != teeType) revert PCRTypeMismatch();
+        _requirePCRValidForTEE(pcrHash, teeType);
 
         // Store TEE
         tees[teeId] = TEEInfo({
@@ -312,7 +317,7 @@ contract TEERegistry is AccessControl {
         if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
         if (tee.active) return;
 
-        _requirePCRApproved(tee.pcrHash);
+        _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
 
         tee.active = true;
         tee.lastUpdatedAt = block.timestamp;
@@ -357,8 +362,8 @@ contract TEERegistry is AccessControl {
         if (tee.registeredAt == 0) revert TEENotFound();
         if (!tee.active) revert TEENotActive();
 
-        // Lazy PCR enforcement
-        _requirePCRApproved(tee.pcrHash);
+        // Lazy PCR enforcement (validity + type match)
+        _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
 
         // Reject stale or future signed timestamps
         if (timestamp > block.timestamp) revert HeartbeatTimestampInFuture();
