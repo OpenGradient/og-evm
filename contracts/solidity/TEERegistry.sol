@@ -253,7 +253,7 @@ contract TEERegistry is AccessControl {
         emit AWSCertificateUpdated(keccak256(certificate));
     }
 
-    // ============ TEE Registration ============
+    // ============ TEE Management ============
     
     function registerTEEWithAttestation(
         bytes calldata attestationDocument,
@@ -305,8 +305,9 @@ contract TEERegistry is AccessControl {
         emit TEERegistered(teeId, msg.sender, teeType);
     }
 
-    // ============ TEE Management ============
-    
+    /// @notice Deactivate a TEE, removing it from the active list
+    /// @dev Requires caller to be the TEE owner with TEE_OPERATOR role, or an admin
+    /// @param teeId The TEE identifier to deactivate
     function deactivateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
         if (!tee.active) return;
@@ -317,8 +318,14 @@ contract TEERegistry is AccessControl {
         emit TEEDeactivated(teeId);
     }
 
+    /// @notice Re-activate a previously deactivated TEE
+    /// @dev Requires caller to be the TEE owner with TEE_OPERATOR role, or an admin.
+    ///      Also re-validates that the TEE's PCR is still approved for its type.
+    /// @param teeId The TEE identifier to activate
     function activateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
+        // Make sure to do an early return here in order to prevent
+        // getting around the heartbeat check which relies on lastUpdatedAt.
         if (tee.active) return;
 
         _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
