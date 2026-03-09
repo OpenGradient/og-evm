@@ -24,6 +24,7 @@ contract TEERegistry is AccessControl {
 
     struct ApprovedPCR {
         bool active;
+        uint8 teeType;
         uint256 approvedAt;
         uint256 expiresAt;
         string version;
@@ -75,14 +76,13 @@ contract TEERegistry is AccessControl {
 
     event TEETypeAdded(uint8 indexed typeId, string name);
     event TEETypeDeactivated(uint8 indexed typeId);
-    event PCRApproved(bytes32 indexed pcrHash, string version, bytes32 indexed previousPcrHash, uint256 gracePeriod);
-    event PCRRevoked(bytes32 indexed pcrHash);
+    event PCRApproved(bytes32 indexed pcrHash, uint8 indexed teeType, string version);
+    event PCRRevoked(bytes32 indexed pcrHash, uint256 gracePeriod);
     event TEERegistered(bytes32 indexed teeId, address indexed owner, uint8 teeType);
     event TEEDeactivated(bytes32 indexed teeId);
     event TEEActivated(bytes32 indexed teeId);
     event AWSCertificateUpdated(bytes32 indexed certHash);
     event HeartbeatReceived(bytes32 indexed teeId, uint256 timestamp);
-    event TEEsBatchDeactivated(bytes32 indexed pcrHash, uint256 count);
 
     // ============ Errors ============
 
@@ -92,6 +92,7 @@ contract TEERegistry is AccessControl {
     error PCRNotApproved();
     error PCRExpired();
     error PCRAlreadyExists();
+    error PCRTypeMismatch();
     error TEEAlreadyExists();
     error TEENotFound();
     error TEENotActive();
@@ -143,49 +144,50 @@ contract TEERegistry is AccessControl {
 
     // ============ PCR Management ============
     
-    /// @notice Approve a new PCR, optionally deprecating a previous one
+    /// @notice Approve a new PCR measurement for a specific TEE type
     /// @param pcrs The PCR measurements (pcr0, pcr1, pcr2)
     /// @param version Human-readable version string (e.g., "v1.2.0")
-    /// @param previousPcrHash Optional: PCR to deprecate (bytes32(0) if none)
-    /// @param gracePeriod Grace period in seconds (0 if no deprecation)
+    /// @param teeType The TEE type this PCR is valid for
     function approvePCR(
         PCRMeasurements calldata pcrs,
         string calldata version,
-        bytes32 previousPcrHash,
-        uint256 gracePeriod
+        uint8 teeType
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        bytes32 pcrHash = computePCRHash(pcrs);
-        
-        // Prevent duplicate PCR registration
-        if (approvedPCRs[pcrHash].approvedAt != 0) revert PCRAlreadyExists();
-        
-        // Set expiry on previous PCR if provided (planned deprecation)
-        // Note: For security incidents, use revokePCR() instead for immediate deactivation
-        if (previousPcrHash != bytes32(0) && approvedPCRs[previousPcrHash].active) {
-            approvedPCRs[previousPcrHash].expiresAt = block.timestamp + gracePeriod;
-        }
+        if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
-        // Approve new PCR
+        bytes32 pcrHash = computePCRHash(pcrs);
+
+        // Allow re-approval of revoked/expired PCRs, but not currently active ones
+        if (isPCRApproved(pcrHash)) revert PCRAlreadyExists();
+
+        bool isNew = approvedPCRs[pcrHash].approvedAt == 0;
+
         approvedPCRs[pcrHash] = ApprovedPCR({
             active: true,
+            teeType: teeType,
             approvedAt: block.timestamp,
             expiresAt: 0,
             version: version
         });
-        _pcrList.push(pcrHash);
-        
-        emit PCRApproved(pcrHash, version, previousPcrHash, gracePeriod);
+
+        if (isNew) {
+            _pcrList.push(pcrHash);
+        }
+
+        emit PCRApproved(pcrHash, teeType, version);
     }
 
-    /// @notice Revoke a PCR immediately (for security incidents)
-    /// @dev Automatically deactivates all TEEs using this PCR
+    /// @notice Revoke a PCR, either immediately or with a grace period
+    /// @dev TEEs using this PCR are caught lazily at activateTEE() and heartbeat()
     /// @param pcrHash The PCR hash to revoke
-    function revokePCR(bytes32 pcrHash) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        approvedPCRs[pcrHash].active = false;
-        emit PCRRevoked(pcrHash);
-        
-        // Immediately deactivate all TEEs using this PCR
-        _deactivateTEEsByPCR(pcrHash);
+    /// @param gracePeriod Seconds until revocation takes effect (0 = immediate)
+    function revokePCR(bytes32 pcrHash, uint256 gracePeriod) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (gracePeriod == 0) {
+            approvedPCRs[pcrHash].active = false;
+        } else {
+            approvedPCRs[pcrHash].expiresAt = block.timestamp + gracePeriod;
+        }
+        emit PCRRevoked(pcrHash, gracePeriod);
     }
 
     /// @notice Check if a PCR is currently approved and not expired
@@ -196,6 +198,13 @@ contract TEERegistry is AccessControl {
         if (!pcr.active) return false;
         if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) return false;
         return true;
+    }
+
+    /// @dev Reverts with specific error for expired vs revoked/unknown PCRs
+    function _requirePCRApproved(bytes32 pcrHash) private view {
+        ApprovedPCR storage pcr = approvedPCRs[pcrHash];
+        if (!pcr.active) revert PCRNotApproved();
+        if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) revert PCRExpired();
     }
 
     /// @notice Compute PCR hash from measurements
@@ -256,8 +265,9 @@ contract TEERegistry is AccessControl {
         );
         if (!valid) revert AttestationInvalid("Attestation verification failed");
 
-        // Verify PCR is approved
+        // Verify PCR is approved and matches the TEE type
         if (!isPCRApproved(pcrHash)) revert PCRNotApproved();
+        if (approvedPCRs[pcrHash].teeType != teeType) revert PCRTypeMismatch();
 
         // Store TEE
         tees[teeId] = TEEInfo({
@@ -302,43 +312,12 @@ contract TEERegistry is AccessControl {
         if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
         if (tee.active) return;
 
-        // Prevent re-activation if PCR is revoked or expired
-        if (!isPCRApproved(tee.pcrHash)) revert PCRNotApproved();
+        _requirePCRApproved(tee.pcrHash);
 
         tee.active = true;
         tee.lastUpdatedAt = block.timestamp;
         _addToActiveList(teeId);
         emit TEEActivated(teeId);
-    }
-
-    /// @notice Batch deactivate all active TEEs using a specific PCR hash
-    /// @dev Can be called manually by admin or automatically via revokePCR()
-    /// @param pcrHash The PCR hash to deactivate TEEs for
-    function deactivateTEEsByPCR(bytes32 pcrHash) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _deactivateTEEsByPCR(pcrHash);
-    }
-
-    /// @dev Internal function to deactivate all TEEs with a given PCR hash
-    function _deactivateTEEsByPCR(bytes32 pcrHash) private {
-        uint256 count = 0;
-        
-        // Iterate backwards to handle array modification safely
-        for (uint256 i = _activeTEEList.length; i > 0; i--) {
-            bytes32 teeId = _activeTEEList[i - 1];
-            TEEInfo storage tee = tees[teeId];
-            
-            if (tee.pcrHash == pcrHash && tee.active) {
-                tee.active = false;
-                tee.lastUpdatedAt = block.timestamp;
-                _removeFromActiveList(teeId);
-                emit TEEDeactivated(teeId);
-                count++;
-            }
-        }
-        
-        if (count > 0) {
-            emit TEEsBatchDeactivated(pcrHash, count);
-        }
     }
 
     function _addToActiveList(bytes32 teeId) private {
@@ -378,8 +357,8 @@ contract TEERegistry is AccessControl {
         if (tee.registeredAt == 0) revert TEENotFound();
         if (!tee.active) revert TEENotActive();
 
-        // Validate PCR is still approved (lazy enforcement)
-        if (!isPCRApproved(tee.pcrHash)) revert PCRNotApproved();
+        // Lazy PCR enforcement
+        _requirePCRApproved(tee.pcrHash);
 
         // Reject stale or future signed timestamps
         if (timestamp > block.timestamp) revert HeartbeatTimestampInFuture();

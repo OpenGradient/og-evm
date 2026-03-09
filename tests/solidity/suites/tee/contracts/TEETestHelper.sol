@@ -37,14 +37,13 @@ contract TEETestHelper {
     function approvePCR(
         TEERegistry.PCRMeasurements calldata pcrs,
         string calldata version,
-        bytes32 previousPcrHash,
-        uint256 gracePeriod
+        uint8 teeType
     ) external {
-        registry.approvePCR(pcrs, version, previousPcrHash, gracePeriod);
+        registry.approvePCR(pcrs, version, teeType);
     }
 
-    function revokePCR(bytes32 pcrHash) external {
-        registry.revokePCR(pcrHash);
+    function revokePCR(bytes32 pcrHash, uint256 gracePeriod) external {
+        registry.revokePCR(pcrHash, gracePeriod);
     }
 
     function isPCRApproved(bytes32 pcrHash) external view returns (bool) {

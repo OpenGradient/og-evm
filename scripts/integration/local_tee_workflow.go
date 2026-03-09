@@ -65,8 +65,8 @@ var (
 	SEL_IS_VALID_TYPE = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
 	SEL_GET_TEE_TYPES = crypto.Keccak256([]byte("getTEETypes()"))[:4]
 
-	SEL_APPROVE_PCR      = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,bytes32,uint256)"))[:4]
-	SEL_REVOKE_PCR       = crypto.Keccak256([]byte("revokePCR(bytes32)"))[:4]
+	SEL_APPROVE_PCR      = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
+	SEL_REVOKE_PCR       = crypto.Keccak256([]byte("revokePCR(bytes32,uint256)"))[:4]
 	SEL_IS_PCR_APPROVED  = crypto.Keccak256([]byte("isPCRApproved(bytes32)"))[:4]
 	SEL_COMPUTE_PCR_HASH = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	SEL_GET_ACTIVE_PCRS  = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
@@ -244,7 +244,7 @@ func main() {
 		}
 	}
 	if len(existingActivePCRs) == 0 {
-		txHash, err := callApprovePCR(account, pcr0, pcr1, pcr2, "v1.0.0")
+		txHash, err := callApprovePCR(account, pcr0, pcr1, pcr2, "v1.0.0", 0)
 		if err == nil {
 			waitForTx(txHash)
 		}
@@ -340,7 +340,7 @@ func main() {
 
 			if !realApproved {
 				fmt.Println("  📝 Approving real enclave PCRs...")
-				txHash, err := callApprovePCR(account, realPCR0, realPCR1, realPCR2, "enclave-v1")
+				txHash, err := callApprovePCR(account, realPCR0, realPCR1, realPCR2, "enclave-v1", 0)
 				if err == nil {
 					waitForTx(txHash)
 					// [LOG] Verify the approval actually stuck
@@ -538,7 +538,7 @@ func main() {
 		fmt.Printf("  📊 Test PCR Hash: 0x%s\n", hex.EncodeToString(testPCRHash[:]))
 
 		// Approve the test PCR
-		txHash, err := callApprovePCR(account, testPCR0, testPCR1, testPCR2, "test-revoke")
+		txHash, err := callApprovePCR(account, testPCR0, testPCR1, testPCR2, "test-revoke", 0)
 		if err == nil {
 			waitForTx(txHash)
 			approved, _ := callIsPCRApproved(testPCRHash)
@@ -549,7 +549,7 @@ func main() {
 
 		// Step 2: Revoke the test PCR
 		fmt.Println("\n  Step 2: Revoke test PCR")
-		txHash, err = callRevokePCR(account, testPCRHash)
+		txHash, err = callRevokePCR(account, testPCRHash, 0)
 		if err != nil {
 			results.Add("Revoke test PCR", false, err.Error())
 		} else {
@@ -559,8 +559,8 @@ func main() {
 			fmt.Println("  ✅ Test PCR successfully revoked")
 		}
 
-		// Step 3: Test reactivation guard with valid PCR
-		fmt.Println("\n  Step 3: Test reactivation guard")
+		// Step 3: Test activate/deactivate cycle with valid PCR
+		fmt.Println("\n  Step 3: Test activate/deactivate cycle")
 
 		// Deactivate our real TEE
 		txHash, err = callDeactivateTEE(account, registeredTEEId)
@@ -570,12 +570,12 @@ func main() {
 			results.Add("TEE deactivated", !isActive, "")
 		}
 
-		// Try to reactivate - should succeed (PCR still valid)
+		// Reactivate - should succeed since TEE's PCR is still valid
 		txHash, err = callActivateTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
 			isActive, _ := callIsActive(registeredTEEId)
-			results.Add("Can reactivate TEE with valid PCR", isActive, "")
+			results.Add("TEE reactivated with valid PCR", isActive, "")
 			fmt.Println("  ✅ Reactivation successful (PCR valid)")
 		} else {
 			results.Add("Reactivate TEE", false, err.Error())
@@ -604,12 +604,14 @@ func main() {
 		fmt.Printf("  📊 PCR v1 Hash: 0x%s\n", hex.EncodeToString(pcrV1Hash[:]))
 		fmt.Printf("  📊 PCR v2 Hash: 0x%s\n", hex.EncodeToString(pcrV2Hash[:]))
 
-		// Approve v1
-		txHash, _ = callApprovePCR(account, pcrV1_0, pcrV1_1, pcrV1_2, "v1-grace")
+		// Approve v1 and v2
+		txHash, _ = callApprovePCR(account, pcrV1_0, pcrV1_1, pcrV1_2, "v1-grace", 0)
+		waitForTx(txHash)
+		txHash, _ = callApprovePCR(account, pcrV2_0, pcrV2_1, pcrV2_2, "v2-grace", 0)
 		waitForTx(txHash)
 
-		// Approve v2 with 1 hour grace period on v1
-		txHash, err = callApprovePCRWithGrace(account, pcrV2_0, pcrV2_1, pcrV2_2, "v2-grace", pcrV1Hash, 3600)
+		// Revoke v1 with 1 hour grace period
+		txHash, err = callRevokePCR(account, pcrV1Hash, 3600)
 		if err == nil {
 			waitForTx(txHash)
 
@@ -627,7 +629,7 @@ func main() {
 				fmt.Printf("  ⚠️  Grace period issue: v1=%v, v2=%v\n", v1Valid, v2Valid)
 			}
 		} else {
-			results.Add("Approve PCR with grace period", false, err.Error())
+			results.Add("Revoke PCR with grace period", false, err.Error())
 		}
 
 		// Step 5: Test duplicate PCR prevention
@@ -641,13 +643,13 @@ func main() {
 		rand.Read(dupPCR2)
 
 		// Approve once
-		txHash, err = callApprovePCR(account, dupPCR0, dupPCR1, dupPCR2, "dup-test-1")
+		txHash, err = callApprovePCR(account, dupPCR0, dupPCR1, dupPCR2, "dup-test-1", 0)
 		if err == nil {
 			waitForTx(txHash)
 		}
 
 		// Try to approve same PCRs again - should fail
-		txHash, err = callApprovePCR(account, dupPCR0, dupPCR1, dupPCR2, "dup-test-2")
+		txHash, err = callApprovePCR(account, dupPCR0, dupPCR1, dupPCR2, "dup-test-2", 0)
 		if err != nil {
 			results.Add("Duplicate PCR registration prevented", true, "")
 			fmt.Println("  ✅ Duplicate PCR rejected as expected")
@@ -936,27 +938,12 @@ func loadPCRMeasurements() ([]byte, []byte, []byte, error) {
 	return pcr0, pcr1, pcr2, nil
 }
 
-func callRevokePCR(from string, pcrHash [32]byte) (string, error) {
-	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}}
-	encoded, _ := args.Pack(pcrHash)
-	return sendTx(from, append(SEL_REVOKE_PCR, encoded...))
-}
-
-func callApprovePCRWithGrace(from string, pcr0, pcr1, pcr2 []byte, version string, previousHash [32]byte, gracePeriod uint64) (string, error) {
-	tupleType, _ := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
-		{Name: "pcr0", Type: "bytes"},
-		{Name: "pcr1", Type: "bytes"},
-		{Name: "pcr2", Type: "bytes"},
-	})
-	stringType, _ := abi.NewType("string", "", nil)
+func callRevokePCR(from string, pcrHash [32]byte, gracePeriod uint64) (string, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	uint256Type, _ := abi.NewType("uint256", "", nil)
-
-	args := abi.Arguments{{Type: tupleType}, {Type: stringType}, {Type: bytes32Type}, {Type: uint256Type}}
-	pcrs := struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}
-	encoded, _ := args.Pack(pcrs, version, previousHash, new(big.Int).SetUint64(gracePeriod))
-	return sendTx(from, append(SEL_APPROVE_PCR, encoded...))
+	args := abi.Arguments{{Type: bytes32Type}, {Type: uint256Type}}
+	encoded, _ := args.Pack(pcrHash, new(big.Int).SetUint64(gracePeriod))
+	return sendTx(from, append(SEL_REVOKE_PCR, encoded...))
 }
 
 // ============================================================================
@@ -1092,19 +1079,18 @@ func callIsValidTEEType(typeId uint8) (bool, error) {
 // CONTRACT CALLS - PCR Management
 // ============================================================================
 
-func callApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string) (string, error) {
+func callApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string, teeType uint8) (string, error) {
 	tupleType, _ := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "pcr0", Type: "bytes"},
 		{Name: "pcr1", Type: "bytes"},
 		{Name: "pcr2", Type: "bytes"},
 	})
 	stringType, _ := abi.NewType("string", "", nil)
-	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	uint256Type, _ := abi.NewType("uint256", "", nil)
+	uint8Type, _ := abi.NewType("uint8", "", nil)
 
-	args := abi.Arguments{{Type: tupleType}, {Type: stringType}, {Type: bytes32Type}, {Type: uint256Type}}
+	args := abi.Arguments{{Type: tupleType}, {Type: stringType}, {Type: uint8Type}}
 	pcrs := struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}
-	encoded, _ := args.Pack(pcrs, version, [32]byte{}, big.NewInt(0))
+	encoded, _ := args.Pack(pcrs, version, teeType)
 	return sendTx(from, append(SEL_APPROVE_PCR, encoded...))
 }
 

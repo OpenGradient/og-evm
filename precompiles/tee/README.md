@@ -21,7 +21,7 @@ TEERegistry registry = TEERegistry(registryAddress);
 
 // 1. Admin: Setup TEE type and PCRs
 registry.addTEEType(0, "LLMProxy");
-registry.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
+registry.approvePCR(pcrs, "v1.0.0", 0);
 
 // 2. Operator: Register TEE
 bytes32 teeId = registry.registerTEEWithAttestation(

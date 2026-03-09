@@ -38,8 +38,8 @@ var (
 	selAddTEEType       = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
 	selDeactivateTEETyp = crypto.Keccak256([]byte("deactivateTEEType(uint8)"))[:4]
 	selIsValidType      = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
-	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,bytes32,uint256)"))[:4]
-	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32)"))[:4]
+	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
+	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint256)"))[:4]
 	selIsPCRApproved    = crypto.Keccak256([]byte("isPCRApproved(bytes32)"))[:4]
 	selComputePCRHash   = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	selGetActivePCRs    = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
@@ -270,21 +270,24 @@ func (c *Client) ComputePCRHash(pcr0, pcr1, pcr2 []byte) ([32]byte, error) {
 	return hash, err
 }
 
-func (c *Client) ApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string, prevPCR [32]byte, grace *big.Int) (string, error) {
+func (c *Client) ApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string, teeType uint8) (string, error) {
 	tupleT, _ := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "pcr0", Type: "bytes"}, {Name: "pcr1", Type: "bytes"}, {Name: "pcr2", Type: "bytes"},
 	})
 	strT, _ := abi.NewType("string", "", nil)
-	b32T, _ := abi.NewType("bytes32", "", nil)
-	u256T, _ := abi.NewType("uint256", "", nil)
+	u8T, _ := abi.NewType("uint8", "", nil)
 
-	args := abi.Arguments{{Type: tupleT}, {Type: strT}, {Type: b32T}, {Type: u256T}}
-	encoded, _ := args.Pack(struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}, version, prevPCR, grace)
+	args := abi.Arguments{{Type: tupleT}, {Type: strT}, {Type: u8T}}
+	encoded, _ := args.Pack(struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}, version, teeType)
 	return c.sendTx(from, append(selApprovePCR, encoded...))
 }
 
-func (c *Client) RevokePCR(from string, pcrHash [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selRevokePCR, pcrHash))
+func (c *Client) RevokePCR(from string, pcrHash [32]byte, gracePeriod *big.Int) (string, error) {
+	b32T, _ := abi.NewType("bytes32", "", nil)
+	u256T, _ := abi.NewType("uint256", "", nil)
+	args := abi.Arguments{{Type: b32T}, {Type: u256T}}
+	encoded, _ := args.Pack(pcrHash, gracePeriod)
+	return c.sendTx(from, append(selRevokePCR, encoded...))
 }
 
 func (c *Client) IsPCRApproved(pcrHash [32]byte) (bool, error) {

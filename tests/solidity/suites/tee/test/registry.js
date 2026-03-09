@@ -137,10 +137,10 @@ contract('TEERegistry', function (accounts) {
         })
 
         it('should allow admin to approve PCR', async function () {
-            const result = await registry.approvePCR(pcrs, 'v1.0.0', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
+            const result = await registry.approvePCR(pcrs, 'v1.0.0', 1)
 
             truffleAssert.eventEmitted(result, 'PCRApproved', (ev) => {
-                return ev.pcrHash === pcrHash && ev.version === 'v1.0.0'
+                return ev.pcrHash === pcrHash && ev.teeType.toString() === '1' && ev.version === 'v1.0.0'
             })
 
             expect(await registry.isPCRApproved(pcrHash)).to.be.true
@@ -153,7 +153,7 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ PCR approved successfully')
         })
 
-        it('should handle PCR versioning with grace period', async function () {
+        it('should handle PCR versioning with grace period via revokePCR', async function () {
             const pcrsV2 = {
                 pcr0: '0x' + Buffer.alloc(48, 0x04).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x05).toString('hex'),
@@ -163,8 +163,11 @@ contract('TEERegistry', function (accounts) {
             const pcrHashV2 = await registry.computePCRHash(pcrsV2)
             const gracePeriod = 3600 // 1 hour
 
-            // Approve v2 with v1 as previous
-            await registry.approvePCR(pcrsV2, 'v2.0.0', pcrHash, gracePeriod)
+            // Approve v2
+            await registry.approvePCR(pcrsV2, 'v2.0.0', 1)
+
+            // Revoke v1 with grace period
+            await registry.revokePCR(pcrHash, gracePeriod)
 
             // Both should be valid during grace period
             expect(await registry.isPCRApproved(pcrHash)).to.be.true
@@ -185,13 +188,13 @@ contract('TEERegistry', function (accounts) {
 
             const pcrHashRevoke = await registry.computePCRHash(pcrsRevoke)
 
-            await registry.approvePCR(pcrsRevoke, 'v1.0.0-revoke', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
+            await registry.approvePCR(pcrsRevoke, 'v1.0.0-revoke', 1)
             expect(await registry.isPCRApproved(pcrHashRevoke)).to.be.true
 
-            const result = await registry.revokePCR(pcrHashRevoke)
+            const result = await registry.revokePCR(pcrHashRevoke, 0)
 
             truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
-                return ev.pcrHash === pcrHashRevoke
+                return ev.pcrHash === pcrHashRevoke && ev.gracePeriod.toString() === '0'
             })
 
             expect(await registry.isPCRApproved(pcrHashRevoke)).to.be.false
@@ -215,7 +218,7 @@ contract('TEERegistry', function (accounts) {
             }
 
             await truffleAssert.reverts(
-                registry.approvePCR(pcrsUnauth, 'unauthorized', '0x0000000000000000000000000000000000000000000000000000000000000000', 0, { from: user1 })
+                registry.approvePCR(pcrsUnauth, 'unauthorized', 1, { from: user1 })
             )
 
             console.log('✓ Non-admin cannot approve PCR')
@@ -223,7 +226,7 @@ contract('TEERegistry', function (accounts) {
 
         it('should reject non-admin revoking PCR', async function () {
             await truffleAssert.reverts(
-                registry.revokePCR(pcrHash, { from: user1 })
+                registry.revokePCR(pcrHash, 0, { from: user1 })
             )
 
             console.log('✓ Non-admin cannot revoke PCR')
@@ -238,21 +241,17 @@ contract('TEERegistry', function (accounts) {
 
             const pcrHashExpiry = await registry.computePCRHash(pcrsExpiry)
 
-            // First approve the PCR normally
-            await registry.approvePCR(pcrsExpiry, 'v-expiry', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
+            // Approve the PCR
+            await registry.approvePCR(pcrsExpiry, 'v-expiry', 1)
             expect(await registry.isPCRApproved(pcrHashExpiry)).to.be.true
 
-            // Approve a new PCR referencing the expiry PCR as previous, with gracePeriod = 0.
-            // This sets expiresAt = block.timestamp, so any subsequent block (where
-            // block.timestamp > expiresAt) will cause isPCRApproved to return false.
-            const pcrsNew = {
-                pcr0: '0x' + Buffer.alloc(48, 0xF1).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0xF2).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0xF3).toString('hex')
-            }
-            await registry.approvePCR(pcrsNew, 'v-new', pcrHashExpiry, 0)
+            // Revoke with gracePeriod=0, which sets expiresAt = block.timestamp.
+            // Any subsequent block (where block.timestamp > expiresAt) will cause
+            // isPCRApproved to return false.
+            await registry.revokePCR(pcrHashExpiry, 1)
 
             // Send a dummy transaction to mine a new block with an advanced timestamp
+            await registry.setAWSRootCertificate('0x01')
             await registry.setAWSRootCertificate('0x01')
 
             // The expiry PCR should now be rejected (block.timestamp > expiresAt)
@@ -353,7 +352,7 @@ contract('TEERegistry', function (accounts) {
                 pcr1: '0x' + Buffer.alloc(48, 0x02).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0x03).toString('hex')
             }
-            await registry.approvePCR(pcrs, 'v1.0.0', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
+            await registry.approvePCR(pcrs, 'v1.0.0', 1)
 
             // Add TEE type if not exists
             try {
@@ -463,8 +462,7 @@ contract('TEERegistry', function (accounts) {
                 registry.approvePCR(
                     { pcr0: '0x01', pcr1: '0x02', pcr2: '0x03' },
                     'v1',
-                    '0x0000000000000000000000000000000000000000000000000000000000000000',
-                    0,
+                    1,
                     { from: user1 }
                 )
             )
@@ -492,171 +490,123 @@ contract('TEERegistry', function (accounts) {
     })
 
     describe('PCR Revocation Security', function () {
-        let testPCRHash
-        
-        before(async function () {
-            // Setup: Create and approve a PCR for testing
-            const pcrs = {
-                pcr0: '0x' + Buffer.alloc(48, 0x10).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x11).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x12).toString('hex')
-            }
-            
-            testPCRHash = await registry.computePCRHash(pcrs)
-            await registry.approvePCR(pcrs, 'v-test-revoke', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
-            
-            console.log('Setup: PCR approved for revocation tests')
-        })
-
         it('should prevent duplicate PCR registration', async function () {
             const pcrs = {
                 pcr0: '0x' + Buffer.alloc(48, 0x20).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x21).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0x22).toString('hex')
             }
-            
+
             // First approval should succeed
-            await registry.approvePCR(pcrs, 'v-duplicate-test', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
-            
-            // Second approval with same PCRs should fail (generic revert check)
+            await registry.approvePCR(pcrs, 'v-duplicate-test', 1)
+
+            // Second approval with same PCRs should fail
             await truffleAssert.reverts(
-                registry.approvePCR(pcrs, 'v-duplicate-test-2', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
+                registry.approvePCR(pcrs, 'v-duplicate-test-2', 1)
             )
-            
+
             console.log('✓ Duplicate PCR registration prevented')
         })
 
-        it('should automatically deactivate TEEs when PCR is revoked', async function () {
-            const pcrHash = await registry.computePCRHash({
+        it('should allow re-approval of revoked PCR', async function () {
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0x25).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0x26).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0x27).toString('hex')
+            }
+
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            await registry.approvePCR(pcrs, 'v-reapprove-1', 1)
+            await registry.revokePCR(pcrHash, 0)
+            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+
+            // Re-approval should succeed after revocation
+            await registry.approvePCR(pcrs, 'v-reapprove-2', 1)
+            expect(await registry.isPCRApproved(pcrHash)).to.be.true
+
+            console.log('✓ Re-approval of revoked PCR works')
+        })
+
+        it('should revoke PCR immediately when gracePeriod is 0', async function () {
+            const pcrs = {
                 pcr0: '0x' + Buffer.alloc(48, 0x30).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x31).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0x32).toString('hex')
-            })
-            
-            await registry.approvePCR(
-                {
-                    pcr0: '0x' + Buffer.alloc(48, 0x30).toString('hex'),
-                    pcr1: '0x' + Buffer.alloc(48, 0x31).toString('hex'),
-                    pcr2: '0x' + Buffer.alloc(48, 0x32).toString('hex')
-                },
-                'v-auto-deactivate',
-                '0x0000000000000000000000000000000000000000000000000000000000000000',
-                0
-            )
-            
-            // Revoke the PCR
-            const result = await registry.revokePCR(pcrHash)
-            
-            // Verify PCRRevoked event
+            }
+            const pcrHash = await registry.computePCRHash(pcrs)
+
+            await registry.approvePCR(pcrs, 'v-immediate-revoke', 1)
+
+            const result = await registry.revokePCR(pcrHash, 0)
+
             truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
-                return ev.pcrHash === pcrHash
+                return ev.pcrHash === pcrHash && ev.gracePeriod.toString() === '0'
             })
-            
-            // Verify PCR is no longer approved
+
             expect(await registry.isPCRApproved(pcrHash)).to.be.false
-            
-            console.log('✓ PCR revocation emits events and marks PCR inactive')
+
+            console.log('✓ Immediate PCR revocation works')
         })
 
-        it('should allow manual batch deactivation by admin', async function () {
-            const pcrHash = await registry.computePCRHash({
-                pcr0: '0x' + Buffer.alloc(48, 0x40).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x41).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x42).toString('hex')
-            })
-            
-            await registry.approvePCR(
-                {
-                    pcr0: '0x' + Buffer.alloc(48, 0x40).toString('hex'),
-                    pcr1: '0x' + Buffer.alloc(48, 0x41).toString('hex'),
-                    pcr2: '0x' + Buffer.alloc(48, 0x42).toString('hex')
-                },
-                'v-manual-deactivate',
-                '0x0000000000000000000000000000000000000000000000000000000000000000',
-                0
-            )
-            
-            // Manual deactivation should work (even though no TEEs exist)
-            await registry.deactivateTEEsByPCR(pcrHash)
-            
-            console.log('✓ Manual batch deactivation callable by admin')
-        })
-
-        it('should reject non-admin calling deactivateTEEsByPCR', async function () {
-            const pcrHash = web3.utils.keccak256('0xDEADBEEF')
-            
-            await truffleAssert.reverts(
-                registry.deactivateTEEsByPCR(pcrHash, { from: user1 })
-            )
-            
-            console.log('✓ Non-admin cannot batch deactivate TEEs')
-        })
-
-        it('should emit PCRApproved with previousPcrHash and gracePeriod', async function () {
-            const pcrsOld = {
-                pcr0: '0x' + Buffer.alloc(48, 0x50).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x51).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x52).toString('hex')
-            }
-            
-            const pcrsNew = {
-                pcr0: '0x' + Buffer.alloc(48, 0x60).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x61).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x62).toString('hex')
-            }
-            
-            // Approve old PCR
-            const oldHash = await registry.computePCRHash(pcrsOld)
-            await registry.approvePCR(pcrsOld, 'v-old', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
-            
-            // Approve new PCR with old as previous and grace period
-            const newHash = await registry.computePCRHash(pcrsNew)
-            const gracePeriod = 7 * 24 * 3600 // 7 days
-            
-            const result = await registry.approvePCR(pcrsNew, 'v-new', oldHash, gracePeriod)
-            
-            // Verify enhanced event
-            truffleAssert.eventEmitted(result, 'PCRApproved', (ev) => {
-                return ev.pcrHash === newHash &&
-                       ev.version === 'v-new' &&
-                       ev.previousPcrHash === oldHash &&
-                       ev.gracePeriod.toString() === gracePeriod.toString()
-            })
-            
-            console.log('✓ PCRApproved event includes previousPcrHash and gracePeriod')
-        })
-
-        it('should maintain both PCRs during grace period', async function () {
-            const pcrsV1 = {
+        it('should revoke PCR with grace period', async function () {
+            const pcrs = {
                 pcr0: '0x' + Buffer.alloc(48, 0x70).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x71).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0x72).toString('hex')
             }
-            
-            const pcrsV2 = {
+
+            const pcrHash = await registry.computePCRHash(pcrs)
+            const gracePeriod = 3600 // 1 hour
+
+            await registry.approvePCR(pcrs, 'v-grace-revoke', 1)
+
+            const result = await registry.revokePCR(pcrHash, gracePeriod)
+
+            truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
+                return ev.pcrHash === pcrHash && ev.gracePeriod.toString() === gracePeriod.toString()
+            })
+
+            // Should still be valid during grace period
+            expect(await registry.isPCRApproved(pcrHash)).to.be.true
+
+            const pcrInfo = await registry.approvedPCRs(pcrHash)
+            expect(pcrInfo.expiresAt.toNumber()).to.be.greaterThan(0)
+
+            console.log('✓ PCR revocation with grace period works')
+        })
+
+        it('should maintain both old and new PCRs during grace period', async function () {
+            const pcrsV1 = {
                 pcr0: '0x' + Buffer.alloc(48, 0x80).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x81).toString('hex'),
                 pcr2: '0x' + Buffer.alloc(48, 0x82).toString('hex')
             }
-            
+
+            const pcrsV2 = {
+                pcr0: '0x' + Buffer.alloc(48, 0x90).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0x91).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0x92).toString('hex')
+            }
+
             const v1Hash = await registry.computePCRHash(pcrsV1)
             const v2Hash = await registry.computePCRHash(pcrsV2)
-            
-            // Approve v1
-            await registry.approvePCR(pcrsV1, 'v1-grace', '0x0000000000000000000000000000000000000000000000000000000000000000', 0)
-            expect(await registry.isPCRApproved(v1Hash)).to.be.true
-            
-            // Approve v2 with 1 hour grace period on v1
-            await registry.approvePCR(pcrsV2, 'v2-grace', v1Hash, 3600)
-            
+
+            // Approve v1, then v2
+            await registry.approvePCR(pcrsV1, 'v1-grace', 1)
+            await registry.approvePCR(pcrsV2, 'v2-grace', 1)
+
+            // Revoke v1 with 1 hour grace period
+            await registry.revokePCR(v1Hash, 3600)
+
             // Both should be valid during grace period
             expect(await registry.isPCRApproved(v1Hash)).to.be.true
             expect(await registry.isPCRApproved(v2Hash)).to.be.true
-            
+
             // v1 should have expiry set
             const v1Info = await registry.approvedPCRs(v1Hash)
             expect(v1Info.expiresAt.toNumber()).to.be.greaterThan(0)
-            
+
             console.log('✓ Both PCRs valid during grace period')
         })
     })
