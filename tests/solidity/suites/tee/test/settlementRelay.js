@@ -400,7 +400,6 @@ contract('InferenceSettlementRelay', function (accounts) {
         const TEE_TYPE_NITRO = 1
         const TLS_CERT = '0x' + Buffer.alloc(100, 0xAA).toString('hex')
         const ENDPOINT = 'https://tee.example.com'
-        const PCR_HASH = web3.utils.keccak256('test-pcr')
 
         before(async () => {
             // Generate RSA key pair for signing
@@ -416,9 +415,18 @@ contract('InferenceSettlementRelay', function (accounts) {
             intRegistry = await MockTEERegistry.new()
             await intRegistry.addTEEType(TEE_TYPE_NITRO, 'AWS Nitro')
 
+            // Approve PCR measurements so activateTEE passes _requirePCRValidForTEE
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0x01).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0x02).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0x03).toString('hex')
+            }
+            await intRegistry.approvePCR(pcrs, 'v1.0.0', TEE_TYPE_NITRO)
+            const pcrHash = await intRegistry.computePCRHash(pcrs)
+
             // Register and activate TEE
             await intRegistry.registerTEEForTesting(
-                publicKeyDER, TLS_CERT, user, ENDPOINT, TEE_TYPE_NITRO, PCR_HASH
+                publicKeyDER, TLS_CERT, user, ENDPOINT, TEE_TYPE_NITRO, pcrHash
             )
             intTeeId = await intRegistry.computeTEEId(publicKeyDER)
             await intRegistry.activateTEE(intTeeId)

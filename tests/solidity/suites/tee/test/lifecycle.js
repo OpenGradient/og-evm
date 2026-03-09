@@ -27,8 +27,16 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         const TEE_OPERATOR_ROLE = await registry.TEE_OPERATOR()
         await registry.grantRole(TEE_OPERATOR_ROLE, teeOperator)
 
-        // Add TEE type
+        // Add TEE type and approve PCR measurements
         await registry.addTEEType(TEE_TYPE_NITRO, 'AWS Nitro')
+
+        // Approve the PCR so activateTEE() passes _requirePCRValidForTEE
+        const pcrs = {
+            pcr0: '0x' + Buffer.alloc(48, 0x01).toString('hex'),
+            pcr1: '0x' + Buffer.alloc(48, 0x02).toString('hex'),
+            pcr2: '0x' + Buffer.alloc(48, 0x03).toString('hex')
+        }
+        await registry.approvePCR(pcrs, 'v1.0.0', TEE_TYPE_NITRO)
 
         // Generate test keys
         const keyPair1 = crypto.generateKeyPairSync('rsa', {

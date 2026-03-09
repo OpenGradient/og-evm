@@ -345,20 +345,7 @@ contract('TEERegistry', function (accounts) {
         })
 
         it('should reject registration with invalid attestation', async function () {
-            // First approve a PCR
-            const pcrs = {
-                pcr0: '0x' + Buffer.alloc(48, 0x01).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x02).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x03).toString('hex')
-            }
-            await registry.approvePCR(pcrs, 'v1.0.0', 1)
-
-            // Add TEE type if not exists
-            try {
-                await registry.addTEEType(1, 'AWS Nitro')
-            } catch (e) {
-                // Type already exists, continue
-            }
+            // PCR and TEE type already approved/added in earlier test sections
 
             const invalidAttestation = '0x' + Buffer.alloc(100, 0xFF).toString('hex')
             const dummyCert = '0x' + Buffer.alloc(100, 0xAA).toString('hex')
