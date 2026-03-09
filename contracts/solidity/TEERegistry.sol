@@ -65,10 +65,14 @@ contract TEERegistry is AccessControl {
     // Heartbeat: max allowed age of the signed timestamp vs block.timestamp.
     uint256 public heartbeatMaxAge = 1800; // 30 minutes default
 
-    // TEE Storage
+    // All TEEs
     mapping(bytes32 => TEEInfo) public tees;
+
+    // Active TEEs
     bytes32[] private _activeTEEList;
     mapping(bytes32 => uint256) private _activeTEEIndex;
+
+    // TEEs by owner and type
     mapping(address => bytes32[]) private _teesByOwner;
     mapping(uint8 => bytes32[]) private _teesByType;
 
