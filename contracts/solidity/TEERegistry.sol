@@ -111,6 +111,15 @@ contract TEERegistry is AccessControl {
     error HeartbeatTimestampTooOld();
     error HeartbeatTimestampInFuture();
 
+    // ============ Modifiers ============
+
+    modifier onlyTEEOwnerOrAdmin(bytes32 teeId) {
+        TEEInfo storage tee = tees[teeId];
+        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
+        if (!hasRole(TEE_OPERATOR, msg.sender) && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
+        _;
+    }
+
     // ============ Constructor ============
 
     constructor() {
@@ -195,6 +204,7 @@ contract TEERegistry is AccessControl {
     }
 
     /// @notice Check if a PCR is currently approved and not expired
+    /// @param teeType The TEE type the PCR is valid for
     /// @param pcrHash The PCR hash to check
     /// @return bool True if approved and not expired
     function isPCRApproved(uint8 teeType, bytes32 pcrHash) public view returns (bool) {
@@ -267,7 +277,7 @@ contract TEERegistry is AccessControl {
             tlsCertificate,
             awsRootCertificate
         );
-        if (!valid) revert AttestationInvalid("Attestation verification failed");
+        if (!valid) revert AttestationInvalid("Attestation document verification failed");
 
         // Verify PCR is approved and matches the TEE type
         _requirePCRValidForTEE(pcrHash, teeType);
@@ -297,10 +307,9 @@ contract TEERegistry is AccessControl {
 
     // ============ TEE Management ============
     
-    function deactivateTEE(bytes32 teeId) external {
+    function deactivateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
         if (tee.registeredAt == 0) revert TEENotFound();
-        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
         if (!tee.active) return;
 
         tee.active = false;
@@ -309,10 +318,9 @@ contract TEERegistry is AccessControl {
         emit TEEDeactivated(teeId);
     }
 
-    function activateTEE(bytes32 teeId) external {
+    function activateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
         if (tee.registeredAt == 0) revert TEENotFound();
-        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
         if (tee.active) return;
 
         _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
