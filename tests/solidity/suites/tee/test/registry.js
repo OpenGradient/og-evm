@@ -394,24 +394,6 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ PCR hash computation correct')
         })
 
-        it('should compute message hash correctly', async function () {
-            const inputHash = web3.utils.keccak256('0x01')
-            const outputHash = web3.utils.keccak256('0x02')
-            const timestamp = Math.floor(Date.now() / 1000)
-
-            const expectedHash = web3.utils.keccak256(
-                web3.eth.abi.encodeParameters(
-                    ['bytes32', 'bytes32', 'uint256'],
-                    [inputHash, outputHash, timestamp]
-                )
-            )
-
-            const computedHash = await registry.computeMessageHash(inputHash, outputHash, timestamp)
-            expect(computedHash).to.equal(expectedHash)
-
-            console.log('✓ Message hash computation correct')
-        })
-
         it('should handle getTEE for non-existent TEE', async function () {
             const nonExistentId = web3.utils.keccak256('0xDEADBEEF')
 

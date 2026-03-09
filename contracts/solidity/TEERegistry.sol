@@ -73,13 +73,16 @@ contract TEERegistry is AccessControl {
     // All TEEs
     mapping(bytes32 => TEEInfo) public tees;
 
-    // Active TEEs
-    bytes32[] private _activeTEEList;
-    mapping(bytes32 => uint256) private _activeTEEIndex;
+    // Active TEEs by type: teeType => list of active teeIds
+    mapping(uint8 => bytes32[]) private _activeTEEList;
+    // teeType => teeId => index in _activeTEEList[teeType]
+    mapping(uint8 => mapping(bytes32 => uint256)) private _activeTEEIndex;
 
-    // TEEs by owner and type
-    mapping(address => bytes32[]) private _teesByOwner;
+    // All TEEs by type (active + inactive)
     mapping(uint8 => bytes32[]) private _teesByType;
+
+    // TEEs by owner
+    mapping(address => bytes32[]) private _teesByOwner;
 
     // ============ Events ============
 
@@ -297,10 +300,10 @@ contract TEERegistry is AccessControl {
         });
 
         // Add to indexes
-        _activeTEEIndex[teeId] = _activeTEEList.length;
-        _activeTEEList.push(teeId);
-        _teesByOwner[msg.sender].push(teeId);
+        _activeTEEIndex[teeType][teeId] = _activeTEEList[teeType].length;
+        _activeTEEList[teeType].push(teeId);
         _teesByType[teeType].push(teeId);
+        _teesByOwner[msg.sender].push(teeId);
 
         emit TEERegistered(teeId, msg.sender, teeType);
     }
@@ -314,7 +317,7 @@ contract TEERegistry is AccessControl {
 
         tee.active = false;
         tee.lastUpdatedAt = block.timestamp;
-        _removeFromActiveList(teeId);
+        _removeFromActiveList(teeId, tee.teeType);
         emit TEEDeactivated(teeId);
     }
 
@@ -332,27 +335,27 @@ contract TEERegistry is AccessControl {
 
         tee.active = true;
         tee.lastUpdatedAt = block.timestamp;
-        _addToActiveList(teeId);
+        _addToActiveList(teeId, tee.teeType);
         emit TEEActivated(teeId);
     }
 
-    function _addToActiveList(bytes32 teeId) private {
-        _activeTEEIndex[teeId] = _activeTEEList.length;
-        _activeTEEList.push(teeId);
+    function _addToActiveList(bytes32 teeId, uint8 teeType) private {
+        _activeTEEIndex[teeType][teeId] = _activeTEEList[teeType].length;
+        _activeTEEList[teeType].push(teeId);
     }
 
-    function _removeFromActiveList(bytes32 teeId) private {
-        uint256 index = _activeTEEIndex[teeId];
-        uint256 lastIndex = _activeTEEList.length - 1;
-        
+    function _removeFromActiveList(bytes32 teeId, uint8 teeType) private {
+        uint256 index = _activeTEEIndex[teeType][teeId];
+        uint256 lastIndex = _activeTEEList[teeType].length - 1;
+
         if (index != lastIndex) {
-            bytes32 lastTeeId = _activeTEEList[lastIndex];
-            _activeTEEList[index] = lastTeeId;
-            _activeTEEIndex[lastTeeId] = index;
+            bytes32 lastTeeId = _activeTEEList[teeType][lastIndex];
+            _activeTEEList[teeType][index] = lastTeeId;
+            _activeTEEIndex[teeType][lastTeeId] = index;
         }
-        
-        _activeTEEList.pop();
-        delete _activeTEEIndex[teeId];
+
+        _activeTEEList[teeType].pop();
+        delete _activeTEEIndex[teeType][teeId];
     }
 
     // ============ Heartbeat ============
@@ -394,16 +397,6 @@ contract TEERegistry is AccessControl {
         heartbeatMaxAge = maxAge;
     }
 
-    // ============ Utilities ============
-
-    function computeMessageHash(
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp
-    ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(inputHash, outputHash, timestamp));
-    }
-
     // ============ Queries ============
     
     function getTEE(bytes32 teeId) external view returns (TEEInfo memory) {
@@ -411,8 +404,8 @@ contract TEERegistry is AccessControl {
         return tees[teeId];
     }
 
-    function getActiveTEEs() external view returns (bytes32[] memory) {
-        return _activeTEEList;
+    function getActiveTEEs(uint8 teeType) external view returns (bytes32[] memory) {
+        return _activeTEEList[teeType];
     }
 
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory) {
