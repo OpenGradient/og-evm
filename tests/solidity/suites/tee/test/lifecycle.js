@@ -75,7 +75,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
     // Helper: check active status via getTEE
     async function isTEEEnabled(teeId) {
         const tee = await registry.getTEE(teeId)
-        return tee.active
+        return tee.enabled
     }
 
     // ============ disableTEE Tests ============
@@ -531,7 +531,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
 
         it('should return active status via getTEE', async function () {
             const tee = await registry.getTEE(teeId1)
-            expect(tee.active).to.be.true
+            expect(tee.enabled).to.be.true
 
             console.log('✓ getTEE returns active=true for active TEE')
         })
@@ -539,7 +539,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         it('should return inactive status via getTEE after disabling', async function () {
             await registry.disableTEE(teeId1, { from: teeOperator })
             const tee = await registry.getTEE(teeId1)
-            expect(tee.active).to.be.false
+            expect(tee.enabled).to.be.false
 
             // Re-enable for subsequent tests
             await registry.enableTEE(teeId1, { from: teeOperator })
@@ -561,7 +561,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             const activeTEEs = await registry.getActiveTEEs(TEE_TYPE_NITRO)
             // activeTEEs returns TEEInfo structs, check they have valid fields
             for (let i = 0; i < activeTEEs.length; i++) {
-                expect(activeTEEs[i].active).to.be.true
+                expect(activeTEEs[i].enabled).to.be.true
                 expect(Number(activeTEEs[i].registeredAt)).to.be.greaterThan(0)
             }
 
