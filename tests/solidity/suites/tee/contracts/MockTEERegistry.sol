@@ -34,7 +34,7 @@ contract MockTEERegistry is TEERegistry {
             tlsCertificate: tlsCertificate,
             pcrHash: pcrHash,
             teeType: teeType,
-            active: false,
+            enabled: false,
             registeredAt: block.timestamp,
             lastHeartbeatAt: block.timestamp
         });
