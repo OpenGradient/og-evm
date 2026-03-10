@@ -567,7 +567,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             // liveTEEs returns TEEInfo structs, check they have valid fields
             for (let i = 0; i < liveTEEs.length; i++) {
                 expect(liveTEEs[i].active).to.be.true
-                expect(liveTEEs[i].registeredAt.toNumber()).to.be.greaterThan(0)
+                expect(Number(liveTEEs[i].registeredAt)).to.be.greaterThan(0)
             }
 
             console.log('Live TEEs count:', liveTEEs.length)
