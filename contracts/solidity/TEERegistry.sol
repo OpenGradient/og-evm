@@ -398,25 +398,71 @@ contract TEERegistry is AccessControl {
     }
 
     // ============ Queries ============
-    
+
+    /// @notice Get full TEE info by ID
+    /// @param teeId The TEE identifier
+    /// @return The TEE info struct
     function getTEE(bytes32 teeId) external view returns (TEEInfo memory) {
         if (tees[teeId].registeredAt == 0) revert TEENotFound();
         return tees[teeId];
     }
 
-    function getActiveTEEs(uint8 teeType) external view returns (bytes32[] memory) {
+    /// @notice Get TEE IDs that have been activated for a given type
+    /// @dev Does NOT filter by heartbeat freshness or PCR validity.
+    ///      Use getLiveTEEs() for fully verified results.
+    /// @param teeType The TEE type to query
+    /// @return Array of TEE IDs
+    function getActivatedTEEs(uint8 teeType) external view returns (bytes32[] memory) {
         return _activeTEEList[teeType];
     }
 
+    /// @notice Get TEEs that are activated, have a valid PCR, and a fresh heartbeat
+    /// @dev More expensive than getActivatedTEEs() due to on-chain filtering.
+    ///      Use this when you need guaranteed-healthy TEEs without client-side checks.
+    /// @param teeType The TEE type to query
+    /// @return Array of TEEInfo structs for live TEEs
+    function getLiveTEEs(uint8 teeType) external view returns (TEEInfo[] memory) {
+        bytes32[] storage list = _activeTEEList[teeType];
+        uint256 count = 0;
+        for (uint256 i = 0; i < list.length; i++) {
+            TEEInfo storage tee = tees[list[i]];
+            if (
+                block.timestamp - tee.lastUpdatedAt <= heartbeatMaxAge
+                && isPCRApproved(tee.teeType, tee.pcrHash)
+            ) count++;
+        }
+
+        TEEInfo[] memory result = new TEEInfo[](count);
+        uint256 j = 0;
+        for (uint256 i = 0; i < list.length; i++) {
+            TEEInfo storage tee = tees[list[i]];
+            if (
+                block.timestamp - tee.lastUpdatedAt <= heartbeatMaxAge
+                && isPCRApproved(tee.teeType, tee.pcrHash)
+            ) {
+                result[j++] = tee;
+            }
+        }
+        return result;
+    }
+
+    /// @notice Get all TEE IDs (active and inactive) for a given type
+    /// @param teeType The TEE type to query
+    /// @return Array of TEE IDs
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory) {
         return _teesByType[teeType];
     }
 
+    /// @notice Get all TEE IDs owned by an address
+    /// @param owner The owner address to query
+    /// @return Array of TEE IDs
     function getTEEsByOwner(address owner) external view returns (bytes32[] memory) {
         return _teesByOwner[owner];
     }
 
-
+    /// @notice Compute TEE ID from its public key
+    /// @param publicKey The TEE's public key
+    /// @return The TEE identifier (keccak256 hash)
     function computeTEEId(bytes calldata publicKey) external pure returns (bytes32) {
         return keccak256(publicKey);
     }

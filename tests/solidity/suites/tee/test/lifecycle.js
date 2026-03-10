@@ -72,6 +72,12 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         return teeId
     }
 
+    // Helper: check active status via getTEE
+    async function isActive(teeId) {
+        const tee = await registry.getTEE(teeId)
+        return tee.active
+    }
+
     // ============ deactivateTEE Tests ============
 
     describe('deactivateTEE', function () {
@@ -91,17 +97,17 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await registry.isActive(localTeeId)).to.be.false
+            expect(await isActive(localTeeId)).to.be.false
 
             console.log('✓ Owner deactivated TEE')
         })
 
-        it('should remove TEE from active list after deactivation', async function () {
-            const activeTEEs = await registry.getActiveTEEs()
-            const found = activeTEEs.some(id => id === localTeeId)
+        it('should remove TEE from activated list after deactivation', async function () {
+            const activatedTEEs = await registry.getActivatedTEEs(TEE_TYPE_NITRO)
+            const found = activatedTEEs.some(id => id === localTeeId)
             expect(found).to.be.false
 
-            console.log('✓ TEE removed from active list')
+            console.log('✓ TEE removed from activated list')
         })
 
         it('should be a no-op when deactivating already inactive TEE', async function () {
@@ -117,7 +123,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         it('should allow admin to deactivate any TEE', async function () {
             // Re-activate first
             await registry.activateTEE(localTeeId, { from: teeOperator })
-            expect(await registry.isActive(localTeeId)).to.be.true
+            expect(await isActive(localTeeId)).to.be.true
 
             // Admin (owner/accounts[0]) deactivates
             const result = await registry.deactivateTEE(localTeeId, { from: owner })
@@ -126,7 +132,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await registry.isActive(localTeeId)).to.be.false
+            expect(await isActive(localTeeId)).to.be.false
 
             console.log('✓ Admin deactivated TEE')
         })
@@ -168,7 +174,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
 
         it('should allow owner to activate their deactivated TEE', async function () {
             // TEE starts inactive from mock registration
-            expect(await registry.isActive(localTeeId)).to.be.false
+            expect(await isActive(localTeeId)).to.be.false
 
             const result = await registry.activateTEE(localTeeId, { from: teeOperator })
 
@@ -176,17 +182,17 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await registry.isActive(localTeeId)).to.be.true
+            expect(await isActive(localTeeId)).to.be.true
 
             console.log('✓ Owner activated TEE')
         })
 
-        it('should add TEE back to active list after activation', async function () {
-            const activeTEEs = await registry.getActiveTEEs()
-            const found = activeTEEs.some(id => id === localTeeId)
+        it('should add TEE back to activated list after activation', async function () {
+            const activatedTEEs = await registry.getActivatedTEEs(TEE_TYPE_NITRO)
+            const found = activatedTEEs.some(id => id === localTeeId)
             expect(found).to.be.true
 
-            console.log('✓ TEE added to active list')
+            console.log('✓ TEE added to activated list')
         })
 
         it('should be a no-op when activating already active TEE', async function () {
@@ -202,7 +208,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         it('should allow admin to activate any TEE', async function () {
             // Deactivate first
             await registry.deactivateTEE(localTeeId, { from: teeOperator })
-            expect(await registry.isActive(localTeeId)).to.be.false
+            expect(await isActive(localTeeId)).to.be.false
 
             // Admin (owner/accounts[0]) activates
             const result = await registry.activateTEE(localTeeId, { from: owner })
@@ -211,7 +217,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await registry.isActive(localTeeId)).to.be.true
+            expect(await isActive(localTeeId)).to.be.true
 
             console.log('✓ Admin activated TEE')
         })
@@ -268,15 +274,15 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             pcrTeeId = await registry.computeTEEId(pcrPublicKey)
 
             // Revoke the PCR immediately
-            await registry.revokePCR(pcrHash, 0)
-            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+            await registry.revokePCR(pcrHash, TEE_TYPE_NITRO, 0)
+            expect(await registry.isPCRApproved(TEE_TYPE_NITRO, pcrHash)).to.be.false
 
             // activateTEE should revert with PCRNotApproved
             await truffleAssert.reverts(
                 registry.activateTEE(pcrTeeId, { from: teeOperator })
             )
 
-            expect(await registry.isActive(pcrTeeId)).to.be.false
+            expect(await isActive(pcrTeeId)).to.be.false
 
             console.log('✓ activateTEE reverts when PCR is revoked')
         })
@@ -303,23 +309,23 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             const teeId = await registry.computeTEEId(pubKey)
 
             // Revoke with grace period of 1 second
-            await registry.revokePCR(pcrHash, 1)
+            await registry.revokePCR(pcrHash, TEE_TYPE_NITRO, 1)
 
             // Still valid during grace period
-            expect(await registry.isPCRApproved(pcrHash)).to.be.true
+            expect(await registry.isPCRApproved(TEE_TYPE_NITRO, pcrHash)).to.be.true
 
             // Mine a block to advance timestamp past the grace period
             await registry.setAWSRootCertificate('0x01')
 
             // Now expired
-            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+            expect(await registry.isPCRApproved(TEE_TYPE_NITRO, pcrHash)).to.be.false
 
             // activateTEE should revert with PCRExpired
             await truffleAssert.reverts(
                 registry.activateTEE(teeId, { from: teeOperator })
             )
 
-            expect(await registry.isActive(teeId)).to.be.false
+            expect(await isActive(teeId)).to.be.false
 
             console.log('✓ activateTEE reverts when PCR grace period expired')
         })
@@ -350,12 +356,12 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             )
             const teeId = await registry.computeTEEId(pubKey)
 
-            // activateTEE should revert with PCRTypeMismatch
+            // activateTEE should revert
             await truffleAssert.reverts(
                 registry.activateTEE(teeId, { from: teeOperator })
             )
 
-            expect(await registry.isActive(teeId)).to.be.false
+            expect(await isActive(teeId)).to.be.false
 
             console.log('✓ activateTEE reverts on PCR type mismatch')
         })
@@ -384,14 +390,14 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             )
             const teeId = await registry.computeTEEId(pubKey)
             await registry.activateTEE(teeId, { from: teeOperator })
-            expect(await registry.isActive(teeId)).to.be.true
+            expect(await isActive(teeId)).to.be.true
 
             // Now revoke the PCR
-            await registry.revokePCR(pcrHash, 0)
-            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+            await registry.revokePCR(pcrHash, TEE_TYPE_NITRO, 0)
+            expect(await registry.isPCRApproved(TEE_TYPE_NITRO, pcrHash)).to.be.false
 
             // TEE is still marked active in storage (lazy enforcement)
-            expect(await registry.isActive(teeId)).to.be.true
+            expect(await isActive(teeId)).to.be.true
 
             // heartbeat should revert at _requirePCRValidForTEE before reaching signature check
             const timestamp = Math.floor(Date.now() / 1000)
@@ -426,15 +432,15 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             )
             const teeId = await registry.computeTEEId(pubKey)
             await registry.activateTEE(teeId, { from: teeOperator })
-            expect(await registry.isActive(teeId)).to.be.true
+            expect(await isActive(teeId)).to.be.true
 
             // Revoke with 1-second grace period
-            await registry.revokePCR(pcrHash, 1)
+            await registry.revokePCR(pcrHash, TEE_TYPE_NITRO, 1)
 
             // Mine a block to advance past grace period
             await registry.setAWSRootCertificate('0x02')
 
-            expect(await registry.isPCRApproved(pcrHash)).to.be.false
+            expect(await registry.isPCRApproved(TEE_TYPE_NITRO, pcrHash)).to.be.false
 
             // heartbeat should revert with PCRExpired
             const timestamp = Math.floor(Date.now() / 1000)
@@ -469,106 +475,110 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             }
         })
 
-        it('should return correct public key for registered TEE', async function () {
-            const key = await registry.getPublicKey(teeId1)
-            expect(key).to.equal(publicKey1)
+        it('should return correct public key via getTEE', async function () {
+            const tee = await registry.getTEE(teeId1)
+            expect(tee.publicKey).to.equal(publicKey1)
 
-            console.log('✓ getPublicKey returns correct key')
+            console.log('✓ getTEE returns correct public key')
         })
 
-        it('should revert getPublicKey for non-existent TEE', async function () {
+        it('should revert getTEE for non-existent TEE', async function () {
             const fakeTeeId = web3.utils.keccak256('0xNONEXISTENT')
 
             await truffleAssert.reverts(
-                registry.getPublicKey(fakeTeeId)
+                registry.getTEE(fakeTeeId)
             )
 
-            console.log('✓ getPublicKey reverts for non-existent TEE')
+            console.log('✓ getTEE reverts for non-existent TEE')
         })
 
-        it('should return correct TLS certificate for registered TEE', async function () {
-            const cert = await registry.getTLSCertificate(teeId1)
-            expect(cert).to.equal(tlsCert1)
+        it('should return correct TLS certificate via getTEE', async function () {
+            const tee = await registry.getTEE(teeId1)
+            expect(tee.tlsCertificate).to.equal(tlsCert1)
 
-            console.log('✓ getTLSCertificate returns correct cert')
+            console.log('✓ getTEE returns correct TLS cert')
         })
 
-        it('should revert getTLSCertificate for non-existent TEE', async function () {
-            const fakeTeeId = web3.utils.keccak256('0xNONEXISTENT')
+        it('should return correct payment address via getTEE', async function () {
+            const tee = await registry.getTEE(teeId1)
+            expect(tee.paymentAddress).to.equal(user1)
 
-            await truffleAssert.reverts(
-                registry.getTLSCertificate(fakeTeeId)
-            )
-
-            console.log('✓ getTLSCertificate reverts for non-existent TEE')
+            console.log('✓ getTEE returns correct payment address')
         })
 
-        it('should return correct payment address for registered TEE', async function () {
-            const addr = await registry.getPaymentAddress(teeId1)
-            expect(addr).to.equal(user1)
-
-            console.log('✓ getPaymentAddress returns correct address')
-        })
-
-        it('should revert getPaymentAddress for non-existent TEE', async function () {
-            const fakeTeeId = web3.utils.keccak256('0xNONEXISTENT')
-
-            await truffleAssert.reverts(
-                registry.getPaymentAddress(fakeTeeId)
-            )
-
-            console.log('✓ getPaymentAddress reverts for non-existent TEE')
-        })
-
-        it('should return correct active TEE list', async function () {
-            const activeTEEs = await registry.getActiveTEEs()
-            expect(activeTEEs.length).to.be.greaterThan(0)
+        it('should return correct activated TEE list', async function () {
+            const activatedTEEs = await registry.getActivatedTEEs(TEE_TYPE_NITRO)
+            expect(activatedTEEs.length).to.be.greaterThan(0)
 
             // Both TEEs should be in the list
-            expect(activeTEEs.some(id => id === teeId1)).to.be.true
-            expect(activeTEEs.some(id => id === teeId2)).to.be.true
+            expect(activatedTEEs.some(id => id === teeId1)).to.be.true
+            expect(activatedTEEs.some(id => id === teeId2)).to.be.true
 
-            console.log('✓ getActiveTEEs returns correct list')
+            console.log('✓ getActivatedTEEs returns correct list')
         })
 
-        it('should update active TEE list after deactivate and activate', async function () {
+        it('should update activated TEE list after deactivate and activate', async function () {
             // Deactivate teeId2
             await registry.deactivateTEE(teeId2, { from: teeOperator })
 
-            let activeTEEs = await registry.getActiveTEEs()
-            expect(activeTEEs.some(id => id === teeId2)).to.be.false
-            expect(activeTEEs.some(id => id === teeId1)).to.be.true
+            let activatedTEEs = await registry.getActivatedTEEs(TEE_TYPE_NITRO)
+            expect(activatedTEEs.some(id => id === teeId2)).to.be.false
+            expect(activatedTEEs.some(id => id === teeId1)).to.be.true
 
             // Re-activate teeId2
             await registry.activateTEE(teeId2, { from: teeOperator })
 
-            activeTEEs = await registry.getActiveTEEs()
-            expect(activeTEEs.some(id => id === teeId2)).to.be.true
+            activatedTEEs = await registry.getActivatedTEEs(TEE_TYPE_NITRO)
+            expect(activatedTEEs.some(id => id === teeId2)).to.be.true
 
-            console.log('✓ getActiveTEEs updates after deactivate/activate')
+            console.log('✓ getActivatedTEEs updates after deactivate/activate')
         })
 
-        it('should return true for active TEE via isActive', async function () {
-            expect(await registry.isActive(teeId1)).to.be.true
+        it('should return active status via getTEE', async function () {
+            const tee = await registry.getTEE(teeId1)
+            expect(tee.active).to.be.true
 
-            console.log('✓ isActive returns true for active TEE')
+            console.log('✓ getTEE returns active=true for active TEE')
         })
 
-        it('should return false for inactive TEE via isActive', async function () {
+        it('should return inactive status via getTEE after deactivation', async function () {
             await registry.deactivateTEE(teeId1, { from: teeOperator })
-            expect(await registry.isActive(teeId1)).to.be.false
+            const tee = await registry.getTEE(teeId1)
+            expect(tee.active).to.be.false
 
             // Re-activate for subsequent tests
             await registry.activateTEE(teeId1, { from: teeOperator })
 
-            console.log('✓ isActive returns false for inactive TEE')
+            console.log('✓ getTEE returns active=false for inactive TEE')
         })
 
-        it('should return false for non-existent TEE via isActive', async function () {
-            const fakeTeeId = web3.utils.keccak256('0xNONEXISTENT')
-            expect(await registry.isActive(fakeTeeId)).to.be.false
+        it('should return all TEEs by type including inactive', async function () {
+            const allTEEs = await registry.getTEEsByType(TEE_TYPE_NITRO)
+            // Should include all registered TEEs (active and inactive from PCR tests)
+            expect(allTEEs.length).to.be.greaterThanOrEqual(2)
+            expect(allTEEs.some(id => id === teeId1)).to.be.true
+            expect(allTEEs.some(id => id === teeId2)).to.be.true
 
-            console.log('✓ isActive returns false for non-existent TEE')
+            console.log('✓ getTEEsByType returns all TEEs including inactive')
+        })
+
+        it('should return live TEEs filtered by heartbeat and PCR', async function () {
+            const liveTEEs = await registry.getLiveTEEs(TEE_TYPE_NITRO)
+            // liveTEEs returns TEEInfo structs, check they have valid fields
+            for (let i = 0; i < liveTEEs.length; i++) {
+                expect(liveTEEs[i].active).to.be.true
+                expect(liveTEEs[i].registeredAt.toNumber()).to.be.greaterThan(0)
+            }
+
+            console.log('Live TEEs count:', liveTEEs.length)
+            console.log('✓ getLiveTEEs returns filtered results')
+        })
+
+        it('should return empty from getLiveTEEs for unused type', async function () {
+            const liveTEEs = await registry.getLiveTEEs(50)
+            expect(liveTEEs.length).to.equal(0)
+
+            console.log('✓ getLiveTEEs returns empty for unused type')
         })
     })
 })

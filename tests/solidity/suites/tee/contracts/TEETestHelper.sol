@@ -42,12 +42,12 @@ contract TEETestHelper {
         registry.approvePCR(pcrs, version, teeType);
     }
 
-    function revokePCR(bytes32 pcrHash, uint256 gracePeriod) external {
-        registry.revokePCR(pcrHash, gracePeriod);
+    function revokePCR(bytes32 pcrHash, uint8 teeType, uint256 gracePeriod) external {
+        registry.revokePCR(pcrHash, teeType, gracePeriod);
     }
 
-    function isPCRApproved(bytes32 pcrHash) external view returns (bool) {
-        return registry.isPCRApproved(pcrHash);
+    function isPCRApproved(uint8 teeType, bytes32 pcrHash) external view returns (bool) {
+        return registry.isPCRApproved(teeType, pcrHash);
     }
 
     function computePCRHash(TEERegistry.PCRMeasurements calldata pcrs) external pure returns (bytes32) {
@@ -126,8 +126,12 @@ contract TEETestHelper {
         return registry.getTEE(teeId);
     }
 
-    function getActiveTEEs() external view returns (bytes32[] memory) {
-        return registry.getActiveTEEs();
+    function getActivatedTEEs(uint8 teeType) external view returns (bytes32[] memory) {
+        return registry.getActivatedTEEs(teeType);
+    }
+
+    function getLiveTEEs(uint8 teeType) external view returns (TEERegistry.TEEInfo[] memory) {
+        return registry.getLiveTEEs(teeType);
     }
 
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory) {
@@ -136,14 +140,6 @@ contract TEETestHelper {
 
     function getTEEsByOwner(address owner) external view returns (bytes32[] memory) {
         return registry.getTEEsByOwner(owner);
-    }
-
-    function getPublicKey(bytes32 teeId) external view returns (bytes memory) {
-        return registry.getPublicKey(teeId);
-    }
-
-    function isActive(bytes32 teeId) external view returns (bool) {
-        return registry.isActive(teeId);
     }
 
     function computeTEEId(bytes calldata publicKey) external pure returns (bytes32) {
