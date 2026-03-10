@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///
 /// @dev ## Overall Flow
 ///
-///  1. **Admin setup** — An admin adds TEE types (e.g. AWS Nitro) via `addTEEType`, then
+///  1. **Admin setup** — An admin adds TEE types (e.g. LLM inference, agent execution) via `addTEEType`, then
 ///     approves known-good enclave measurements via `approvePCR`. The AWS root certificate
 ///     used for attestation verification is stored via `setAWSRootCertificate`.
 ///
