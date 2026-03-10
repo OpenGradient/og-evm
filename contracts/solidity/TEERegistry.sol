@@ -42,6 +42,37 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///    - `getActivatedTEEs` — only TEEs in the active list (no heartbeat/PCR check).
 ///    - `getLiveTEEs`      — active TEEs with a valid PCR **and** a fresh heartbeat.
 ///
+/// ## Client Integration Guide
+///
+///  **Choosing a query method:**
+///
+///  - `getLiveTEEs(teeType)` — **Recommended for most clients.** Returns only TEEs
+///    that are active, running approved (non-revoked) enclave code, and have sent a
+///    recent heartbeat. These are fully verified and ready to serve requests.
+///
+///  - `getActivatedTEEs(teeType)` — Returns TEEs that are in the active list but
+///    does **not** check heartbeat freshness or PCR validity. Use this if you want
+///    to perform your own filtering logic off-chain (e.g. custom staleness
+///    thresholds, geographic selection, or load-balancing across TEEs that may have
+///    briefly missed a heartbeat). You are responsible for checking liveness and
+///    PCR status yourself.
+///
+///  - `getTEEsByType(teeType)` — Returns all TEEs ever registered for a type,
+///    including inactive ones. Useful for dashboards, auditing, or historical views.
+///    Not suitable for selecting a TEE to connect to.
+///
+///  **TLS certificate verification:**
+///
+///  When connecting to a TEE, clients **must** verify that the TLS certificate
+///  presented by the TEE's endpoint matches the `tlsCertificate` stored on-chain.
+///  This certificate was bound to the enclave at registration time via attestation
+///  verification. Without this check, a compromised or spoofed endpoint could
+///  impersonate a registered TEE. The recommended flow is:
+///    1. Query the registry for a live TEE (e.g. via `getLiveTEEs`).
+///    2. Open a TLS connection to the TEE's `endpoint`.
+///    3. Compare the server's presented certificate against `TEEInfo.tlsCertificate`.
+///    4. Abort the connection if they do not match.
+///
 /// ## Access Control
 ///
 ///  - `DEFAULT_ADMIN_ROLE` — manages TEE types, PCRs, certificates, heartbeat config.
