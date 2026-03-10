@@ -170,7 +170,7 @@ contract TEERegistry is AccessControl {
 
     event TEETypeAdded(uint8 indexed typeId, string name);
     event PCRApproved(bytes32 indexed pcrHash, uint8 indexed teeType, string version);
-    event PCRRevoked(bytes32 indexed pcrHash);
+    event PCRRevoked(bytes32 indexed pcrHash, uint8 indexed teeType);
     event TEERegistered(bytes32 indexed teeId, address indexed owner, uint8 teeType);
     event TEEDisabled(bytes32 indexed teeId);
     event TEEEnabled(bytes32 indexed teeId);
@@ -292,7 +292,7 @@ contract TEERegistry is AccessControl {
             }
         }
 
-        emit PCRRevoked(pcrHash);
+        emit PCRRevoked(pcrHash, teeType);
     }
 
     /// @notice Check if a PCR is currently approved
