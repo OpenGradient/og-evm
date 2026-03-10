@@ -50,6 +50,7 @@ var (
 	selRemoveTEE        = crypto.Keccak256([]byte("removeTEE(bytes32)"))[:4]
 	selGetActivatedTEEs = crypto.Keccak256([]byte("getActivatedTEEs(uint8)"))[:4]
 	selGetTEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
+	selIsLive           = crypto.Keccak256([]byte("isLive(bytes32)"))[:4]
 )
 
 // Structs
@@ -235,6 +236,11 @@ func (c *Client) ActivateTEE(from string, teeId [32]byte) (string, error) {
 
 func (c *Client) RemoveTEE(from string, teeId [32]byte) (string, error) {
 	return c.sendTx(from, encodeBytes32(selRemoveTEE, teeId))
+}
+
+func (c *Client) IsLive(teeId [32]byte) (bool, error) {
+	result, err := c.ethCall(encodeBytes32(selIsLive, teeId))
+	return len(result) >= 32 && result[31] == 1, err
 }
 
 // PCR Calls

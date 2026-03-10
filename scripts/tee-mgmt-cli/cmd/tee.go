@@ -206,6 +206,53 @@ var teeActivateCmd = &cobra.Command{
 	},
 }
 
+var teeLiveCmd = &cobra.Command{
+	Use:   "live",
+	Short: "List live TEEs (active + valid PCR + fresh heartbeat)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
+
+		fmt.Println("=== Live TEEs ===")
+		fmt.Printf("Registry: %s\n", client.RegistryAddress)
+		fmt.Printf("Type: %d\n\n", teeType)
+
+		tees, err := client.GetActivatedTEEs(teeType)
+		if err != nil {
+			return fmt.Errorf("failed to get activated TEEs: %w", err)
+		}
+
+		liveCount := 0
+		for _, teeIdHex := range tees {
+			teeId, err := registry.ParseBytes32(teeIdHex)
+			if err != nil {
+				continue
+			}
+			live, err := client.IsLive(teeId)
+			if err != nil || !live {
+				continue
+			}
+
+			liveCount++
+			info, err := client.GetTEE(teeId)
+			if err != nil {
+				fmt.Printf("  [%d] 0x%s (could not fetch details)\n", liveCount, teeIdHex)
+				continue
+			}
+			fmt.Printf("  [%d] 0x%s\n", liveCount, teeIdHex)
+			fmt.Printf("      Endpoint:     %s\n", info.Endpoint)
+			fmt.Printf("      Type:         %d (%s)\n", info.TEEType, registry.GetTEETypeName(info.TEEType))
+			fmt.Printf("      Last Updated: %s UTC\n\n", info.LastUpdatedAt.UTC().Format("2006-01-02 15:04:05"))
+		}
+
+		if liveCount == 0 {
+			fmt.Println("  No live TEEs found")
+		} else {
+			fmt.Printf("Total: %d live / %d activated\n", liveCount, len(tees))
+		}
+		return nil
+	},
+}
+
 var teeRemoveCmd = &cobra.Command{
 	Use:   "remove <tee_id>",
 	Short: "Permanently remove a TEE from the registry (owner or admin)",
@@ -238,6 +285,8 @@ func init() {
 	teeRegisterCmd.Flags().Uint8("tee-type", 0, "TEE type ID (e.g. 0=LLMProxy, 1=Validator)")
 	teeRegisterCmd.MarkFlagRequired("enclave-host")
 
-	teeCmd.AddCommand(teeListCmd, teeShowCmd, teeRegisterCmd, teeDeactivateCmd, teeActivateCmd, teeRemoveCmd)
+	teeLiveCmd.Flags().Uint8("tee-type", 0, "TEE type ID to list")
+
+	teeCmd.AddCommand(teeListCmd, teeShowCmd, teeLiveCmd, teeRegisterCmd, teeDeactivateCmd, teeActivateCmd, teeRemoveCmd)
 	rootCmd.AddCommand(teeCmd)
 }
