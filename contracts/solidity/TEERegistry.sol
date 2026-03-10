@@ -199,6 +199,8 @@ contract TEERegistry is AccessControl {
     /// @param pcrHash The PCR hash to revoke
     /// @param gracePeriod Seconds until revocation takes effect (0 = immediate)
     function revokePCR(bytes32 pcrHash, uint8 teeType, uint256 gracePeriod) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (!isPCRApproved(teeType, pcrHash)) revert PCRNotApproved();
+
         if (gracePeriod == 0) {
             approvedPCRs[teeType][pcrHash].active = false;
         } else {
