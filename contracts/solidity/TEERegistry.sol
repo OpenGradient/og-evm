@@ -9,7 +9,24 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///         verifiable AI inference. Manages the full TEE lifecycle: registration, enabling,
 ///         heartbeat liveness, and decommissioning.
 ///
-/// @dev ## Overall Flow
+/// @dev ## Chain of Trust
+///
+///  The registry establishes a hardware-rooted chain of trust from AWS Nitro hardware
+///  all the way to the client connection:
+///
+///    AWS Nitro Hardware (root of trust)
+///      → signs attestation document
+///        → precompile verifies against stored AWS root certificate
+///          → extracts PCR (enclave code identity) + binds signing key & TLS cert
+///            → contract checks PCR is admin-approved for this TEE type
+///              → heartbeats prove ongoing liveness via the bound signing key
+///                → clients pin TLS cert to verify they're talking to the real enclave
+///
+///  **Key binding** is the critical property: the TEE's signing key and TLS certificate
+///  are included in the attestation document at enclave boot time, so the on-chain record
+///  is cryptographically tied to a specific enclave instance running approved code.
+///
+/// ## Overall Flow
 ///
 ///  1. **Admin setup** — An admin adds TEE types (e.g. LLM inference, agent execution) via `addTEEType`, then
 ///     approves known-good enclave measurements via `approvePCR`. The AWS root certificate
@@ -19,7 +36,8 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///       a. Verifies the attestation document against the AWS root cert via the 0x900
 ///          precompile (`ITEEVerifier`).
 ///       b. Extracts PCR measurements and checks they match an admin-approved set.
-///       c. Stores the TEE as **enabled** and indexes it by type and owner.
+///       c. Binds the TEE's signing key and TLS certificate to the verified enclave identity.
+///       d. Stores the TEE as **enabled** and indexes it by type and owner.
 ///
 ///  3. **Heartbeat** — Each TEE periodically proves liveness by submitting a signed
 ///     timestamp via `heartbeat`. The RSA-PSS signature is verified on-chain against the
