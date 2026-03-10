@@ -20,5 +20,6 @@ export default {
   },
   paths: {
     sources: "./solidity",
+    exclude: ["**/lib/**"]
   },
 };
