@@ -581,4 +581,128 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             console.log('✓ getLiveTEEs returns empty for unused type')
         })
     })
+
+    // ============ removeTEE Tests ============
+
+    describe('removeTEE', function () {
+        let removeTeeId, removePubKey
+
+        before(async function () {
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            removePubKey = '0x' + keyPair.publicKey.toString('hex')
+            removeTeeId = await registry.computeTEEId(removePubKey)
+        })
+
+        it('should allow owner to remove their active TEE', async function () {
+            // Register and activate
+            await registerAndActivate(
+                removePubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, PCR_HASH, teeOperator
+            )
+            expect(await isActive(removeTeeId)).to.be.true
+
+            // Verify it's in all indexes before removal
+            let activatedTEEs = await registry.getActivatedTEEs(TEE_TYPE_NITRO)
+            expect(activatedTEEs.some(id => id === removeTeeId)).to.be.true
+            let byType = await registry.getTEEsByType(TEE_TYPE_NITRO)
+            expect(byType.some(id => id === removeTeeId)).to.be.true
+            let byOwner = await registry.getTEEsByOwner(teeOperator)
+            expect(byOwner.some(id => id === removeTeeId)).to.be.true
+
+            // Remove
+            const result = await registry.removeTEE(removeTeeId, { from: teeOperator })
+            truffleAssert.eventEmitted(result, 'TEERemoved', (ev) => {
+                return ev.teeId === removeTeeId
+            })
+
+            // getTEE should revert (deleted)
+            await truffleAssert.reverts(registry.getTEE(removeTeeId))
+
+            // Removed from all indexes
+            activatedTEEs = await registry.getActivatedTEEs(TEE_TYPE_NITRO)
+            expect(activatedTEEs.some(id => id === removeTeeId)).to.be.false
+            byType = await registry.getTEEsByType(TEE_TYPE_NITRO)
+            expect(byType.some(id => id === removeTeeId)).to.be.false
+            byOwner = await registry.getTEEsByOwner(teeOperator)
+            expect(byOwner.some(id => id === removeTeeId)).to.be.false
+
+            console.log('✓ Owner removed active TEE from all storage')
+        })
+
+        it('should allow owner to remove their inactive TEE', async function () {
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            const pubKey = '0x' + keyPair.publicKey.toString('hex')
+            const teeId = await registry.computeTEEId(pubKey)
+
+            // Register but don't activate
+            await registry.registerTEEForTesting(
+                pubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, PCR_HASH, { from: teeOperator }
+            )
+            expect(await isActive(teeId)).to.be.false
+
+            // Remove
+            const result = await registry.removeTEE(teeId, { from: teeOperator })
+            truffleAssert.eventEmitted(result, 'TEERemoved')
+
+            // getTEE should revert
+            await truffleAssert.reverts(registry.getTEE(teeId))
+
+            console.log('✓ Owner removed inactive TEE')
+        })
+
+        it('should allow admin to remove any TEE', async function () {
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            const pubKey = '0x' + keyPair.publicKey.toString('hex')
+
+            await registerAndActivate(
+                pubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, PCR_HASH, teeOperator
+            )
+            const teeId = await registry.computeTEEId(pubKey)
+
+            // Admin removes (owner is teeOperator, caller is admin/owner)
+            const result = await registry.removeTEE(teeId, { from: owner })
+            truffleAssert.eventEmitted(result, 'TEERemoved')
+
+            await truffleAssert.reverts(registry.getTEE(teeId))
+
+            console.log('✓ Admin removed TEE')
+        })
+
+        it('should revert when non-owner/non-admin removes', async function () {
+            const keyPair = crypto.generateKeyPairSync('rsa', {
+                modulusLength: 2048,
+                publicKeyEncoding: { type: 'spki', format: 'der' }
+            })
+            const pubKey = '0x' + keyPair.publicKey.toString('hex')
+
+            await registerAndActivate(
+                pubKey, tlsCert1, user1, ENDPOINT, TEE_TYPE_NITRO, PCR_HASH, teeOperator
+            )
+            const teeId = await registry.computeTEEId(pubKey)
+
+            await truffleAssert.reverts(
+                registry.removeTEE(teeId, { from: user1 })
+            )
+
+            console.log('✓ Non-owner/non-admin rejected')
+        })
+
+        it('should revert for non-existent teeId', async function () {
+            const fakeTeeId = web3.utils.keccak256('0xREMOVEFAKE')
+
+            await truffleAssert.reverts(
+                registry.removeTEE(fakeTeeId, { from: owner })
+            )
+
+            console.log('✓ Non-existent teeId reverts')
+        })
+    })
 })

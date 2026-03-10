@@ -110,6 +110,10 @@ contract TEETestHelper {
         registry.activateTEE(teeId);
     }
 
+    function removeTEE(bytes32 teeId) external {
+        registry.removeTEE(teeId);
+    }
+
     // ============ Verification Wrappers ============
 
     function computeMessageHash(
