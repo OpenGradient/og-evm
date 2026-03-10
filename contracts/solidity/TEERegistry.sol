@@ -464,22 +464,14 @@ contract TEERegistry is AccessControl {
         bytes32[] storage list = _activeTEEList[teeType];
         uint256 count = 0;
         for (uint256 i = 0; i < list.length; i++) {
-            TEEInfo storage tee = tees[list[i]];
-            if (
-                block.timestamp - tee.lastUpdatedAt <= heartbeatMaxAge
-                && isPCRApproved(tee.teeType, tee.pcrHash)
-            ) count++;
+            if (_isLive(tees[list[i]])) count++;
         }
 
         TEEInfo[] memory result = new TEEInfo[](count);
         uint256 j = 0;
         for (uint256 i = 0; i < list.length; i++) {
-            TEEInfo storage tee = tees[list[i]];
-            if (
-                block.timestamp - tee.lastUpdatedAt <= heartbeatMaxAge
-                && isPCRApproved(tee.teeType, tee.pcrHash)
-            ) {
-                result[j++] = tee;
+            if (_isLive(tees[list[i]])) {
+                result[j++] = tees[list[i]];
             }
         }
         return result;
@@ -502,6 +494,18 @@ contract TEERegistry is AccessControl {
     /// @notice Check if a TEE is currently active
     function isActive(bytes32 teeId) external view returns (bool) {
         return tees[teeId].active;
+    }
+
+    /// @notice Check if a TEE is live (active + valid PCR + fresh heartbeat)
+    function isLive(bytes32 teeId) external view returns (bool) {
+        return _isLive(tees[teeId]);
+    }
+
+    function _isLive(TEEInfo storage tee) private view returns (bool) {
+        if (!tee.active) return false;
+        if (block.timestamp - tee.lastUpdatedAt > heartbeatMaxAge) return false;
+        if (!isPCRApproved(tee.teeType, tee.pcrHash)) return false;
+        return true;
     }
 
     /// @notice Get a TEE's public key
