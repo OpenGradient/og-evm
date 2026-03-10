@@ -113,7 +113,13 @@ func (app EVMD) RegisterUpgradeHandlers() {
 
 				accAddress := sdk.AccAddress(addr.Bytes())
 				if acc := app.AccountKeeper.GetAccount(sdkCtx, accAddress); acc != nil {
-					return nil, fmt.Errorf("preinstall collision at %s: account exists but code hash is empty", preinstall.Address)
+					// Skip addresses that already have an account (e.g. a funded EOA)
+					// rather than halting the chain
+					sdkCtx.Logger().Warn(
+						"skipping preinstall: account exists with empty code hash",
+						"address", preinstall.Address,
+					)
+					continue
 				}
 
 				missingPreinstalls = append(missingPreinstalls, preinstall)
@@ -125,6 +131,9 @@ func (app EVMD) RegisterUpgradeHandlers() {
 				}
 			}
 
+			// Ensure EvmCoinInfo is present in the module store. This is idempotent
+			// and required because this upgrade path may run on chains that never
+			// executed the LegacyUpgradeName handler (which also calls this).
 			if err := app.EVMKeeper.InitEvmCoinInfo(sdkCtx); err != nil {
 				return nil, err
 			}
