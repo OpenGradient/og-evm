@@ -147,17 +147,6 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		return nil, err
 	}
 
-	type TEEData struct {
-		Owner          common.Address
-		PaymentAddress common.Address
-		Endpoint       string
-		PCRHash        [32]byte
-		TEEType        uint8
-		IsEnabled      bool
-		RegisteredAt   *big.Int
-		LastHeartbeatAt *big.Int
-	}
-
 	tupleType, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "owner", Type: "address"},
 		{Name: "paymentAddress", Type: "address"},
@@ -240,12 +229,41 @@ func (c *Client) IsTEEActive(teeId [32]byte) (bool, error) {
 
 // PCR Calls
 
-func (c *Client) GetApprovedPCRs() ([]string, error) {
+type PCRKey struct {
+	PCRHash [32]byte
+	TEEType uint8
+}
+
+func (c *Client) GetApprovedPCRs() ([]PCRKey, error) {
 	result, err := c.ethCall(selGetApprovedPCRs)
 	if err != nil {
 		return nil, err
 	}
-	return decodeBytes32Array(result)
+
+	tupleT, _ := abi.NewType("tuple[]", "", []abi.ArgumentMarshaling{
+		{Name: "pcrHash", Type: "bytes32"},
+		{Name: "teeType", Type: "uint8"},
+	})
+	args := abi.Arguments{{Type: tupleT}}
+	values, err := args.Unpack(result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode approved PCRs: %v", err)
+	}
+
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	items := values[0].([]struct {
+		PcrHash [32]byte `json:"pcrHash"`
+		TeeType uint8    `json:"teeType"`
+	})
+
+	keys := make([]PCRKey, len(items))
+	for i, item := range items {
+		keys[i] = PCRKey{PCRHash: item.PcrHash, TEEType: item.TeeType}
+	}
+	return keys, nil
 }
 
 func (c *Client) ComputePCRHash(pcr0, pcr1, pcr2 []byte) ([32]byte, error) {

@@ -24,8 +24,8 @@ var pcrListCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("Found %d approved PCR(s)\n\n", len(pcrs))
-		for i, h := range pcrs {
-			fmt.Printf("  [%d] 0x%s\n", i+1, h)
+		for i, k := range pcrs {
+			fmt.Printf("  [%d] 0x%s (type: %d)\n", i+1, hex.EncodeToString(k.PCRHash[:]), k.TEEType)
 		}
 		return nil
 	},
