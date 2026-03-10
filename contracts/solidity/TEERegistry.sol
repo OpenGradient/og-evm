@@ -5,8 +5,48 @@ import "./precompiles/tee/ITEEVerifier.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title TEERegistry - TEE Registration and Management
-/// @notice Manages TEE lifecycle, calls precompile only for crypto
-/// @dev All storage in Solidity, crypto in precompile at 0x900
+/// @author 0G Labs
+/// @notice On-chain registry for Trusted Execution Environment (TEE) nodes that provide
+///         verifiable AI inference. Manages the full TEE lifecycle: registration, activation,
+///         heartbeat liveness, and decommissioning.
+///
+/// @dev ## Overall Flow
+///
+///  1. **Admin setup** — An admin adds TEE types (e.g. AWS Nitro) via `addTEEType`, then
+///     approves known-good enclave measurements via `approvePCR`. The AWS root certificate
+///     used for attestation verification is stored via `setAWSRootCertificate`.
+///
+///  2. **Registration** — A TEE operator calls `registerTEEWithAttestation`, which:
+///       a. Verifies the attestation document against the AWS root cert via the 0x900
+///          precompile (`ITEEVerifier`).
+///       b. Extracts PCR measurements and checks they match an admin-approved set.
+///       c. Stores the TEE as **active** and indexes it by type and owner.
+///
+///  3. **Heartbeat** — Each TEE periodically proves liveness by submitting a signed
+///     timestamp via `heartbeat`. The RSA-PSS signature is verified on-chain against the
+///     TEE's stored public key. Stale or future timestamps are rejected.
+///
+///  4. **Deactivation / Reactivation** — TEE owners or admins can toggle a TEE's active
+///     status. `activateTEE` re-validates the TEE's PCR before reactivating.
+///
+///  5. **PCR revocation** — When an enclave image is compromised or outdated, admins revoke
+///     its PCR via `revokePCR` (optionally with a grace period). TEEs running the revoked
+///     image are caught lazily: `activateTEE` and `heartbeat` both call
+///     `_requirePCRValidForTEE` and will revert once the PCR expires.
+///
+///  6. **Removal** — `removeTEE` permanently deletes a TEE from all storage and indexes.
+///
+/// ## Querying TEE Status
+///
+///  The contract exposes three tiers of TEE queries with increasing strictness:
+///    - `getTEEsByType`    — all TEEs ever registered for a type (active + inactive).
+///    - `getActivatedTEEs` — only TEEs in the active list (no heartbeat/PCR check).
+///    - `getLiveTEEs`      — active TEEs with a valid PCR **and** a fresh heartbeat.
+///
+/// ## Access Control
+///
+///  - `DEFAULT_ADMIN_ROLE` — manages TEE types, PCRs, certificates, heartbeat config.
+///  - `TEE_OPERATOR`       — registers TEEs, manages owned TEEs (deactivate/activate/remove).
 contract TEERegistry is AccessControl {
     
     // ============ Constants ============
