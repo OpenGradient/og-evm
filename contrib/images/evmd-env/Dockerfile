@@ -31,6 +31,7 @@ WORKDIR /evmd
 COPY contrib/images/evmd-env/wrapper.sh /usr/bin/wrapper.sh
 COPY test_deployment.sh /usr/bin/test_deployment.sh
 COPY multi_node_startup.sh /usr/bin/multi_node_startup.sh
+COPY scripts/create_software_upgrade_proposal.sh /usr/bin/create_software_upgrade_proposal.sh
 COPY --from=evmd-builder /work/build/evmd /evmd/
 COPY --from=evmd-builder /work/build/evmd /usr/local/bin/
 
@@ -38,6 +39,7 @@ COPY --from=evmd-builder /work/build/evmd /usr/local/bin/
 RUN chown nonroot:nonroot /usr/bin/wrapper.sh && chmod +x /usr/bin/wrapper.sh
 RUN chown nonroot:nonroot /usr/bin/test_deployment.sh && chmod +x /usr/bin/test_deployment.sh
 RUN chown nonroot:nonroot /usr/bin/multi_node_startup.sh && chmod +x /usr/bin/multi_node_startup.sh
+RUN chown nonroot:nonroot /usr/bin/create_software_upgrade_proposal.sh && chmod +x /usr/bin/create_software_upgrade_proposal.sh
 RUN chown -R nonroot:nonroot /evmd
 
 USER nonroot

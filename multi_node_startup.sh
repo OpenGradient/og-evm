@@ -6,7 +6,6 @@ KEYRING="test"
 KEYALGO="eth_secp256k1"
 LOGLEVEL="info"
 BASEFEE=10000000
-
 BASEDIR="${BASEDIR:-"$HOME/.og-evm-devnet"}"
 
 NODE_NUMBER="${NODE_NUMBER:-}"
@@ -364,14 +363,17 @@ start_validator() {
   echo "JSON-RPC:  $JSONRPC_PORT"
   echo "=========================================="
 
-  evmd start \
-    --pruning nothing \
-    --log_level "$LOGLEVEL" \
-    --minimum-gas-prices=0ogwei \
-    --evm.min-tip=0 \
-    --home "$HOME_DIR" \
-    --json-rpc.api eth,txpool,personal,net,debug,web3 \
+  START_ARGS=(
+    --pruning nothing
+    --log_level "$LOGLEVEL"
+    --minimum-gas-prices=0ogwei
+    --evm.min-tip=0
+    --home "$HOME_DIR"
+    --json-rpc.api eth,txpool,personal,net,debug,web3
     --chain-id "$CHAINID"
+  )
+
+  exec evmd start "${START_ARGS[@]}"
 }
 
 if [[ "$GENERATE_GENESIS" == "true" ]]; then
