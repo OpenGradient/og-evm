@@ -38,20 +38,19 @@ var (
 	selAddTEEType       = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
 	selDeactivateTEETyp = crypto.Keccak256([]byte("deactivateTEEType(uint8)"))[:4]
 	selIsValidType      = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
-	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,bytes32,uint256)"))[:4]
-	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32)"))[:4]
-	selIsPCRApproved    = crypto.Keccak256([]byte("isPCRApproved(bytes32)"))[:4]
+	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
+	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint8,uint256)"))[:4]
+	selIsPCRApproved    = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
 	selComputePCRHash   = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	selGetActivePCRs    = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
 	selSetAWSRootCert   = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 	selRegisterTEE      = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
 	selDeactivateTEE    = crypto.Keccak256([]byte("deactivateTEE(bytes32)"))[:4]
 	selActivateTEE      = crypto.Keccak256([]byte("activateTEE(bytes32)"))[:4]
-	selGetActiveTEEs    = crypto.Keccak256([]byte("getActiveTEEs()"))[:4]
+	selRemoveTEE        = crypto.Keccak256([]byte("removeTEE(bytes32)"))[:4]
+	selGetActivatedTEEs = crypto.Keccak256([]byte("getActivatedTEEs(uint8)"))[:4]
 	selGetTEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	selGetPublicKey     = crypto.Keccak256([]byte("getPublicKey(bytes32)"))[:4]
-	selGetTLSCert       = crypto.Keccak256([]byte("getTLSCertificate(bytes32)"))[:4]
-	selIsActive         = crypto.Keccak256([]byte("isActive(bytes32)"))[:4]
+	selIsLive           = crypto.Keccak256([]byte("isLive(bytes32)"))[:4]
 )
 
 // Structs
@@ -60,6 +59,8 @@ type TEEInfo struct {
 	Owner          common.Address
 	PaymentAddress common.Address
 	Endpoint       string
+	PublicKey      []byte
+	TLSCertificate []byte
 	PCRHash        [32]byte
 	TEEType        uint8
 	IsActive       bool
@@ -131,8 +132,10 @@ func (c *Client) getFirstAccount() (string, error) {
 
 // TEE Calls
 
-func (c *Client) GetActiveTEEs() ([]string, error) {
-	result, err := c.ethCall(selGetActiveTEEs)
+func (c *Client) GetActivatedTEEs(teeType uint8) ([]string, error) {
+	u8T, _ := abi.NewType("uint8", "", nil)
+	encoded, _ := abi.Arguments{{Type: u8T}}.Pack(teeType)
+	result, err := c.ethCall(append(selGetActivatedTEEs, encoded...))
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +164,8 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "owner", Type: "address"},
 		{Name: "paymentAddress", Type: "address"},
 		{Name: "endpoint", Type: "string"},
+		{Name: "publicKey", Type: "bytes"},
+		{Name: "tlsCertificate", Type: "bytes"},
 		{Name: "pcrHash", Type: "bytes32"},
 		{Name: "teeType", Type: "uint8"},
 		{Name: "isActive", Type: "bool"},
@@ -187,6 +192,8 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		Owner          common.Address `json:"owner"`
 		PaymentAddress common.Address `json:"paymentAddress"`
 		Endpoint       string         `json:"endpoint"`
+		PublicKey      []byte         `json:"publicKey"`
+		TlsCertificate []byte         `json:"tlsCertificate"`
 		PcrHash        [32]byte       `json:"pcrHash"`
 		TeeType        uint8          `json:"teeType"`
 		IsActive       bool           `json:"isActive"`
@@ -198,33 +205,14 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		Owner:          s.Owner,
 		PaymentAddress: s.PaymentAddress,
 		Endpoint:       s.Endpoint,
+		PublicKey:      s.PublicKey,
+		TLSCertificate: s.TlsCertificate,
 		PCRHash:        s.PcrHash,
 		TEEType:        s.TeeType,
 		IsActive:       s.IsActive,
 		RegisteredAt:   time.Unix(s.RegisteredAt.Int64(), 0),
 		LastUpdatedAt:  time.Unix(s.LastUpdatedAt.Int64(), 0),
 	}, nil
-}
-
-func (c *Client) GetPublicKey(teeId [32]byte) ([]byte, error) {
-	result, err := c.ethCall(encodeBytes32(selGetPublicKey, teeId))
-	if err != nil {
-		return nil, err
-	}
-	return decodeDynamicBytes(result)
-}
-
-func (c *Client) GetTLSCertificate(teeId [32]byte) ([]byte, error) {
-	result, err := c.ethCall(encodeBytes32(selGetTLSCert, teeId))
-	if err != nil {
-		return nil, err
-	}
-	return decodeDynamicBytes(result)
-}
-
-func (c *Client) IsActive(teeId [32]byte) (bool, error) {
-	result, err := c.ethCall(encodeBytes32(selIsActive, teeId))
-	return len(result) >= 32 && result[31] == 1, err
 }
 
 func (c *Client) RegisterTEE(from string, attestation, signingKey, tlsCert []byte, paymentAddr, endpoint string, teeType uint8) (string, error) {
@@ -244,6 +232,15 @@ func (c *Client) DeactivateTEE(from string, teeId [32]byte) (string, error) {
 
 func (c *Client) ActivateTEE(from string, teeId [32]byte) (string, error) {
 	return c.sendTx(from, encodeBytes32(selActivateTEE, teeId))
+}
+
+func (c *Client) RemoveTEE(from string, teeId [32]byte) (string, error) {
+	return c.sendTx(from, encodeBytes32(selRemoveTEE, teeId))
+}
+
+func (c *Client) IsLive(teeId [32]byte) (bool, error) {
+	result, err := c.ethCall(encodeBytes32(selIsLive, teeId))
+	return len(result) >= 32 && result[31] == 1, err
 }
 
 // PCR Calls
@@ -270,25 +267,32 @@ func (c *Client) ComputePCRHash(pcr0, pcr1, pcr2 []byte) ([32]byte, error) {
 	return hash, err
 }
 
-func (c *Client) ApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string, prevPCR [32]byte, grace *big.Int) (string, error) {
+func (c *Client) ApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string, teeType uint8) (string, error) {
 	tupleT, _ := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "pcr0", Type: "bytes"}, {Name: "pcr1", Type: "bytes"}, {Name: "pcr2", Type: "bytes"},
 	})
 	strT, _ := abi.NewType("string", "", nil)
-	b32T, _ := abi.NewType("bytes32", "", nil)
-	u256T, _ := abi.NewType("uint256", "", nil)
+	u8T, _ := abi.NewType("uint8", "", nil)
 
-	args := abi.Arguments{{Type: tupleT}, {Type: strT}, {Type: b32T}, {Type: u256T}}
-	encoded, _ := args.Pack(struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}, version, prevPCR, grace)
+	args := abi.Arguments{{Type: tupleT}, {Type: strT}, {Type: u8T}}
+	encoded, _ := args.Pack(struct{ Pcr0, Pcr1, Pcr2 []byte }{pcr0, pcr1, pcr2}, version, teeType)
 	return c.sendTx(from, append(selApprovePCR, encoded...))
 }
 
-func (c *Client) RevokePCR(from string, pcrHash [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selRevokePCR, pcrHash))
+func (c *Client) RevokePCR(from string, pcrHash [32]byte, teeType uint8, gracePeriod *big.Int) (string, error) {
+	b32T, _ := abi.NewType("bytes32", "", nil)
+	u8T, _ := abi.NewType("uint8", "", nil)
+	u256T, _ := abi.NewType("uint256", "", nil)
+	args := abi.Arguments{{Type: b32T}, {Type: u8T}, {Type: u256T}}
+	encoded, _ := args.Pack(pcrHash, teeType, gracePeriod)
+	return c.sendTx(from, append(selRevokePCR, encoded...))
 }
 
-func (c *Client) IsPCRApproved(pcrHash [32]byte) (bool, error) {
-	result, err := c.ethCall(encodeBytes32(selIsPCRApproved, pcrHash))
+func (c *Client) IsPCRApproved(teeType uint8, pcrHash [32]byte) (bool, error) {
+	u8T, _ := abi.NewType("uint8", "", nil)
+	b32T, _ := abi.NewType("bytes32", "", nil)
+	encoded, _ := abi.Arguments{{Type: u8T}, {Type: b32T}}.Pack(teeType, pcrHash)
+	result, err := c.ethCall(append(selIsPCRApproved, encoded...))
 	return len(result) >= 32 && result[31] == 1, err
 }
 

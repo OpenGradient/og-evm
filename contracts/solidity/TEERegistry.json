@@ -63,12 +63,22 @@
     },
     {
       "inputs": [],
+      "name": "PCRAlreadyExists",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "PCRExpired",
       "type": "error"
     },
     {
       "inputs": [],
       "name": "PCRNotApproved",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PCRTypeMismatch",
       "type": "error"
     },
     {
@@ -119,6 +129,12 @@
           "type": "bytes32"
         },
         {
+          "indexed": true,
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
+        },
+        {
           "indexed": false,
           "internalType": "string",
           "name": "version",
@@ -136,6 +152,12 @@
           "internalType": "bytes32",
           "name": "pcrHash",
           "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "gracePeriod",
+          "type": "uint256"
         }
       ],
       "name": "PCRRevoked",
@@ -399,14 +421,9 @@
           "type": "string"
         },
         {
-          "internalType": "bytes32",
-          "name": "previousPcrHash",
-          "type": "bytes32"
-        },
-        {
-          "internalType": "uint256",
-          "name": "gracePeriod",
-          "type": "uint256"
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
         }
       ],
       "name": "approvePCR",
@@ -428,6 +445,11 @@
           "internalType": "bool",
           "name": "active",
           "type": "bool"
+        },
+        {
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
         },
         {
           "internalType": "uint256",
@@ -984,6 +1006,11 @@
           "internalType": "bytes32",
           "name": "pcrHash",
           "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "gracePeriod",
+          "type": "uint256"
         }
       ],
       "name": "revokePCR",

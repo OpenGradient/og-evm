@@ -1,6 +1,6 @@
 # TEE Registry
 
-TEE registration and settlement verification for AWS Nitro Enclaves.
+TEE registration, lifecycle management, and settlement verification for AWS Nitro Enclaves.
 
 ## Architecture
 
@@ -11,28 +11,83 @@ TEE registration and settlement verification for AWS Nitro Enclaves.
 │                         │         │                         │
 │  • Storage & Logic      │         │  • verifyAttestation()  │
 │  • Access Control       │         │  • verifyRSAPSS()       │
-└─────────────────────────┘         └─────────────────────────┘
+│  • PCR Management       │         └─────────────────────────┘
+│  • Heartbeat            │
+└────────┬────────────────┘
+         │
+         ▼
+┌─────────────────────────┐         ┌─────────────────────────┐
+│ TEEInferenceVerifier.sol│────────►│ InferenceSettlement     │
+│                         │         │ Relay.sol               │
+│  • verifySignature()    │         │                         │
+│  • Timestamp bounds     │         │  • settleIndividual()   │
+│  • RSA-PSS via 0x900    │         │  • batchSettle()        │
+└─────────────────────────┘         │  • Merkle proof verify  │
+                                    └─────────────────────────┘
 ```
 
-## Quick Start
+## Workflow
+
+### 1. Setup (Admin)
 
 ```solidity
-TEERegistry registry = TEERegistry(registryAddress);
-
-// 1. Admin: Setup TEE type and PCRs
+// Add a TEE type (e.g., LLMProxy, Validator)
 registry.addTEEType(0, "LLMProxy");
-registry.approvePCR(pcrs, "v1.0.0", bytes32(0), 0);
 
-// 2. Operator: Register TEE
+// Approve PCR measurements for that type
+// PCRs identify the exact enclave code allowed to register
+registry.approvePCR(pcrs, "v1.0.0", 0);
+```
+
+### 2. Registration (TEE Operator)
+
+```solidity
+// Register TEE with attestation document from AWS Nitro
+// Precompile verifies attestation, extracts PCR hash, binds signing key + TLS cert
 bytes32 teeId = registry.registerTEEWithAttestation(
     attestationDoc, signingKey, tlsCert, paymentAddr, endpoint, 0
 );
+// TEE is now active and in the active TEE list
+```
 
-// 3. Verifier: Check TEE inference signature
+### 3. Heartbeat (TEE)
+
+```solidity
+// TEE periodically proves liveness with RSA-PSS signed timestamp
+// Also enforces PCR validity — if PCR was revoked, heartbeat fails
+registry.heartbeat(teeId, timestamp, signature);
+```
+
+### 4. Inference Verification (Settlement)
+
+```solidity
+// TEEInferenceVerifier checks: TEE is active, timestamp in bounds, RSA-PSS signature valid
 bool valid = verifier.verifySignature(teeId, inputHash, outputHash, timestamp, signature);
 
-// 4. Client: Get TLS cert for HTTPS verification
-bytes memory cert = registry.getTLSCertificate(teeId);
+// InferenceSettlementRelay uses this for on-chain settlement
+relay.settleIndividual(teeId, inputHash, outputHash, timestamp, ethAddress, blobId, signature);
+```
+
+### 5. PCR Revocation (Admin)
+
+```solidity
+// Immediate revocation
+registry.revokePCR(pcrHash, 0);
+
+// Or with grace period (e.g., 1 hour for TEEs to upgrade)
+registry.revokePCR(pcrHash, 3600);
+```
+
+PCR revocation is enforced lazily — TEEs with revoked PCRs are caught at:
+- `activateTEE()` — cannot re-activate with a revoked PCR
+- `heartbeat()` — next heartbeat will fail
+
+### 6. TEE Lifecycle (Owner/Admin)
+
+```solidity
+// Owner or admin can deactivate/reactivate
+registry.deactivateTEE(teeId);
+registry.activateTEE(teeId);  // requires PCR to still be approved
 ```
 
 ## Key Functions
@@ -40,12 +95,21 @@ bytes memory cert = registry.getTLSCertificate(teeId);
 | Function | Who | Purpose |
 |----------|-----|---------|
 | `addTEEType()` | Admin | Add TEE category |
-| `approvePCR()` | Admin | Approve enclave code hash |
-| `registerTEEWithAttestation()` | Operator | Register new TEE |
+| `deactivateTEEType()` | Admin | Deactivate a TEE category |
+| `approvePCR()` | Admin | Approve enclave code hash for a TEE type |
+| `revokePCR()` | Admin | Revoke PCR (immediate or with grace period) |
+| `registerTEEWithAttestation()` | Operator | Register new TEE via attestation |
+| `activateTEE()` | Owner/Admin | Re-activate TEE (checks PCR validity) |
+| `deactivateTEE()` | Owner/Admin | Deactivate TEE |
+| `heartbeat()` | Anyone (relayed) | Prove TEE liveness (checks PCR validity) |
 | `verifySignature()` | TEEInferenceVerifier | Verify TEE inference signature |
+| `settleIndividual()` | Settlement Relay | Settle with signature verification |
+| `batchSettle()` | Settlement Relay | Emit batch settlement root |
 | `getTEE()` | Anyone | Get TEE info |
 | `getTLSCertificate()` | Anyone | Get TLS cert for HTTPS |
 | `isActive()` | Anyone | Check TEE status |
+| `getActiveTEEs()` | Anyone | List all active TEE IDs |
+| `getActivePCRs()` | Anyone | List all approved PCR hashes |
 
 ## Access Control
 
@@ -53,14 +117,35 @@ Uses OpenZeppelin AccessControl:
 
 | Role | Can Do |
 |------|--------|
-| `DEFAULT_ADMIN_ROLE` | Manage PCRs, TEE types, roles |
+| `DEFAULT_ADMIN_ROLE` | Manage PCRs, TEE types, certificates, roles, heartbeat config |
 | `TEE_OPERATOR` | Register TEEs |
+| `SETTLEMENT_RELAY_ROLE` | Submit settlements (on InferenceSettlementRelay) |
+
+## CLI
+
+The `tee-mgmt-cli` tool (`scripts/tee-mgmt-cli/`) provides commands for all admin and operator operations:
+
+```bash
+# PCR management
+tee-mgmt-cli pcr approve --measurements-file measurements.json --version v1.0.0 --tee-type 0
+tee-mgmt-cli pcr revoke <pcr_hash> --grace-period 3600
+tee-mgmt-cli pcr list
+tee-mgmt-cli pcr check <pcr_hash>
+tee-mgmt-cli pcr compute --measurements-file measurements.json
+
+# TEE management
+tee-mgmt-cli tee list
+tee-mgmt-cli tee info <tee_id>
+tee-mgmt-cli tee register --host <enclave_host>
+tee-mgmt-cli tee deactivate <tee_id>
+tee-mgmt-cli tee activate <tee_id>
+```
 
 ## Environment Variables
 
 | Variable | Required by | Description |
 |---|---|---|
-| `TEE_ENCLAVE_HOST` | Integration tests & scripts | IP or hostname of the live enclave  |
+| `TEE_ENCLAVE_HOST` | Integration tests & scripts | IP or hostname of the live enclave |
 | `TEE_REGISTRY_ADDRESS` | `local_tee_workflow.go` | Optional — reuse an already-deployed TEERegistry contract |
 
 ## Testing
@@ -69,6 +154,12 @@ Uses OpenZeppelin AccessControl:
 ```bash
 cd precompiles/tee
 go test -v ./...
+```
+
+### Solidity Tests
+```bash
+cd tests/solidity/suites/tee
+npm test
 ```
 
 ### Integration Tests
@@ -91,13 +182,10 @@ TEE_REGISTRY_ADDRESS=0x... TEE_ENCLAVE_HOST=127.0.0.1 go run local_tee_workflow.
 ## TODO
 
 ### Planned Features
-- [ ] TEE health monitoring hooks 
+- [ ] TEE health monitoring hooks
 - [ ] Batch TEE registration
 
 ### Integration Tasks
-- [ ] LLM Server: 
 - [ ] Facilitator (x402): Call `verifySignature()` via FacilitatorSettlementRelay before payment
 - [ ] Frontend/dashboard: Download and pin TLS certificates
 - [ ] Monitoring: Track TEE active status
-
-

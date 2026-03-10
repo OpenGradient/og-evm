@@ -5,8 +5,78 @@ import "./precompiles/tee/ITEEVerifier.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title TEERegistry - TEE Registration and Management
-/// @notice Manages TEE lifecycle, calls precompile only for crypto
-/// @dev All storage in Solidity, crypto in precompile at 0x900
+/// @notice On-chain registry for Trusted Execution Environment (TEE) nodes that provide
+///         verifiable AI inference. Manages the full TEE lifecycle: registration, activation,
+///         heartbeat liveness, and decommissioning.
+///
+/// @dev ## Overall Flow
+///
+///  1. **Admin setup** — An admin adds TEE types (e.g. LLM inference, agent execution) via `addTEEType`, then
+///     approves known-good enclave measurements via `approvePCR`. The AWS root certificate
+///     used for attestation verification is stored via `setAWSRootCertificate`.
+///
+///  2. **Registration** — A TEE operator calls `registerTEEWithAttestation`, which:
+///       a. Verifies the attestation document against the AWS root cert via the 0x900
+///          precompile (`ITEEVerifier`).
+///       b. Extracts PCR measurements and checks they match an admin-approved set.
+///       c. Stores the TEE as **active** and indexes it by type and owner.
+///
+///  3. **Heartbeat** — Each TEE periodically proves liveness by submitting a signed
+///     timestamp via `heartbeat`. The RSA-PSS signature is verified on-chain against the
+///     TEE's stored public key. Stale or future timestamps are rejected.
+///
+///  4. **Deactivation / Reactivation** — TEE owners or admins can toggle a TEE's active
+///     status. `activateTEE` re-validates the TEE's PCR before reactivating.
+///
+///  5. **PCR revocation** — When an enclave image is compromised or outdated, admins revoke
+///     its PCR via `revokePCR` (optionally with a grace period). TEEs running the revoked
+///     image are caught lazily: `activateTEE` and `heartbeat` both call
+///     `_requirePCRValidForTEE` and will revert once the PCR expires.
+///
+///  6. **Removal** — `removeTEE` permanently deletes a TEE from all storage and indexes.
+///
+/// ## Querying TEE Status
+///
+///  The contract exposes three tiers of TEE queries with increasing strictness:
+///    - `getTEEsByType`    — all TEEs ever registered for a type (active + inactive).
+///    - `getActivatedTEEs` — only TEEs in the active list (no heartbeat/PCR check).
+///    - `getLiveTEEs`      — active TEEs with a valid PCR **and** a fresh heartbeat.
+///
+/// ## Client Integration Guide
+///
+///  **Choosing a query method:**
+///
+///  - `getLiveTEEs(teeType)` — **Recommended for most clients.** Returns only TEEs
+///    that are active, running approved (non-revoked) enclave code, and have sent a
+///    recent heartbeat. These are fully verified and ready to serve requests.
+///
+///  - `getActivatedTEEs(teeType)` — Returns TEEs that are in the active list but
+///    does **not** check heartbeat freshness or PCR validity. Use this if you want
+///    to perform your own filtering logic off-chain (e.g. custom staleness
+///    thresholds, geographic selection, or load-balancing across TEEs that may have
+///    briefly missed a heartbeat). You are responsible for checking liveness and
+///    PCR status yourself.
+///
+///  - `getTEEsByType(teeType)` — Returns all TEEs ever registered for a type,
+///    including inactive ones. Useful for dashboards, auditing, or historical views.
+///    Not suitable for selecting a TEE to connect to.
+///
+///  **TLS certificate verification:**
+///
+///  When connecting to a TEE, clients **must** verify that the TLS certificate
+///  presented by the TEE's endpoint matches the `tlsCertificate` stored on-chain.
+///  This certificate was bound to the enclave at registration time via attestation
+///  verification. Without this check, a compromised or spoofed endpoint could
+///  impersonate a registered TEE. The recommended flow is:
+///    1. Query the registry for a live TEE (e.g. via `getLiveTEEs`).
+///    2. Open a TLS connection to the TEE's `endpoint`.
+///    3. Compare the server's presented certificate against `TEEInfo.tlsCertificate`.
+///    4. Abort the connection if they do not match.
+///
+/// ## Access Control
+///
+///  - `DEFAULT_ADMIN_ROLE` — manages TEE types, PCRs, certificates, heartbeat config.
+///  - `TEE_OPERATOR`       — registers TEEs, manages owned TEEs (deactivate/activate/remove).
 contract TEERegistry is AccessControl {
     
     // ============ Constants ============
@@ -24,6 +94,7 @@ contract TEERegistry is AccessControl {
 
     struct ApprovedPCR {
         bool active;
+        uint8 teeType;
         uint256 approvedAt;
         uint256 expiresAt;
         string version;
@@ -54,9 +125,14 @@ contract TEERegistry is AccessControl {
     mapping(uint8 => TEETypeInfo) public teeTypes;
     uint8[] private _teeTypeList;
     
-    // PCR Registry
-    mapping(bytes32 => ApprovedPCR) public approvedPCRs;
-    bytes32[] private _pcrList;
+    // PCR Registry: teeType => pcrHash => ApprovedPCR
+    mapping(uint8 => mapping(bytes32 => ApprovedPCR)) public approvedPCRs;
+
+    struct PCRKey {
+        bytes32 pcrHash;
+        uint8 teeType;
+    }
+    PCRKey[] private _pcrList;
     
     // AWS Root Certificate
     bytes public awsRootCertificate;
@@ -64,24 +140,32 @@ contract TEERegistry is AccessControl {
     // Heartbeat: max allowed age of the signed timestamp vs block.timestamp.
     uint256 public heartbeatMaxAge = 1800; // 30 minutes default
 
-    // TEE Storage
+    // All TEEs
     mapping(bytes32 => TEEInfo) public tees;
-    bytes32[] private _activeTEEList;
-    mapping(bytes32 => uint256) private _activeTEEIndex;
-    mapping(address => bytes32[]) private _teesByOwner;
-    mapping(uint8 => bytes32[]) private _teesByType;
+
+    // Active TEEs by type: teeType => list of active teeIds
+    mapping(uint8 => bytes32[]) private _activeTEEList;
+    // teeType => teeId => index in _activeTEEList[teeType]
+    mapping(uint8 => mapping(bytes32 => uint256)) private _activeTEEIndex;
+
+    // All TEEs by type (active + inactive)
+    mapping(uint8 => bytes32[]) internal _teesByType;
+
+    // TEEs by owner
+    mapping(address => bytes32[]) internal _teesByOwner;
 
     // ============ Events ============
 
     event TEETypeAdded(uint8 indexed typeId, string name);
     event TEETypeDeactivated(uint8 indexed typeId);
-    event PCRApproved(bytes32 indexed pcrHash, string version);
-    event PCRRevoked(bytes32 indexed pcrHash);
+    event PCRApproved(bytes32 indexed pcrHash, uint8 indexed teeType, string version);
+    event PCRRevoked(bytes32 indexed pcrHash, uint256 gracePeriod);
     event TEERegistered(bytes32 indexed teeId, address indexed owner, uint8 teeType);
     event TEEDeactivated(bytes32 indexed teeId);
     event TEEActivated(bytes32 indexed teeId);
     event AWSCertificateUpdated(bytes32 indexed certHash);
     event HeartbeatReceived(bytes32 indexed teeId, uint256 timestamp);
+    event TEERemoved(bytes32 indexed teeId);
 
     // ============ Errors ============
 
@@ -90,6 +174,7 @@ contract TEERegistry is AccessControl {
     error InvalidTEEType();
     error PCRNotApproved();
     error PCRExpired();
+    error PCRAlreadyExists();
     error TEEAlreadyExists();
     error TEENotFound();
     error TEENotActive();
@@ -99,6 +184,15 @@ contract TEERegistry is AccessControl {
     error HeartbeatSignatureInvalid();
     error HeartbeatTimestampTooOld();
     error HeartbeatTimestampInFuture();
+
+    // ============ Modifiers ============
+
+    modifier onlyTEEOwnerOrAdmin(bytes32 teeId) {
+        if (tees[teeId].registeredAt == 0) revert TEENotFound();
+        if (tees[teeId].owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
+        if (!hasRole(TEE_OPERATOR, msg.sender) && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
+        _;
+    }
 
     // ============ Constructor ============
 
@@ -141,54 +235,87 @@ contract TEERegistry is AccessControl {
 
     // ============ PCR Management ============
     
+    /// @notice Approve a new PCR measurement for a specific TEE type
+    /// @param pcrs The PCR measurements (pcr0, pcr1, pcr2)
+    /// @param version Human-readable version string (e.g., "v1.2.0")
+    /// @param teeType The TEE type this PCR is valid for
     function approvePCR(
         PCRMeasurements calldata pcrs,
         string calldata version,
-        bytes32 previousPcrHash,
-        uint256 gracePeriod
+        uint8 teeType
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        bytes32 pcrHash = computePCRHash(pcrs);
-        
-        // Set expiry on previous PCR if provided
-        if (previousPcrHash != bytes32(0) && approvedPCRs[previousPcrHash].active) {
-            approvedPCRs[previousPcrHash].expiresAt = block.timestamp + gracePeriod;
-        }
+        if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
-        approvedPCRs[pcrHash] = ApprovedPCR({
+        bytes32 pcrHash = computePCRHash(pcrs);
+        bool isNew = approvedPCRs[teeType][pcrHash].approvedAt == 0;
+
+        approvedPCRs[teeType][pcrHash] = ApprovedPCR({
             active: true,
+            teeType: teeType,
             approvedAt: block.timestamp,
             expiresAt: 0,
             version: version
         });
-        _pcrList.push(pcrHash);
-        emit PCRApproved(pcrHash, version);
+
+        if (isNew) {
+            _pcrList.push(PCRKey({pcrHash: pcrHash, teeType: teeType}));
+        }
+
+        emit PCRApproved(pcrHash, teeType, version);
     }
 
-    function revokePCR(bytes32 pcrHash) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        approvedPCRs[pcrHash].active = false;
-        emit PCRRevoked(pcrHash);
+    /// @notice Revoke a PCR, either immediately or with a grace period
+    /// @dev TEEs using this PCR are caught lazily at activateTEE() and heartbeat()
+    /// @param pcrHash The PCR hash to revoke
+    /// @param gracePeriod Seconds until revocation takes effect (0 = immediate)
+    function revokePCR(bytes32 pcrHash, uint8 teeType, uint256 gracePeriod) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (!isPCRApproved(teeType, pcrHash)) revert PCRNotApproved();
+
+        if (gracePeriod == 0) {
+            approvedPCRs[teeType][pcrHash].active = false;
+        } else {
+            approvedPCRs[teeType][pcrHash].expiresAt = block.timestamp + gracePeriod;
+        }
+        emit PCRRevoked(pcrHash, gracePeriod);
     }
 
-    function isPCRApproved(bytes32 pcrHash) public view returns (bool) {
-        ApprovedPCR storage pcr = approvedPCRs[pcrHash];
+    /// @notice Check if a PCR is currently approved and not expired
+    /// @param teeType The TEE type the PCR is valid for
+    /// @param pcrHash The PCR hash to check
+    /// @return bool True if approved and not expired
+    function isPCRApproved(uint8 teeType, bytes32 pcrHash) public view returns (bool) {
+        ApprovedPCR storage pcr = approvedPCRs[teeType][pcrHash];
         if (!pcr.active) return false;
         if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) return false;
         return true;
     }
 
+    /// @dev Reverts if PCR is not approved for the given TEE type
+    function _requirePCRValidForTEE(bytes32 pcrHash, uint8 teeType) private view {
+        ApprovedPCR storage pcr = approvedPCRs[teeType][pcrHash];
+        if (!pcr.active) revert PCRNotApproved();
+        if (pcr.expiresAt != 0 && block.timestamp >= pcr.expiresAt) revert PCRExpired();
+    }
+
+    /// @notice Compute PCR hash from measurements
+    /// @param pcrs The PCR measurements
+    /// @return bytes32 Hash of the concatenated PCRs
     function computePCRHash(PCRMeasurements calldata pcrs) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(pcrs.pcr0, pcrs.pcr1, pcrs.pcr2));
     }
 
-    function getActivePCRs() external view returns (bytes32[] memory) {
+    /// @notice Get all currently active (approved and not expired) PCRs
+    /// @return PCRKey[] Array of active PCR keys (pcrHash + teeType)
+    function getActivePCRs() external view returns (PCRKey[] memory) {
         uint256 count = 0;
         for (uint256 i = 0; i < _pcrList.length; i++) {
-            if (isPCRApproved(_pcrList[i])) count++;
+            if (isPCRApproved(_pcrList[i].teeType, _pcrList[i].pcrHash)) count++;
         }
-        bytes32[] memory result = new bytes32[](count);
+
+        PCRKey[] memory result = new PCRKey[](count);
         uint256 j = 0;
         for (uint256 i = 0; i < _pcrList.length; i++) {
-            if (isPCRApproved(_pcrList[i])) {
+            if (isPCRApproved(_pcrList[i].teeType, _pcrList[i].pcrHash)) {
                 result[j++] = _pcrList[i];
             }
         }
@@ -202,7 +329,7 @@ contract TEERegistry is AccessControl {
         emit AWSCertificateUpdated(keccak256(certificate));
     }
 
-    // ============ TEE Registration ============
+    // ============ TEE Management ============
     
     function registerTEEWithAttestation(
         bytes calldata attestationDocument,
@@ -226,10 +353,10 @@ contract TEERegistry is AccessControl {
             tlsCertificate,
             awsRootCertificate
         );
-        if (!valid) revert AttestationInvalid("Attestation verification failed");
+        if (!valid) revert AttestationInvalid("Attestation document verification failed");
 
-        // Verify PCR is approved
-        if (!isPCRApproved(pcrHash)) revert PCRNotApproved();
+        // Verify PCR is approved and matches the TEE type
+        _requirePCRValidForTEE(pcrHash, teeType);
 
         // Store TEE
         tees[teeId] = TEEInfo({
@@ -246,57 +373,98 @@ contract TEERegistry is AccessControl {
         });
 
         // Add to indexes
-        _activeTEEIndex[teeId] = _activeTEEList.length;
-        _activeTEEList.push(teeId);
-        _teesByOwner[msg.sender].push(teeId);
+        _activeTEEIndex[teeType][teeId] = _activeTEEList[teeType].length;
+        _activeTEEList[teeType].push(teeId);
         _teesByType[teeType].push(teeId);
+        _teesByOwner[msg.sender].push(teeId);
 
         emit TEERegistered(teeId, msg.sender, teeType);
     }
 
-    // ============ TEE Management ============
-    
-    function deactivateTEE(bytes32 teeId) external {
+    /// @notice Deactivate a TEE, removing it from the active list
+    /// @dev Requires caller to be the TEE owner with TEE_OPERATOR role, or an admin
+    /// @param teeId The TEE identifier to deactivate
+    function deactivateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
-        if (tee.registeredAt == 0) revert TEENotFound();
-        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
-        if (!tee.active) return; // Already deactivated, nothing to do
+        if (!tee.active) return;
 
         tee.active = false;
-        tee.lastUpdatedAt = block.timestamp;
-        _removeFromActiveList(teeId);
+        _removeFromActiveList(teeId, tee.teeType);
         emit TEEDeactivated(teeId);
     }
 
-    function activateTEE(bytes32 teeId) external {
+    /// @notice Re-activate a previously deactivated TEE
+    /// @dev Requires caller to be the TEE owner with TEE_OPERATOR role, or an admin.
+    ///      Also re-validates that the TEE's PCR is still approved for its type.
+    /// @param teeId The TEE identifier to activate
+    function activateTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
         TEEInfo storage tee = tees[teeId];
-        if (tee.registeredAt == 0) revert TEENotFound();
-        if (tee.owner != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotTEEOwner();
-        if (tee.active) return; // Already active, nothing to do
+        // Make sure to do an early return here in order to prevent
+        // getting around the heartbeat check which relies on lastUpdatedAt.
+        if (tee.active) return;
+
+        _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
 
         tee.active = true;
-        tee.lastUpdatedAt = block.timestamp;
-        _addToActiveList(teeId);
+        _addToActiveList(teeId, tee.teeType);
         emit TEEActivated(teeId);
     }
 
-    function _addToActiveList(bytes32 teeId) private {
-        _activeTEEIndex[teeId] = _activeTEEList.length;
-        _activeTEEList.push(teeId);
+    /// @notice Permanently remove a TEE from all storage
+    /// @dev Callable by TEE owner (with TEE_OPERATOR role) or admin.
+    ///      Use to clean up decommissioned or upgraded TEEs and reclaim storage.
+    /// @param teeId The TEE identifier to remove
+    function removeTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
+        TEEInfo storage tee = tees[teeId];
+
+        uint8 teeType = tee.teeType;
+        address owner = tee.owner;
+
+        // Remove from active list if active
+        if (tee.active) {
+            _removeFromActiveList(teeId, teeType);
+        }
+
+        // Remove from _teesByType
+        _removeFromArray(_teesByType[teeType], teeId);
+
+        // Remove from _teesByOwner
+        _removeFromArray(_teesByOwner[owner], teeId);
+
+        // Delete TEE data
+        delete tees[teeId];
+
+        emit TEERemoved(teeId);
     }
 
-    function _removeFromActiveList(bytes32 teeId) private {
-        uint256 index = _activeTEEIndex[teeId];
-        uint256 lastIndex = _activeTEEList.length - 1;
-        
+    function _addToActiveList(bytes32 teeId, uint8 teeType) private {
+        _activeTEEIndex[teeType][teeId] = _activeTEEList[teeType].length;
+        _activeTEEList[teeType].push(teeId);
+    }
+
+    function _removeFromActiveList(bytes32 teeId, uint8 teeType) private {
+        uint256 index = _activeTEEIndex[teeType][teeId];
+        uint256 lastIndex = _activeTEEList[teeType].length - 1;
+
         if (index != lastIndex) {
-            bytes32 lastTeeId = _activeTEEList[lastIndex];
-            _activeTEEList[index] = lastTeeId;
-            _activeTEEIndex[lastTeeId] = index;
+            bytes32 lastTeeId = _activeTEEList[teeType][lastIndex];
+            _activeTEEList[teeType][index] = lastTeeId;
+            _activeTEEIndex[teeType][lastTeeId] = index;
         }
-        
-        _activeTEEList.pop();
-        delete _activeTEEIndex[teeId];
+
+        _activeTEEList[teeType].pop();
+        delete _activeTEEIndex[teeType][teeId];
+    }
+
+    /// @dev Swap-and-pop removal from an unordered bytes32 array
+    function _removeFromArray(bytes32[] storage arr, bytes32 value) private {
+        for (uint256 i = 0; i < arr.length; i++) {
+            if (arr[i] == value) {
+                arr[i] = arr[arr.length - 1];
+                arr.pop();
+                return;
+            }
+        }
     }
 
     // ============ Heartbeat ============
@@ -317,7 +485,10 @@ contract TEERegistry is AccessControl {
         if (tee.registeredAt == 0) revert TEENotFound();
         if (!tee.active) revert TEENotActive();
 
-        // Reject stale or future signed timestamps.
+        // Lazy PCR enforcement (validity + type match)
+        _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
+
+        // Reject stale or future signed timestamps
         if (timestamp > block.timestamp) revert HeartbeatTimestampInFuture();
         if (block.timestamp - timestamp > heartbeatMaxAge) revert HeartbeatTimestampTooOld();
 
@@ -327,63 +498,94 @@ contract TEERegistry is AccessControl {
         if (!valid) revert HeartbeatSignatureInvalid();
 
         tee.lastUpdatedAt = block.timestamp;
-
         emit HeartbeatReceived(teeId, timestamp);
     }
 
-    /// @notice Update the max allowed age for heartbeat timestamps.
+    /// @notice Update the max allowed age for heartbeat timestamps
     function setHeartbeatMaxAge(uint256 maxAge) external onlyRole(DEFAULT_ADMIN_ROLE) {
         heartbeatMaxAge = maxAge;
     }
 
-    // ============ Utilities ============
-
-    function computeMessageHash(
-        bytes32 inputHash,
-        bytes32 outputHash,
-        uint256 timestamp
-    ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(inputHash, outputHash, timestamp));
-    }
-
     // ============ Queries ============
-    
+
+    /// @notice Get full TEE info by ID
+    /// @param teeId The TEE identifier
+    /// @return The TEE info struct
     function getTEE(bytes32 teeId) external view returns (TEEInfo memory) {
         if (tees[teeId].registeredAt == 0) revert TEENotFound();
         return tees[teeId];
     }
 
-    function getActiveTEEs() external view returns (bytes32[] memory) {
-        return _activeTEEList;
+    /// @notice Get TEE IDs that have been activated for a given type
+    /// @dev Does NOT filter by heartbeat freshness or PCR validity.
+    ///      Use getLiveTEEs() for fully verified results.
+    /// @param teeType The TEE type to query
+    /// @return Array of TEE IDs
+    function getActivatedTEEs(uint8 teeType) external view returns (bytes32[] memory) {
+        return _activeTEEList[teeType];
     }
 
+    /// @notice Get TEEs that are activated, have a valid PCR, and a fresh heartbeat
+    /// @dev More expensive than getActivatedTEEs() due to on-chain filtering.
+    ///      Use this when you need guaranteed-healthy TEEs without client-side checks.
+    /// @param teeType The TEE type to query
+    /// @return Array of TEEInfo structs for live TEEs
+    function getLiveTEEs(uint8 teeType) external view returns (TEEInfo[] memory) {
+        bytes32[] storage list = _activeTEEList[teeType];
+        uint256 count = 0;
+        for (uint256 i = 0; i < list.length; i++) {
+            if (_isLive(tees[list[i]])) count++;
+        }
+
+        TEEInfo[] memory result = new TEEInfo[](count);
+        uint256 j = 0;
+        for (uint256 i = 0; i < list.length; i++) {
+            if (_isLive(tees[list[i]])) {
+                result[j++] = tees[list[i]];
+            }
+        }
+        return result;
+    }
+
+    /// @notice Get all TEE IDs (active and inactive) for a given type
+    /// @param teeType The TEE type to query
+    /// @return Array of TEE IDs
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory) {
         return _teesByType[teeType];
     }
 
+    /// @notice Get all TEE IDs owned by an address
+    /// @param owner The owner address to query
+    /// @return Array of TEE IDs
     function getTEEsByOwner(address owner) external view returns (bytes32[] memory) {
         return _teesByOwner[owner];
     }
 
-    function getPublicKey(bytes32 teeId) external view returns (bytes memory) {
-        if (tees[teeId].registeredAt == 0) revert TEENotFound();
-        return tees[teeId].publicKey;
-    }
-
-    function getTLSCertificate(bytes32 teeId) external view returns (bytes memory) {
-        if (tees[teeId].registeredAt == 0) revert TEENotFound();
-        return tees[teeId].tlsCertificate;
-    }
-
+    /// @notice Check if a TEE is currently active
     function isActive(bytes32 teeId) external view returns (bool) {
         return tees[teeId].active;
     }
 
-    function getPaymentAddress(bytes32 teeId) external view returns (address) {
-        if (tees[teeId].registeredAt == 0) revert TEENotFound();
-        return tees[teeId].paymentAddress;
+    /// @notice Check if a TEE is live (active + valid PCR + fresh heartbeat)
+    function isLive(bytes32 teeId) external view returns (bool) {
+        return _isLive(tees[teeId]);
     }
 
+    function _isLive(TEEInfo storage tee) private view returns (bool) {
+        if (!tee.active) return false;
+        if (block.timestamp - tee.lastUpdatedAt > heartbeatMaxAge) return false;
+        if (!isPCRApproved(tee.teeType, tee.pcrHash)) return false;
+        return true;
+    }
+
+    /// @notice Get a TEE's public key
+    function getPublicKey(bytes32 teeId) external view returns (bytes memory) {
+        return tees[teeId].publicKey;
+    }
+
+    /// @notice Compute TEE ID from its public key
+    /// @param publicKey The TEE's public key
+    /// @return The TEE identifier (keccak256 hash)
     function computeTEEId(bytes calldata publicKey) external pure returns (bytes32) {
         return keccak256(publicKey);
     }

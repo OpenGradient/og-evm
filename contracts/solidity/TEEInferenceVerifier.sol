@@ -6,7 +6,25 @@ import "./precompiles/tee/ITEEVerifier.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title TEEInferenceVerifier - Verification for TEE-signed inference outputs
-/// @notice Reads TEE public keys from TEERegistry and verifies RSA-PSS signatures with timestamp validation.
+/// @notice Stateless verifier that confirms an AI inference output was produced by a
+///         registered, active TEE within an acceptable time window.
+///
+/// @dev ## How It Works
+///
+///  When a TEE runs an inference, it signs `keccak256(inputHash || outputHash || timestamp)`
+///  with its RSA-PSS private key. Any party (settlement relay, on-chain consumer, etc.) can
+///  then call `verifySignature` to confirm authenticity. The check is three-fold:
+///
+///    1. **TEE status** — the TEE must be active in the `TEERegistry`.
+///    2. **Timestamp bounds** — the signed timestamp must be within
+///       `[block.timestamp - MAX_INFERENCE_AGE, block.timestamp + FUTURE_TOLERANCE]`
+///       to prevent replay of stale results and reject clock-skewed signatures.
+///    3. **Cryptographic proof** — the RSA-PSS signature is verified against the TEE's
+///       on-chain public key via the 0x900 precompile.
+///
+///  The contract is intentionally read-only (no state mutations in `verifySignature`) so
+///  it can be called from view contexts and composed freely by downstream contracts like
+///  `InferenceSettlementRelay`.
 contract TEEInferenceVerifier is AccessControl {
 
     // ============ Constants ============
