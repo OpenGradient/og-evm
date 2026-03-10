@@ -101,6 +101,11 @@ type MeasurementsFile struct {
 	Measurements PCRMeasurements `json:"Measurements"`
 }
 
+type ApprovedPCRKey struct {
+	PCRHash [32]byte
+	TEEType uint8
+}
+
 type AttestationResponse struct {
 	PublicKey string `json:"public_key"`
 }
@@ -237,7 +242,7 @@ func main() {
 	} else {
 		fmt.Printf("  📋 Currently approved PCRs (%d):\n", len(existingApprovedPCRs))
 		for i, p := range existingApprovedPCRs {
-			fmt.Printf("     [%d] %s\n", i, p)
+			fmt.Printf("     [%d] pcrHash=0x%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
 		}
 	}
 	if len(existingApprovedPCRs) == 0 {
@@ -357,7 +362,7 @@ func main() {
 				fmt.Printf("     ⚠️  Could not fetch: %v\n", err)
 			} else {
 				for i, p := range preRegPCRs {
-					fmt.Printf("     [%d] %s\n", i, p)
+					fmt.Printf("     [%d] pcrHash=0x%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
 				}
 			}
 		}
@@ -426,7 +431,7 @@ func main() {
 							failPCRs, _ := callGetApprovedPCRs()
 							fmt.Printf("     Approved PCRs in contract (%d):\n", len(failPCRs))
 							for i, p := range failPCRs {
-								fmt.Printf("       [%d] %s\n", i, p)
+								fmt.Printf("       [%d] pcrHash=0x%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
 							}
 						}
 					}
@@ -1116,18 +1121,25 @@ func callComputePCRHash(pcr0, pcr1, pcr2 []byte) ([32]byte, error) {
 	return hash, nil
 }
 
-func callGetApprovedPCRs() ([]string, error) {
+func callGetApprovedPCRs() ([]ApprovedPCRKey, error) {
 	result, err := ethCall(SEL_GET_APPROVED_PCRS)
 	if err != nil || len(result) < 64 {
 		return nil, err
 	}
-	length := new(big.Int).SetBytes(result[32:64]).Uint64()
-	pcrs := make([]string, length)
+	// ABI: offset (32 bytes) | length (32 bytes) | then length * (bytes32 pcrHash, uint8 teeType padded to 32 bytes)
+	offset := new(big.Int).SetBytes(result[0:32]).Uint64()
+	length := new(big.Int).SetBytes(result[offset : offset+32]).Uint64()
+	pcrs := make([]ApprovedPCRKey, length)
+	dataStart := offset + 32
 	for i := uint64(0); i < length; i++ {
-		start := 64 + i*32
-		if start+32 <= uint64(len(result)) {
-			pcrs[i] = "0x" + hex.EncodeToString(result[start:start+32])
+		entryStart := dataStart + i*64 // each tuple is 2 slots: bytes32 + uint8
+		if entryStart+64 > uint64(len(result)) {
+			break
 		}
+		var key ApprovedPCRKey
+		copy(key.PCRHash[:], result[entryStart:entryStart+32])
+		key.TEEType = result[entryStart+63] // uint8 is right-padded in the last byte of the 32-byte slot
+		pcrs[i] = key
 	}
 	return pcrs, nil
 }
