@@ -81,9 +81,9 @@ var (
 	SEL_GET_ENABLED_TEES  = crypto.Keccak256([]byte("getEnabledTEEs()"))[:4]
 	SEL_GET_TEES_BY_TYPE  = crypto.Keccak256([]byte("getTEEsByType(uint8)"))[:4]
 	SEL_GET_TEES_BY_OWNER = crypto.Keccak256([]byte("getTEEsByOwner(address)"))[:4]
-	SEL_GET_PUBLIC_KEY    = crypto.Keccak256([]byte("getPublicKey(bytes32)"))[:4]
+	SEL_GET_TEE_PUBLIC_KEY    = crypto.Keccak256([]byte("getTEEPublicKey(bytes32)"))[:4]
 	SEL_GET_TLS_CERT      = crypto.Keccak256([]byte("getTLSCertificate(bytes32)"))[:4]
-	SEL_IS_ENABLED        = crypto.Keccak256([]byte("isEnabled(bytes32)"))[:4]
+	SEL_IS_TEE_ENABLED        = crypto.Keccak256([]byte("isTEEEnabled(bytes32)"))[:4]
 	SEL_GET_PAYMENT_ADDR  = crypto.Keccak256([]byte("getPaymentAddress(bytes32)"))[:4]
 
 	SEL_COMPUTE_TEE_ID   = crypto.Keccak256([]byte("computeTEEId(bytes)"))[:4]
@@ -387,8 +387,8 @@ func main() {
 				// [LOG] Show TLS cert fingerprint for cross-check
 				fmt.Printf("  🔏 TLS cert SHA256: %x\n", sha256.Sum256(tlsCertDER))
 
-				isEnabled, _ := callIsEnabled(expectedTeeId)
-				fmt.Printf("  🔍 isEnabled(expectedTeeId) = %v\n", isEnabled)
+				isEnabled, _ := callIsTEEEnabled(expectedTeeId)
+				fmt.Printf("  🔍 isTEEEnabled(expectedTeeId) = %v\n", isEnabled)
 
 				if isEnabled {
 					fmt.Println("  ℹ️  TEE already registered")
@@ -421,8 +421,8 @@ func main() {
 
 							// [LOG] Verify post-registration state
 							fmt.Printf("  ✅ Registration succeeded — verifying on-chain state...\n")
-							postEnabled, _ := callIsEnabled(registeredTEEId)
-							fmt.Printf("     isEnabled(teeId)=%v\n", postEnabled)
+							postEnabled, _ := callIsTEEEnabled(registeredTEEId)
+							fmt.Printf("     isTEEEnabled(teeId)=%v\n", postEnabled)
 						} else {
 							// [LOG] On failure, dump current PCR state to diagnose mismatch
 							fmt.Println("  ❌ Registration failed — dumping PCR state for diagnosis:")
@@ -444,10 +444,10 @@ func main() {
 	fmt.Println("------------------------------------------")
 
 	if registrationSuccess {
-		isEnabled, err := callIsEnabled(registeredTEEId)
-		results.Add("isEnabled returns true for registered TEE", isEnabled && err == nil, "")
+		isEnabled, err := callIsTEEEnabled(registeredTEEId)
+		results.Add("isTEEEnabled returns true for registered TEE", isEnabled && err == nil, "")
 
-		storedKey, err := callGetPublicKey(registeredTEEId)
+		storedKey, err := callGetTEEPublicKey(registeredTEEId)
 		keyMatches := err == nil && bytes.Equal(storedKey, signingPubKeyDER)
 		// [LOG] Show key comparison detail when it fails
 		if !keyMatches {
@@ -457,7 +457,7 @@ func main() {
 			}
 			fmt.Printf("     expected SHA256: %x\n", sha256.Sum256(signingPubKeyDER))
 		}
-		results.Add("getPublicKey returns correct key", keyMatches, "")
+		results.Add("getTEEPublicKey returns correct key", keyMatches, "")
 
 		storedCert, err := callGetTLSCertificate(registeredTEEId)
 		results.Add("getTLSCertificate returns cert", err == nil && len(storedCert) > 0, fmt.Sprintf("%d bytes", len(storedCert)))
@@ -484,14 +484,14 @@ func main() {
 		if err == nil {
 			waitForTx(txHash)
 		}
-		isEnabled, _ := callIsEnabled(registeredTEEId)
+		isEnabled, _ := callIsTEEEnabled(registeredTEEId)
 		results.Add("Disable TEE", !isEnabled, "")
 
 		txHash, err = callEnableTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
 		}
-		isEnabled, _ = callIsEnabled(registeredTEEId)
+		isEnabled, _ = callIsTEEEnabled(registeredTEEId)
 		results.Add("Re-enable TEE", isEnabled, "")
 	} else {
 		fmt.Println("  ⚠️  Skipping lifecycle tests (registration failed)")
@@ -566,7 +566,7 @@ func main() {
 		txHash, err = callDisableTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
-			isEnabled, _ := callIsEnabled(registeredTEEId)
+			isEnabled, _ := callIsTEEEnabled(registeredTEEId)
 			results.Add("TEE disabled", !isEnabled, "")
 		}
 
@@ -574,7 +574,7 @@ func main() {
 		txHash, err = callEnableTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
-			isEnabled, _ := callIsEnabled(registeredTEEId)
+			isEnabled, _ := callIsTEEEnabled(registeredTEEId)
 			results.Add("TEE re-enabled with valid PCR", isEnabled, "")
 			fmt.Println("  ✅ Re-enable successful (PCR valid)")
 		} else {
@@ -1191,22 +1191,22 @@ func callEnableTEE(from string, teeId [32]byte) (string, error) {
 // CONTRACT CALLS - Queries
 // ============================================================================
 
-func callIsEnabled(teeId [32]byte) (bool, error) {
+func callIsTEEEnabled(teeId [32]byte) (bool, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-	result, err := ethCall(append(SEL_IS_ENABLED, encoded...))
+	result, err := ethCall(append(SEL_IS_TEE_ENABLED, encoded...))
 	if err != nil || len(result) < 32 {
 		return false, err
 	}
 	return result[31] == 1, nil
 }
 
-func callGetPublicKey(teeId [32]byte) ([]byte, error) {
+func callGetTEEPublicKey(teeId [32]byte) ([]byte, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-	result, err := ethCall(append(SEL_GET_PUBLIC_KEY, encoded...))
+	result, err := ethCall(append(SEL_GET_TEE_PUBLIC_KEY, encoded...))
 	if err != nil || len(result) < 64 {
 		return nil, err
 	}

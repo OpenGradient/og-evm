@@ -630,7 +630,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "getPublicKey",
+      "name": "getTEEPublicKey",
       "outputs": [
         {
           "internalType": "bytes",
@@ -709,7 +709,7 @@
             },
             {
               "internalType": "bool",
-              "name": "active",
+              "name": "enabled",
               "type": "bool"
             },
             {
@@ -873,7 +873,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "isEnabled",
+      "name": "isTEEEnabled",
       "outputs": [
         {
           "internalType": "bool",
@@ -1128,7 +1128,7 @@
         },
         {
           "internalType": "bool",
-          "name": "active",
+          "name": "enabled",
           "type": "bool"
         },
         {

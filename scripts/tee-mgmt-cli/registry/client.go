@@ -167,7 +167,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "tlsCertificate", Type: "bytes"},
 		{Name: "pcrHash", Type: "bytes32"},
 		{Name: "teeType", Type: "uint8"},
-		{Name: "isEnabled", Type: "bool"},
+		{Name: "enabled", Type: "bool"},
 		{Name: "registeredAt", Type: "uint256"},
 		{Name: "lastHeartbeatAt", Type: "uint256"},
 	})
@@ -195,7 +195,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		TlsCertificate []byte         `json:"tlsCertificate"`
 		PcrHash        [32]byte       `json:"pcrHash"`
 		TeeType        uint8          `json:"teeType"`
-		IsEnabled      bool           `json:"isEnabled"`
+		Enabled        bool           `json:"enabled"`
 		RegisteredAt   *big.Int       `json:"registeredAt"`
 		LastHeartbeatAt *big.Int      `json:"lastHeartbeatAt"`
 	})
@@ -208,7 +208,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		TLSCertificate: s.TlsCertificate,
 		PCRHash:        s.PcrHash,
 		TEEType:        s.TeeType,
-		IsEnabled:      s.IsEnabled,
+		IsEnabled:      s.Enabled,
 		RegisteredAt:   time.Unix(s.RegisteredAt.Int64(), 0),
 		LastHeartbeatAt: time.Unix(s.LastHeartbeatAt.Int64(), 0),
 	}, nil

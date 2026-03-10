@@ -73,7 +73,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
     }
 
     // Helper: check active status via getTEE
-    async function isEnabled(teeId) {
+    async function isTEEEnabled(teeId) {
         const tee = await registry.getTEE(teeId)
         return tee.active
     }
@@ -97,7 +97,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await isEnabled(localTeeId)).to.be.false
+            expect(await isTEEEnabled(localTeeId)).to.be.false
 
             console.log('✓ Owner disabled TEE')
         })
@@ -123,7 +123,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         it('should allow admin to disable any TEE', async function () {
             // Re-enable first
             await registry.enableTEE(localTeeId, { from: teeOperator })
-            expect(await isEnabled(localTeeId)).to.be.true
+            expect(await isTEEEnabled(localTeeId)).to.be.true
 
             // Admin (owner/accounts[0]) disables
             const result = await registry.disableTEE(localTeeId, { from: owner })
@@ -132,7 +132,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await isEnabled(localTeeId)).to.be.false
+            expect(await isTEEEnabled(localTeeId)).to.be.false
 
             console.log('✓ Admin disabled TEE')
         })
@@ -174,7 +174,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
 
         it('should allow owner to enable their disabled TEE', async function () {
             // TEE starts inactive from mock registration
-            expect(await isEnabled(localTeeId)).to.be.false
+            expect(await isTEEEnabled(localTeeId)).to.be.false
 
             const result = await registry.enableTEE(localTeeId, { from: teeOperator })
 
@@ -182,7 +182,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await isEnabled(localTeeId)).to.be.true
+            expect(await isTEEEnabled(localTeeId)).to.be.true
 
             console.log('✓ Owner enabled TEE')
         })
@@ -208,7 +208,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
         it('should allow admin to enable any TEE', async function () {
             // Disable first
             await registry.disableTEE(localTeeId, { from: teeOperator })
-            expect(await isEnabled(localTeeId)).to.be.false
+            expect(await isTEEEnabled(localTeeId)).to.be.false
 
             // Admin (owner/accounts[0]) enables
             const result = await registry.enableTEE(localTeeId, { from: owner })
@@ -217,7 +217,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 return ev.teeId === localTeeId
             })
 
-            expect(await isEnabled(localTeeId)).to.be.true
+            expect(await isTEEEnabled(localTeeId)).to.be.true
 
             console.log('✓ Admin enabled TEE')
         })
@@ -282,7 +282,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 registry.enableTEE(pcrTeeId, { from: teeOperator })
             )
 
-            expect(await isEnabled(pcrTeeId)).to.be.false
+            expect(await isTEEEnabled(pcrTeeId)).to.be.false
 
             console.log('✓ enableTEE reverts when PCR is revoked')
         })
@@ -317,7 +317,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 registry.enableTEE(teeId, { from: teeOperator })
             )
 
-            expect(await isEnabled(teeId)).to.be.false
+            expect(await isTEEEnabled(teeId)).to.be.false
 
             console.log('✓ enableTEE reverts when PCR is revoked')
         })
@@ -353,7 +353,7 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
                 registry.enableTEE(teeId, { from: teeOperator })
             )
 
-            expect(await isEnabled(teeId)).to.be.false
+            expect(await isTEEEnabled(teeId)).to.be.false
 
             console.log('✓ enableTEE reverts on PCR type mismatch')
         })
@@ -382,13 +382,13 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             )
             const teeId = await registry.computeTEEId(pubKey)
             await registry.enableTEE(teeId, { from: teeOperator })
-            expect(await isEnabled(teeId)).to.be.true
+            expect(await isTEEEnabled(teeId)).to.be.true
 
             // Revoke the PCR - TEE should be actively disabled
             const result = await registry.revokePCR(pcrHash, TEE_TYPE_NITRO)
 
             // TEE should now be disabled
-            expect(await isEnabled(teeId)).to.be.false
+            expect(await isTEEEnabled(teeId)).to.be.false
 
             // TEE should be removed from enabled list
             const enabledTEEs = await registry.getEnabledTEEs(TEE_TYPE_NITRO)
@@ -436,14 +436,14 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
 
             await registry.enableTEE(teeId1, { from: teeOperator })
             await registry.enableTEE(teeId2, { from: teeOperator })
-            expect(await isEnabled(teeId1)).to.be.true
-            expect(await isEnabled(teeId2)).to.be.true
+            expect(await isTEEEnabled(teeId1)).to.be.true
+            expect(await isTEEEnabled(teeId2)).to.be.true
 
             // Revoke the PCR - both TEEs should be disabled
             await registry.revokePCR(pcrHash, TEE_TYPE_NITRO)
 
-            expect(await isEnabled(teeId1)).to.be.false
-            expect(await isEnabled(teeId2)).to.be.false
+            expect(await isTEEEnabled(teeId1)).to.be.false
+            expect(await isTEEEnabled(teeId2)).to.be.false
 
             console.log('✓ Multiple TEEs disabled when shared PCR is revoked')
         })

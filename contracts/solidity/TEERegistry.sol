@@ -525,7 +525,7 @@ contract TEERegistry is AccessControl {
     }
 
     /// @notice Check if a TEE is currently enabled
-    function isEnabled(bytes32 teeId) external view returns (bool) {
+    function isTEEEnabled(bytes32 teeId) external view returns (bool) {
         return tees[teeId].enabled;
     }
 
@@ -542,7 +542,7 @@ contract TEERegistry is AccessControl {
     }
 
     /// @notice Get a TEE's public key
-    function getPublicKey(bytes32 teeId) external view returns (bytes memory) {
+    function getTEEPublicKey(bytes32 teeId) external view returns (bytes memory) {
         return tees[teeId].publicKey;
     }
 
