@@ -36,13 +36,12 @@ var (
 	selRevokeRole       = crypto.Keccak256([]byte("revokeRole(bytes32,address)"))[:4]
 	selHasRole          = crypto.Keccak256([]byte("hasRole(bytes32,address)"))[:4]
 	selAddTEEType       = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
-	selDeactivateTEETyp = crypto.Keccak256([]byte("deactivateTEEType(uint8)"))[:4]
 	selIsValidType      = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
 	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
 	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
 	selIsPCRApproved    = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
 	selComputePCRHash   = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
-	selGetActivePCRs    = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
+	selGetApprovedPCRs  = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
 	selSetAWSRootCert   = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 	selRegisterTEE      = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
 	selDisableTEE       = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
@@ -241,8 +240,8 @@ func (c *Client) IsTEEActive(teeId [32]byte) (bool, error) {
 
 // PCR Calls
 
-func (c *Client) GetActivePCRs() ([]string, error) {
-	result, err := c.ethCall(selGetActivePCRs)
+func (c *Client) GetApprovedPCRs() ([]string, error) {
+	result, err := c.ethCall(selGetApprovedPCRs)
 	if err != nil {
 		return nil, err
 	}
@@ -305,12 +304,6 @@ func (c *Client) AddTEEType(from string, typeId uint8, name string) (string, err
 	strT, _ := abi.NewType("string", "", nil)
 	encoded, _ := abi.Arguments{{Type: u8T}, {Type: strT}}.Pack(typeId, name)
 	return c.sendTx(from, append(selAddTEEType, encoded...))
-}
-
-func (c *Client) DeactivateTEEType(from string, typeId uint8) (string, error) {
-	u8T, _ := abi.NewType("uint8", "", nil)
-	encoded, _ := abi.Arguments{{Type: u8T}}.Pack(typeId)
-	return c.sendTx(from, append(selDeactivateTEETyp, encoded...))
 }
 
 // Certificate Calls

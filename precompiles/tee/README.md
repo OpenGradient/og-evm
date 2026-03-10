@@ -95,7 +95,6 @@ registry.activateTEE(teeId);  // requires PCR to still be approved
 | Function | Who | Purpose |
 |----------|-----|---------|
 | `addTEEType()` | Admin | Add TEE category |
-| `deactivateTEEType()` | Admin | Deactivate a TEE category |
 | `approvePCR()` | Admin | Approve enclave code hash for a TEE type |
 | `revokePCR()` | Admin | Revoke PCR (immediate or with grace period) |
 | `registerTEEWithAttestation()` | Operator | Register new TEE via attestation |
@@ -109,7 +108,7 @@ registry.activateTEE(teeId);  // requires PCR to still be approved
 | `getTLSCertificate()` | Anyone | Get TLS cert for HTTPS |
 | `isActive()` | Anyone | Check TEE status |
 | `getActiveTEEs()` | Anyone | List all active TEE IDs |
-| `getActivePCRs()` | Anyone | List all approved PCR hashes |
+| `getApprovedPCRs()` | Anyone | List all approved PCR hashes |
 
 ## Access Control
 

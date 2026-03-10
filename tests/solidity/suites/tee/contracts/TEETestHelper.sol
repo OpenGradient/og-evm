@@ -24,10 +24,6 @@ contract TEETestHelper {
         registry.addTEEType(typeId, name);
     }
 
-    function deactivateTEEType(uint8 typeId) external {
-        registry.deactivateTEEType(typeId);
-    }
-
     function isValidTEEType(uint8 typeId) external view returns (bool) {
         return registry.isValidTEEType(typeId);
     }

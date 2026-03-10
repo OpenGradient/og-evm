@@ -69,7 +69,7 @@ var (
 	SEL_REVOKE_PCR       = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
 	SEL_IS_PCR_APPROVED  = crypto.Keccak256([]byte("isPCRApproved(bytes32)"))[:4]
 	SEL_COMPUTE_PCR_HASH = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
-	SEL_GET_ACTIVE_PCRS  = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
+	SEL_GET_APPROVED_PCRS = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
 
 	SEL_SET_AWS_ROOT_CERT = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 
@@ -234,16 +234,16 @@ func main() {
 
 	// [LOG] Show existing approved PCRs before making any changes
 	fmt.Println("  🔍 Fetching currently approved PCRs from contract...")
-	existingActivePCRs, err := callGetActivePCRs()
+	existingApprovedPCRs, err := callGetApprovedPCRs()
 	if err != nil {
-		fmt.Printf("  ⚠️  Could not fetch active PCRs: %v\n", err)
+		fmt.Printf("  ⚠️  Could not fetch approved PCRs: %v\n", err)
 	} else {
-		fmt.Printf("  📋 Currently approved PCRs (%d):\n", len(existingActivePCRs))
-		for i, p := range existingActivePCRs {
+		fmt.Printf("  📋 Currently approved PCRs (%d):\n", len(existingApprovedPCRs))
+		for i, p := range existingApprovedPCRs {
 			fmt.Printf("     [%d] %s\n", i, p)
 		}
 	}
-	if len(existingActivePCRs) == 0 {
+	if len(existingApprovedPCRs) == 0 {
 		txHash, err := callApprovePCR(account, pcr0, pcr1, pcr2, "v1.0.0", 0)
 		if err == nil {
 			waitForTx(txHash)
@@ -266,8 +266,8 @@ func main() {
 	approved, _ = callIsPCRApproved(fakeHash)
 	results.Add("isPCRApproved returns false for unknown PCR", !approved, "")
 
-	activePCRs, err := callGetActivePCRs()
-	results.Add("getActivePCRs returns list", err == nil && len(activePCRs) > 0, fmt.Sprintf("count=%d", len(activePCRs)))
+	approvedPCRs, err := callGetApprovedPCRs()
+	results.Add("getApprovedPCRs returns list", err == nil && len(approvedPCRs) > 0, fmt.Sprintf("count=%d", len(approvedPCRs)))
 
 	// SECTION 4: TEE Registration
 	fmt.Println("\n------------------------------------------")
@@ -353,9 +353,9 @@ func main() {
 				fmt.Println("  ✅ Real PCRs already approved")
 			}
 
-			// [LOG] Dump final state of active PCRs right before registration attempt
-			fmt.Println("  🔍 Active PCRs in contract (pre-registration):")
-			preRegPCRs, err := callGetActivePCRs()
+			// [LOG] Dump final state of approved PCRs right before registration attempt
+			fmt.Println("  🔍 Approved PCRs in contract (pre-registration):")
+			preRegPCRs, err := callGetApprovedPCRs()
 			if err != nil {
 				fmt.Printf("     ⚠️  Could not fetch: %v\n", err)
 			} else {
@@ -426,8 +426,8 @@ func main() {
 						} else {
 							// [LOG] On failure, dump current PCR state to diagnose mismatch
 							fmt.Println("  ❌ Registration failed — dumping PCR state for diagnosis:")
-							failPCRs, _ := callGetActivePCRs()
-							fmt.Printf("     Active PCRs in contract (%d):\n", len(failPCRs))
+							failPCRs, _ := callGetApprovedPCRs()
+							fmt.Printf("     Approved PCRs in contract (%d):\n", len(failPCRs))
 							for i, p := range failPCRs {
 								fmt.Printf("       [%d] %s\n", i, p)
 							}
@@ -1124,8 +1124,8 @@ func callComputePCRHash(pcr0, pcr1, pcr2 []byte) ([32]byte, error) {
 	return hash, nil
 }
 
-func callGetActivePCRs() ([]string, error) {
-	result, err := ethCall(SEL_GET_ACTIVE_PCRS)
+func callGetApprovedPCRs() ([]string, error) {
+	result, err := ethCall(SEL_GET_APPROVED_PCRS)
 	if err != nil || len(result) < 64 {
 		return nil, err
 	}

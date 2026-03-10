@@ -18,12 +18,12 @@ var pcrListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all currently approved PCR hashes",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("=== Active PCRs ===")
-		pcrs, err := client.GetActivePCRs()
+		fmt.Println("=== Approved PCRs ===")
+		pcrs, err := client.GetApprovedPCRs()
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
-		fmt.Printf("Found %d active PCR(s)\n\n", len(pcrs))
+		fmt.Printf("Found %d approved PCR(s)\n\n", len(pcrs))
 		for i, h := range pcrs {
 			fmt.Printf("  [%d] 0x%s\n", i+1, h)
 		}

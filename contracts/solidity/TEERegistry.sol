@@ -108,7 +108,7 @@ contract TEERegistry is AccessControl {
     }
 
     struct ApprovedPCR {
-        bool active;
+        bool approved;
         uint8 teeType;
         uint256 approvedAt;
         string version;
@@ -116,7 +116,6 @@ contract TEERegistry is AccessControl {
 
     struct TEETypeInfo {
         string name;
-        bool active;
         uint256 addedAt;
     }
 
@@ -146,7 +145,7 @@ contract TEERegistry is AccessControl {
     uint8[] private _teeTypeList;
 
     // PCR Registry: teeType => pcrHash => ApprovedPCR
-    mapping(uint8 => mapping(bytes32 => ApprovedPCR)) public approvedPCRs;
+    mapping(uint8 => mapping(bytes32 => ApprovedPCR)) public pcrRecords;
 
     struct PCRKey {
         bytes32 pcrHash;
@@ -170,7 +169,6 @@ contract TEERegistry is AccessControl {
     // ============ Events ============
 
     event TEETypeAdded(uint8 indexed typeId, string name);
-    event TEETypeDeactivated(uint8 indexed typeId);
     event PCRApproved(bytes32 indexed pcrHash, uint8 indexed teeType, string version);
     event PCRRevoked(bytes32 indexed pcrHash);
     event TEERegistered(bytes32 indexed teeId, address indexed owner, uint8 teeType);
@@ -227,21 +225,14 @@ contract TEERegistry is AccessControl {
         if (teeTypes[typeId].addedAt != 0) revert TEETypeExists();
         teeTypes[typeId] = TEETypeInfo({
             name: name,
-            active: true,
             addedAt: block.timestamp
         });
         _teeTypeList.push(typeId);
         emit TEETypeAdded(typeId, name);
     }
 
-    function deactivateTEEType(uint8 typeId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (teeTypes[typeId].addedAt == 0) revert TEETypeNotFound();
-        teeTypes[typeId].active = false;
-        emit TEETypeDeactivated(typeId);
-    }
-
     function isValidTEEType(uint8 typeId) public view returns (bool) {
-        return teeTypes[typeId].active;
+        return teeTypes[typeId].addedAt != 0;
     }
 
     function getTEETypes() external view returns (uint8[] memory typeIds, TEETypeInfo[] memory infos) {
@@ -266,10 +257,10 @@ contract TEERegistry is AccessControl {
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
         bytes32 pcrHash = computePCRHash(pcrs);
-        bool isNew = approvedPCRs[teeType][pcrHash].approvedAt == 0;
+        bool isNew = pcrRecords[teeType][pcrHash].approvedAt == 0;
 
-        approvedPCRs[teeType][pcrHash] = ApprovedPCR({
-            active: true,
+        pcrRecords[teeType][pcrHash] = ApprovedPCR({
+            approved: true,
             teeType: teeType,
             approvedAt: block.timestamp,
             version: version
@@ -288,7 +279,7 @@ contract TEERegistry is AccessControl {
     function revokePCR(bytes32 pcrHash, uint8 teeType) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (!isPCRApproved(teeType, pcrHash)) revert PCRNotApproved();
 
-        approvedPCRs[teeType][pcrHash].active = false;
+        pcrRecords[teeType][pcrHash].approved = false;
 
         // Actively disable all enabled TEEs running this PCR (iterate backwards for safe swap-and-pop)
         bytes32[] storage list = _enabledTEEList[teeType];
@@ -309,12 +300,12 @@ contract TEERegistry is AccessControl {
     /// @param pcrHash The PCR hash to check
     /// @return bool True if approved
     function isPCRApproved(uint8 teeType, bytes32 pcrHash) public view returns (bool) {
-        return approvedPCRs[teeType][pcrHash].active;
+        return pcrRecords[teeType][pcrHash].approved;
     }
 
     /// @dev Reverts if PCR is not approved for the given TEE type
     function _requirePCRValidForTEE(bytes32 pcrHash, uint8 teeType) private view {
-        if (!approvedPCRs[teeType][pcrHash].active) revert PCRNotApproved();
+        if (!pcrRecords[teeType][pcrHash].approved) revert PCRNotApproved();
     }
 
     /// @notice Compute PCR hash from measurements
@@ -326,7 +317,7 @@ contract TEERegistry is AccessControl {
 
     /// @notice Get all currently approved PCRs
     /// @return PCRKey[] Array of active PCR keys (pcrHash + teeType)
-    function getActivePCRs() external view returns (PCRKey[] memory) {
+    function getApprovedPCRs() external view returns (PCRKey[] memory) {
         uint256 count = 0;
         for (uint256 i = 0; i < _pcrList.length; i++) {
             if (isPCRApproved(_pcrList[i].teeType, _pcrList[i].pcrHash)) count++;

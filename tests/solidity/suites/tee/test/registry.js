@@ -83,29 +83,6 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ Non-admin cannot add TEE type')
         })
 
-        it('should allow admin to deactivate TEE type', async function () {
-            await registry.addTEEType(TYPE_CUSTOM, 'Custom TEE')
-            expect(await registry.isValidTEEType(TYPE_CUSTOM)).to.be.true
-
-            const result = await registry.deactivateTEEType(TYPE_CUSTOM)
-
-            truffleAssert.eventEmitted(result, 'TEETypeDeactivated', (ev) => {
-                return ev.typeId.toString() === TYPE_CUSTOM.toString()
-            })
-
-            expect(await registry.isValidTEEType(TYPE_CUSTOM)).to.be.false
-
-            console.log('✓ TEE type deactivated successfully')
-        })
-
-        it('should reject non-admin deactivating TEE type', async function () {
-            await truffleAssert.reverts(
-                registry.deactivateTEEType(TYPE_AWS_NITRO, { from: user1 })
-            )
-
-            console.log('✓ Non-admin cannot deactivate TEE type')
-        })
-
         it('should list all TEE types', async function () {
             const result = await registry.getTEETypes()
             const typeIds = result.typeIds || result[0]
@@ -144,8 +121,8 @@ contract('TEERegistry', function (accounts) {
 
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.true
 
-            const pcrInfo = await registry.approvedPCRs(TEE_TYPE, pcrHash)
-            expect(pcrInfo.active).to.be.true
+            const pcrInfo = await registry.pcrRecords(TEE_TYPE, pcrHash)
+            expect(pcrInfo.approved).to.be.true
             expect(pcrInfo.version).to.equal('v1.0.0')
             console.log('✓ PCR approved successfully')
         })
@@ -195,12 +172,12 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ PCR revoked successfully')
         })
 
-        it('should list active PCRs', async function () {
-            const activePCRs = await registry.getActivePCRs()
+        it('should list approved PCRs', async function () {
+            const approvedPCRs = await registry.getApprovedPCRs()
 
-            expect(activePCRs.length).to.be.greaterThan(0)
-            console.log('Active PCRs count:', activePCRs.length)
-            console.log('✓ Active PCRs listed successfully')
+            expect(approvedPCRs.length).to.be.greaterThan(0)
+            console.log('Approved PCRs count:', approvedPCRs.length)
+            console.log('✓ Approved PCRs listed successfully')
         })
 
         it('should reject non-admin approving PCR', async function () {
@@ -478,10 +455,10 @@ contract('TEERegistry', function (accounts) {
                 return ev.pcrHash === pcrHash && ev.version === 'v-duplicate-test-2'
             })
 
-            const pcrInfo = await registry.approvedPCRs(TEE_TYPE, pcrHash)
+            const pcrInfo = await registry.pcrRecords(TEE_TYPE, pcrHash)
             expect(pcrInfo.version).to.equal('v-duplicate-test-2')
 
-            console.log('✓ Re-approval of active PCR updates version')
+            console.log('✓ Re-approval of approved PCR updates version')
         })
 
         it('should allow re-approval after revocation', async function () {
@@ -500,8 +477,8 @@ contract('TEERegistry', function (accounts) {
             // Re-approve
             await registry.approvePCR(pcrs, 'v-revoke-reapprove-fixed', TEE_TYPE)
 
-            const infoAfter = await registry.approvedPCRs(TEE_TYPE, pcrHash)
-            expect(infoAfter.active).to.be.true
+            const infoAfter = await registry.pcrRecords(TEE_TYPE, pcrHash)
+            expect(infoAfter.approved).to.be.true
             expect(infoAfter.version).to.equal('v-revoke-reapprove-fixed')
 
             console.log('✓ Re-approval after revocation works')

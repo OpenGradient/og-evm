@@ -298,19 +298,6 @@
       "type": "event"
     },
     {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "uint8",
-          "name": "typeId",
-          "type": "uint8"
-        }
-      ],
-      "name": "TEETypeDeactivated",
-      "type": "event"
-    },
-    {
       "inputs": [],
       "name": "DEFAULT_ADMIN_ROLE",
       "outputs": [
@@ -428,11 +415,11 @@
           "type": "bytes32"
         }
       ],
-      "name": "approvedPCRs",
+      "name": "pcrRecords",
       "outputs": [
         {
           "internalType": "bool",
-          "name": "active",
+          "name": "approved",
           "type": "bool"
         },
         {
@@ -565,21 +552,8 @@
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint8",
-          "name": "typeId",
-          "type": "uint8"
-        }
-      ],
-      "name": "deactivateTEEType",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
       "inputs": [],
-      "name": "getActivePCRs",
+      "name": "getApprovedPCRs",
       "outputs": [
         {
           "internalType": "bytes32[]",
@@ -746,11 +720,6 @@
               "internalType": "string",
               "name": "name",
               "type": "string"
-            },
-            {
-              "internalType": "bool",
-              "name": "active",
-              "type": "bool"
             },
             {
               "internalType": "uint256",
@@ -1066,11 +1035,6 @@
           "internalType": "string",
           "name": "name",
           "type": "string"
-        },
-        {
-          "internalType": "bool",
-          "name": "active",
-          "type": "bool"
         },
         {
           "internalType": "uint256",

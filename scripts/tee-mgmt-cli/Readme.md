@@ -76,7 +76,6 @@ Approve flags:
 ```bash
 tee-cli type list                         # List registered TEE types
 tee-cli type add <type_id> <name>         # Add a new TEE type
-tee-cli type deactivate <type_id>         # Deactivate a TEE type
 ```
 
 ### `role` — Access Control
