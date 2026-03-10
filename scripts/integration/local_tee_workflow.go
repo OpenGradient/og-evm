@@ -66,28 +66,25 @@ var (
 	SEL_GET_TEE_TYPES = crypto.Keccak256([]byte("getTEETypes()"))[:4]
 
 	SEL_APPROVE_PCR      = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
-	SEL_REVOKE_PCR       = crypto.Keccak256([]byte("revokePCR(bytes32,uint256)"))[:4]
-	SEL_IS_PCR_APPROVED  = crypto.Keccak256([]byte("isPCRApproved(bytes32)"))[:4]
+	SEL_REVOKE_PCR       = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
+	SEL_IS_PCR_APPROVED  = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
 	SEL_COMPUTE_PCR_HASH = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
-	SEL_GET_ACTIVE_PCRS  = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
+	SEL_GET_APPROVED_PCRS = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
 
 	SEL_SET_AWS_ROOT_CERT = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 
 	SEL_REGISTER_TEE   = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
-	SEL_DEACTIVATE_TEE = crypto.Keccak256([]byte("deactivateTEE(bytes32)"))[:4]
-	SEL_ACTIVATE_TEE   = crypto.Keccak256([]byte("activateTEE(bytes32)"))[:4]
+	SEL_DISABLE_TEE = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
+	SEL_ENABLE_TEE  = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
 
 	SEL_GET_TEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	SEL_GET_ACTIVE_TEES   = crypto.Keccak256([]byte("getActiveTEEs()"))[:4]
+	SEL_GET_ENABLED_TEES  = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
 	SEL_GET_TEES_BY_TYPE  = crypto.Keccak256([]byte("getTEEsByType(uint8)"))[:4]
 	SEL_GET_TEES_BY_OWNER = crypto.Keccak256([]byte("getTEEsByOwner(address)"))[:4]
-	SEL_GET_PUBLIC_KEY    = crypto.Keccak256([]byte("getPublicKey(bytes32)"))[:4]
-	SEL_GET_TLS_CERT      = crypto.Keccak256([]byte("getTLSCertificate(bytes32)"))[:4]
-	SEL_IS_ACTIVE         = crypto.Keccak256([]byte("isActive(bytes32)"))[:4]
-	SEL_GET_PAYMENT_ADDR  = crypto.Keccak256([]byte("getPaymentAddress(bytes32)"))[:4]
+	SEL_GET_TEE_PUBLIC_KEY    = crypto.Keccak256([]byte("getTEEPublicKey(bytes32)"))[:4]
+	SEL_IS_TEE_ENABLED        = crypto.Keccak256([]byte("isTEEEnabled(bytes32)"))[:4]
 
 	SEL_COMPUTE_TEE_ID   = crypto.Keccak256([]byte("computeTEEId(bytes)"))[:4]
-	SEL_COMPUTE_MSG_HASH = crypto.Keccak256([]byte("computeMessageHash(bytes32,bytes32,uint256)"))[:4]
 )
 
 // ============================================================================
@@ -102,6 +99,11 @@ type PCRMeasurements struct {
 
 type MeasurementsFile struct {
 	Measurements PCRMeasurements `json:"Measurements"`
+}
+
+type ApprovedPCRKey struct {
+	PCRHash [32]byte
+	TEEType uint8
 }
 
 type AttestationResponse struct {
@@ -234,22 +236,22 @@ func main() {
 
 	// [LOG] Show existing approved PCRs before making any changes
 	fmt.Println("  🔍 Fetching currently approved PCRs from contract...")
-	existingActivePCRs, err := callGetActivePCRs()
+	existingApprovedPCRs, err := callGetApprovedPCRs()
 	if err != nil {
-		fmt.Printf("  ⚠️  Could not fetch active PCRs: %v\n", err)
+		fmt.Printf("  ⚠️  Could not fetch approved PCRs: %v\n", err)
 	} else {
-		fmt.Printf("  📋 Currently approved PCRs (%d):\n", len(existingActivePCRs))
-		for i, p := range existingActivePCRs {
-			fmt.Printf("     [%d] %s\n", i, p)
+		fmt.Printf("  📋 Currently approved PCRs (%d):\n", len(existingApprovedPCRs))
+		for i, p := range existingApprovedPCRs {
+			fmt.Printf("     [%d] pcrHash=0x%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
 		}
 	}
-	if len(existingActivePCRs) == 0 {
+	if len(existingApprovedPCRs) == 0 {
 		txHash, err := callApprovePCR(account, pcr0, pcr1, pcr2, "v1.0.0", 0)
 		if err == nil {
 			waitForTx(txHash)
 		}
 	}
-	approved, _ := callIsPCRApproved(pcrHash)
+	approved, _ := callIsPCRApproved(0, pcrHash)
 	// [LOG] Clearly show the approval status of the PCR we are about to use
 	fmt.Printf("  🔍 isPCRApproved(filePCRHash=%s) = %v\n", hex.EncodeToString(pcrHash[:]), approved)
 
@@ -263,11 +265,11 @@ func main() {
 	rand.Read(fakePCR)
 	fakeHash, _ := callComputePCRHash(fakePCR, pcr1, pcr2)
 	fmt.Printf("  🔍 isPCRApproved(fakePCRHash=%s) = expected false\n", hex.EncodeToString(fakeHash[:]))
-	approved, _ = callIsPCRApproved(fakeHash)
+	approved, _ = callIsPCRApproved(0, fakeHash)
 	results.Add("isPCRApproved returns false for unknown PCR", !approved, "")
 
-	activePCRs, err := callGetActivePCRs()
-	results.Add("getActivePCRs returns list", err == nil && len(activePCRs) > 0, fmt.Sprintf("count=%d", len(activePCRs)))
+	approvedPCRs, err := callGetApprovedPCRs()
+	results.Add("getApprovedPCRs returns list", err == nil && len(approvedPCRs) > 0, fmt.Sprintf("count=%d", len(approvedPCRs)))
 
 	// SECTION 4: TEE Registration
 	fmt.Println("\n------------------------------------------")
@@ -335,7 +337,7 @@ func main() {
 			realPCRHash, _ := callComputePCRHash(realPCR0, realPCR1, realPCR2)
 			fmt.Printf("  📊 Real enclave PCR hash: 0x%s\n", hex.EncodeToString(realPCRHash[:]))
 
-			realApproved, _ := callIsPCRApproved(realPCRHash)
+			realApproved, _ := callIsPCRApproved(0, realPCRHash)
 			fmt.Printf("  🔍 isPCRApproved(realPCRHash) = %v\n", realApproved)
 
 			if !realApproved {
@@ -344,7 +346,7 @@ func main() {
 				if err == nil {
 					waitForTx(txHash)
 					// [LOG] Verify the approval actually stuck
-					postApproval, _ := callIsPCRApproved(realPCRHash)
+					postApproval, _ := callIsPCRApproved(0, realPCRHash)
 					fmt.Printf("  ✅ Real PCRs approved — post-approval isPCRApproved=%v\n", postApproval)
 				} else {
 					fmt.Printf("  ❌ Failed to approve real PCRs: %v\n", err)
@@ -353,14 +355,14 @@ func main() {
 				fmt.Println("  ✅ Real PCRs already approved")
 			}
 
-			// [LOG] Dump final state of active PCRs right before registration attempt
-			fmt.Println("  🔍 Active PCRs in contract (pre-registration):")
-			preRegPCRs, err := callGetActivePCRs()
+			// [LOG] Dump final state of approved PCRs right before registration attempt
+			fmt.Println("  🔍 Approved PCRs in contract (pre-registration):")
+			preRegPCRs, err := callGetApprovedPCRs()
 			if err != nil {
 				fmt.Printf("     ⚠️  Could not fetch: %v\n", err)
 			} else {
 				for i, p := range preRegPCRs {
-					fmt.Printf("     [%d] %s\n", i, p)
+					fmt.Printf("     [%d] pcrHash=0x%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
 				}
 			}
 		}
@@ -387,10 +389,10 @@ func main() {
 				// [LOG] Show TLS cert fingerprint for cross-check
 				fmt.Printf("  🔏 TLS cert SHA256: %x\n", sha256.Sum256(tlsCertDER))
 
-				isActive, _ := callIsActive(expectedTeeId)
-				fmt.Printf("  🔍 isActive(expectedTeeId) = %v\n", isActive)
+				isEnabled, _ := callIsTEEEnabled(expectedTeeId)
+				fmt.Printf("  🔍 isTEEEnabled(expectedTeeId) = %v\n", isEnabled)
 
-				if isActive {
+				if isEnabled {
 					fmt.Println("  ℹ️  TEE already registered")
 					registrationSuccess = true
 					registeredTEEId = expectedTeeId
@@ -421,15 +423,15 @@ func main() {
 
 							// [LOG] Verify post-registration state
 							fmt.Printf("  ✅ Registration succeeded — verifying on-chain state...\n")
-							postActive, _ := callIsActive(registeredTEEId)
-							fmt.Printf("     isActive(teeId)=%v\n", postActive)
+							postEnabled, _ := callIsTEEEnabled(registeredTEEId)
+							fmt.Printf("     isTEEEnabled(teeId)=%v\n", postEnabled)
 						} else {
 							// [LOG] On failure, dump current PCR state to diagnose mismatch
 							fmt.Println("  ❌ Registration failed — dumping PCR state for diagnosis:")
-							failPCRs, _ := callGetActivePCRs()
-							fmt.Printf("     Active PCRs in contract (%d):\n", len(failPCRs))
+							failPCRs, _ := callGetApprovedPCRs()
+							fmt.Printf("     Approved PCRs in contract (%d):\n", len(failPCRs))
 							for i, p := range failPCRs {
-								fmt.Printf("       [%d] %s\n", i, p)
+								fmt.Printf("       [%d] pcrHash=0x%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
 							}
 						}
 					}
@@ -444,10 +446,10 @@ func main() {
 	fmt.Println("------------------------------------------")
 
 	if registrationSuccess {
-		isActive, err := callIsActive(registeredTEEId)
-		results.Add("isActive returns true for registered TEE", isActive && err == nil, "")
+		isEnabled, err := callIsTEEEnabled(registeredTEEId)
+		results.Add("isTEEEnabled returns true for registered TEE", isEnabled && err == nil, "")
 
-		storedKey, err := callGetPublicKey(registeredTEEId)
+		storedKey, err := callGetTEEPublicKey(registeredTEEId)
 		keyMatches := err == nil && bytes.Equal(storedKey, signingPubKeyDER)
 		// [LOG] Show key comparison detail when it fails
 		if !keyMatches {
@@ -457,13 +459,10 @@ func main() {
 			}
 			fmt.Printf("     expected SHA256: %x\n", sha256.Sum256(signingPubKeyDER))
 		}
-		results.Add("getPublicKey returns correct key", keyMatches, "")
+		results.Add("getTEEPublicKey returns correct key", keyMatches, "")
 
-		storedCert, err := callGetTLSCertificate(registeredTEEId)
-		results.Add("getTLSCertificate returns cert", err == nil && len(storedCert) > 0, fmt.Sprintf("%d bytes", len(storedCert)))
-
-		activeTEEs, err := callGetActiveTEEs()
-		results.Add("getActiveTEEs includes registered TEE", err == nil && len(activeTEEs) > 0, fmt.Sprintf("count=%d", len(activeTEEs)))
+		enabledTEEs, err := callGetEnabledTEEs(0)
+		results.Add("getEnabledTEEs includes registered TEE", err == nil && len(enabledTEEs) > 0, fmt.Sprintf("count=%d", len(enabledTEEs)))
 
 		teesByType, err := callGetTEEsByType(0)
 		results.Add("getTEEsByType(0) includes registered TEE", err == nil && len(teesByType) > 0, fmt.Sprintf("count=%d", len(teesByType)))
@@ -480,19 +479,19 @@ func main() {
 	fmt.Println("------------------------------------------")
 
 	if registrationSuccess {
-		txHash, err := callDeactivateTEE(account, registeredTEEId)
+		txHash, err := callDisableTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
 		}
-		isActive, _ := callIsActive(registeredTEEId)
-		results.Add("Deactivate TEE", !isActive, "")
+		isEnabled, _ := callIsTEEEnabled(registeredTEEId)
+		results.Add("Disable TEE", !isEnabled, "")
 
-		txHash, err = callActivateTEE(account, registeredTEEId)
+		txHash, err = callEnableTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
 		}
-		isActive, _ = callIsActive(registeredTEEId)
-		results.Add("Reactivate TEE", isActive, "")
+		isEnabled, _ = callIsTEEEnabled(registeredTEEId)
+		results.Add("Re-enable TEE", isEnabled, "")
 	} else {
 		fmt.Println("  ⚠️  Skipping lifecycle tests (registration failed)")
 	}
@@ -517,9 +516,9 @@ func main() {
 	badSig[0] ^= 0xFF
 	err = verifySignatureLocal(testPubKeyDER, messageHash[:], badSig)
 	results.Add("Reject invalid signature", err != nil, "")
-	// SECTION 8: PCR Revocation & TEE Deactivation Security
+	// SECTION 8: PCR Revocation & TEE Disable Security
 	fmt.Println("\n------------------------------------------")
-	fmt.Println("SECTION 8: PCR Revocation & TEE Deactivation")
+	fmt.Println("SECTION 8: PCR Revocation & TEE Disable")
 	fmt.Println("------------------------------------------")
 
 	if registrationSuccess {
@@ -541,7 +540,7 @@ func main() {
 		txHash, err := callApprovePCR(account, testPCR0, testPCR1, testPCR2, "test-revoke", 0)
 		if err == nil {
 			waitForTx(txHash)
-			approved, _ := callIsPCRApproved(testPCRHash)
+			approved, _ := callIsPCRApproved(0, testPCRHash)
 			results.Add("Test PCR approved", approved, "")
 		} else {
 			results.Add("Approve test PCR", false, err.Error())
@@ -549,40 +548,40 @@ func main() {
 
 		// Step 2: Revoke the test PCR
 		fmt.Println("\n  Step 2: Revoke test PCR")
-		txHash, err = callRevokePCR(account, testPCRHash, 0)
+		txHash, err = callRevokePCR(account, testPCRHash, 0) // teeType=0
 		if err != nil {
 			results.Add("Revoke test PCR", false, err.Error())
 		} else {
 			waitForTx(txHash)
-			stillApproved, _ := callIsPCRApproved(testPCRHash)
+			stillApproved, _ := callIsPCRApproved(0, testPCRHash)
 			results.Add("Test PCR no longer approved after revocation", !stillApproved, "")
 			fmt.Println("  ✅ Test PCR successfully revoked")
 		}
 
-		// Step 3: Test activate/deactivate cycle with valid PCR
-		fmt.Println("\n  Step 3: Test activate/deactivate cycle")
+		// Step 3: Test enable/disable cycle with valid PCR
+		fmt.Println("\n  Step 3: Test enable/disable cycle")
 
-		// Deactivate our real TEE
-		txHash, err = callDeactivateTEE(account, registeredTEEId)
+		// Disable our real TEE
+		txHash, err = callDisableTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
-			isActive, _ := callIsActive(registeredTEEId)
-			results.Add("TEE deactivated", !isActive, "")
+			isEnabled, _ := callIsTEEEnabled(registeredTEEId)
+			results.Add("TEE disabled", !isEnabled, "")
 		}
 
-		// Reactivate - should succeed since TEE's PCR is still valid
-		txHash, err = callActivateTEE(account, registeredTEEId)
+		// Re-enable - should succeed since TEE's PCR is still valid
+		txHash, err = callEnableTEE(account, registeredTEEId)
 		if err == nil {
 			waitForTx(txHash)
-			isActive, _ := callIsActive(registeredTEEId)
-			results.Add("TEE reactivated with valid PCR", isActive, "")
-			fmt.Println("  ✅ Reactivation successful (PCR valid)")
+			isEnabled, _ := callIsTEEEnabled(registeredTEEId)
+			results.Add("TEE re-enabled with valid PCR", isEnabled, "")
+			fmt.Println("  ✅ Re-enable successful (PCR valid)")
 		} else {
-			results.Add("Reactivate TEE", false, err.Error())
+			results.Add("Re-enable TEE", false, err.Error())
 		}
 
-		// Step 4: Test grace period functionality
-		fmt.Println("\n  Step 4: Test PCR grace period")
+		// Step 4: Test PCR revocation disables TEEs
+		fmt.Println("\n  Step 4: Test PCR revocation disables TEEs")
 
 		pcrV1_0 := make([]byte, 48)
 		pcrV1_1 := make([]byte, 48)
@@ -605,31 +604,32 @@ func main() {
 		fmt.Printf("  📊 PCR v2 Hash: 0x%s\n", hex.EncodeToString(pcrV2Hash[:]))
 
 		// Approve v1 and v2
-		txHash, _ = callApprovePCR(account, pcrV1_0, pcrV1_1, pcrV1_2, "v1-grace", 0)
+		txHash, _ = callApprovePCR(account, pcrV1_0, pcrV1_1, pcrV1_2, "v1-revoke-test", 0)
 		waitForTx(txHash)
-		txHash, _ = callApprovePCR(account, pcrV2_0, pcrV2_1, pcrV2_2, "v2-grace", 0)
+		txHash, _ = callApprovePCR(account, pcrV2_0, pcrV2_1, pcrV2_2, "v2-revoke-test", 0)
 		waitForTx(txHash)
 
-		// Revoke v1 with 1 hour grace period
-		txHash, err = callRevokePCR(account, pcrV1Hash, 3600)
+		// Revoke v1 - should be immediate
+		txHash, err = callRevokePCR(account, pcrV1Hash, 0) // teeType=0
 		if err == nil {
 			waitForTx(txHash)
 
-			// Both should be valid during grace period
-			v1Valid, _ := callIsPCRApproved(pcrV1Hash)
-			v2Valid, _ := callIsPCRApproved(pcrV2Hash)
+			// v1 should be revoked, v2 should still be valid
+			v1Valid, _ := callIsPCRApproved(0, pcrV1Hash)
+			v2Valid, _ := callIsPCRApproved(0, pcrV2Hash)
 
-			bothValid := v1Valid && v2Valid
-			results.Add("Both PCRs valid during grace period", bothValid,
-				fmt.Sprintf("v1=%v, v2=%v", v1Valid, v2Valid))
+			results.Add("Revoked PCR v1 is invalid", !v1Valid,
+				fmt.Sprintf("v1=%v (expected false)", v1Valid))
+			results.Add("PCR v2 still valid after v1 revocation", v2Valid,
+				fmt.Sprintf("v2=%v", v2Valid))
 
-			if bothValid {
-				fmt.Println("  ✅ Grace period working: both v1 and v2 valid")
+			if !v1Valid && v2Valid {
+				fmt.Println("  ✅ PCR revocation working: v1 revoked, v2 still valid")
 			} else {
-				fmt.Printf("  ⚠️  Grace period issue: v1=%v, v2=%v\n", v1Valid, v2Valid)
+				fmt.Printf("  ⚠️  Revocation issue: v1=%v, v2=%v\n", v1Valid, v2Valid)
 			}
 		} else {
-			results.Add("Revoke PCR with grace period", false, err.Error())
+			results.Add("Revoke PCR", false, err.Error())
 		}
 
 		// Step 5: Test duplicate PCR prevention
@@ -674,9 +674,6 @@ func main() {
 	computedId, err := callComputeTEEId(testPubKeyDER)
 	expectedId := crypto.Keccak256Hash(testPubKeyDER)
 	results.Add("computeTEEId matches keccak256", err == nil && computedId == expectedId, "")
-
-	computedHash, err := callComputeMessageHash(inputHash, outputHash, timestamp)
-	results.Add("computeMessageHash returns hash", err == nil && computedHash != [32]byte{}, "")
 
 	// Summary
 	fmt.Println("\n==========================================")
@@ -938,11 +935,11 @@ func loadPCRMeasurements() ([]byte, []byte, []byte, error) {
 	return pcr0, pcr1, pcr2, nil
 }
 
-func callRevokePCR(from string, pcrHash [32]byte, gracePeriod uint64) (string, error) {
+func callRevokePCR(from string, pcrHash [32]byte, teeType uint8) (string, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	uint256Type, _ := abi.NewType("uint256", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}, {Type: uint256Type}}
-	encoded, _ := args.Pack(pcrHash, new(big.Int).SetUint64(gracePeriod))
+	u8Type, _ := abi.NewType("uint8", "", nil)
+	args := abi.Arguments{{Type: bytes32Type}, {Type: u8Type}}
+	encoded, _ := args.Pack(pcrHash, teeType)
 	return sendTx(from, append(SEL_REVOKE_PCR, encoded...))
 }
 
@@ -1094,10 +1091,11 @@ func callApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string, teeTyp
 	return sendTx(from, append(SEL_APPROVE_PCR, encoded...))
 }
 
-func callIsPCRApproved(pcrHash [32]byte) (bool, error) {
+func callIsPCRApproved(teeType uint8, pcrHash [32]byte) (bool, error) {
+	uint8Type, _ := abi.NewType("uint8", "", nil)
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}}
-	encoded, _ := args.Pack(pcrHash)
+	args := abi.Arguments{{Type: uint8Type}, {Type: bytes32Type}}
+	encoded, _ := args.Pack(teeType, pcrHash)
 	result, err := ethCall(append(SEL_IS_PCR_APPROVED, encoded...))
 	if err != nil || len(result) < 32 {
 		return false, err
@@ -1123,18 +1121,25 @@ func callComputePCRHash(pcr0, pcr1, pcr2 []byte) ([32]byte, error) {
 	return hash, nil
 }
 
-func callGetActivePCRs() ([]string, error) {
-	result, err := ethCall(SEL_GET_ACTIVE_PCRS)
+func callGetApprovedPCRs() ([]ApprovedPCRKey, error) {
+	result, err := ethCall(SEL_GET_APPROVED_PCRS)
 	if err != nil || len(result) < 64 {
 		return nil, err
 	}
-	length := new(big.Int).SetBytes(result[32:64]).Uint64()
-	pcrs := make([]string, length)
+	// ABI: offset (32 bytes) | length (32 bytes) | then length * (bytes32 pcrHash, uint8 teeType padded to 32 bytes)
+	offset := new(big.Int).SetBytes(result[0:32]).Uint64()
+	length := new(big.Int).SetBytes(result[offset : offset+32]).Uint64()
+	pcrs := make([]ApprovedPCRKey, length)
+	dataStart := offset + 32
 	for i := uint64(0); i < length; i++ {
-		start := 64 + i*32
-		if start+32 <= uint64(len(result)) {
-			pcrs[i] = "0x" + hex.EncodeToString(result[start:start+32])
+		entryStart := dataStart + i*64 // each tuple is 2 slots: bytes32 + uint8
+		if entryStart+64 > uint64(len(result)) {
+			break
 		}
+		var key ApprovedPCRKey
+		copy(key.PCRHash[:], result[entryStart:entryStart+32])
+		key.TEEType = result[entryStart+63] // uint8 is right-padded in the last byte of the 32-byte slot
+		pcrs[i] = key
 	}
 	return pcrs, nil
 }
@@ -1172,40 +1177,40 @@ func callRegisterTEE(from string, attestation, signingKey, tlsCert []byte, payme
 	return sendTx(from, append(SEL_REGISTER_TEE, encoded...))
 }
 
-func callDeactivateTEE(from string, teeId [32]byte) (string, error) {
+func callDisableTEE(from string, teeId [32]byte) (string, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-	return sendTx(from, append(SEL_DEACTIVATE_TEE, encoded...))
+	return sendTx(from, append(SEL_DISABLE_TEE, encoded...))
 }
 
-func callActivateTEE(from string, teeId [32]byte) (string, error) {
+func callEnableTEE(from string, teeId [32]byte) (string, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-	return sendTx(from, append(SEL_ACTIVATE_TEE, encoded...))
+	return sendTx(from, append(SEL_ENABLE_TEE, encoded...))
 }
 
 // ============================================================================
 // CONTRACT CALLS - Queries
 // ============================================================================
 
-func callIsActive(teeId [32]byte) (bool, error) {
+func callIsTEEEnabled(teeId [32]byte) (bool, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-	result, err := ethCall(append(SEL_IS_ACTIVE, encoded...))
+	result, err := ethCall(append(SEL_IS_TEE_ENABLED, encoded...))
 	if err != nil || len(result) < 32 {
 		return false, err
 	}
 	return result[31] == 1, nil
 }
 
-func callGetPublicKey(teeId [32]byte) ([]byte, error) {
+func callGetTEEPublicKey(teeId [32]byte) ([]byte, error) {
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
 	args := abi.Arguments{{Type: bytes32Type}}
 	encoded, _ := args.Pack(teeId)
-	result, err := ethCall(append(SEL_GET_PUBLIC_KEY, encoded...))
+	result, err := ethCall(append(SEL_GET_TEE_PUBLIC_KEY, encoded...))
 	if err != nil || len(result) < 64 {
 		return nil, err
 	}
@@ -1216,23 +1221,11 @@ func callGetPublicKey(teeId [32]byte) ([]byte, error) {
 	return result[64 : 64+length], nil
 }
 
-func callGetTLSCertificate(teeId [32]byte) ([]byte, error) {
-	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}}
-	encoded, _ := args.Pack(teeId)
-	result, err := ethCall(append(SEL_GET_TLS_CERT, encoded...))
-	if err != nil || len(result) < 64 {
-		return nil, err
-	}
-	length := new(big.Int).SetBytes(result[32:64]).Uint64()
-	if uint64(len(result)) < 64+length {
-		return nil, fmt.Errorf("truncated")
-	}
-	return result[64 : 64+length], nil
-}
-
-func callGetActiveTEEs() ([]string, error) {
-	result, err := ethCall(SEL_GET_ACTIVE_TEES)
+func callGetEnabledTEEs(teeType uint8) ([]string, error) {
+	uint8Type, _ := abi.NewType("uint8", "", nil)
+	args := abi.Arguments{{Type: uint8Type}}
+	encoded, _ := args.Pack(teeType)
+	result, err := ethCall(append(SEL_GET_ENABLED_TEES, encoded...))
 	if err != nil || len(result) < 64 {
 		return nil, err
 	}
@@ -1300,20 +1293,6 @@ func callComputeTEEId(publicKey []byte) ([32]byte, error) {
 	var id [32]byte
 	copy(id[:], result[:32])
 	return id, nil
-}
-
-func callComputeMessageHash(inputHash, outputHash [32]byte, timestamp *big.Int) ([32]byte, error) {
-	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	uint256Type, _ := abi.NewType("uint256", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}, {Type: bytes32Type}, {Type: uint256Type}}
-	encoded, _ := args.Pack(inputHash, outputHash, timestamp)
-	result, err := ethCall(append(SEL_COMPUTE_MSG_HASH, encoded...))
-	if err != nil || len(result) < 32 {
-		return [32]byte{}, err
-	}
-	var hash [32]byte
-	copy(hash[:], result[:32])
-	return hash, nil
 }
 
 // ============================================================================
