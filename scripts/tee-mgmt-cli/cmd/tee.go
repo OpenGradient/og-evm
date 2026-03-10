@@ -13,23 +13,26 @@ import (
 
 var teeCmd = &cobra.Command{
 	Use:   "tee",
-	Short: "Manage TEE instances (register, activate, deactivate, inspect)",
+	Short: "Manage TEE instances (register, enable, disable, inspect)",
 }
 
 var teeListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all active TEEs in the registry",
+	Short: "List enabled TEEs for a given type",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("=== Active TEEs in Registry ===")
-		fmt.Printf("Registry: %s\n", client.RegistryAddress)
-		fmt.Printf("RPC: %s\n\n", client.RPCURL)
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
 
-		tees, err := client.GetActiveTEEs()
+		fmt.Println("=== Enabled TEEs in Registry ===")
+		fmt.Printf("Registry: %s\n", client.RegistryAddress)
+		fmt.Printf("RPC: %s\n", client.RPCURL)
+		fmt.Printf("Type: %d\n\n", teeType)
+
+		tees, err := client.GetEnabledTEEs(teeType)
 		if err != nil {
-			return fmt.Errorf("failed to get active TEEs: %w", err)
+			return fmt.Errorf("failed to get enabled TEEs: %w", err)
 		}
 
-		fmt.Printf("Found %d active TEE(s)\n\n", len(tees))
+		fmt.Printf("Found %d enabled TEE(s)\n\n", len(tees))
 		for i, teeId := range tees {
 			fmt.Printf("  [%d] 0x%s\n", i+1, teeId)
 		}
@@ -59,22 +62,22 @@ var teeShowCmd = &cobra.Command{
 		fmt.Printf("  Endpoint:       %s\n", info.Endpoint)
 		fmt.Printf("  PCR Hash:       0x%s\n", hex.EncodeToString(info.PCRHash[:]))
 		fmt.Printf("  TEE Type:       %d (%s)\n", info.TEEType, registry.GetTEETypeName(info.TEEType))
-		fmt.Printf("  Active:         %v\n", info.IsActive)
+		fmt.Printf("  Enabled:        %v\n", info.IsEnabled)
 		fmt.Printf("  Registered:     %s UTC\n", info.RegisteredAt.UTC().Format("2006-01-02 15:04:05"))
-		fmt.Printf("  Last Updated:   %s UTC\n", info.LastUpdatedAt.UTC().Format("2006-01-02 15:04:05"))
+		fmt.Printf("  Last Heartbeat: %s UTC\n", info.LastHeartbeatAt.UTC().Format("2006-01-02 15:04:05"))
 
 		fmt.Println("\n  --- Public Key ---")
-		if pubKey, err := client.GetPublicKey(teeId); err == nil && len(pubKey) > 0 {
-			fmt.Printf("  Size: %d bytes\n", len(pubKey))
-			fmt.Printf("  Hex:  %s...\n", registry.Truncate(hex.EncodeToString(pubKey), 64))
+		if len(info.PublicKey) > 0 {
+			fmt.Printf("  Size: %d bytes\n", len(info.PublicKey))
+			fmt.Printf("  Hex:  %s...\n", registry.Truncate(hex.EncodeToString(info.PublicKey), 64))
 		} else {
 			fmt.Println("  Not available")
 		}
 
 		fmt.Println("\n  --- TLS Certificate ---")
-		if tlsCert, err := client.GetTLSCertificate(teeId); err == nil && len(tlsCert) > 0 {
-			fmt.Printf("  Size: %d bytes\n", len(tlsCert))
-			fmt.Printf("  Hash: 0x%s\n", hex.EncodeToString(crypto.Keccak256(tlsCert)))
+		if len(info.TLSCertificate) > 0 {
+			fmt.Printf("  Size: %d bytes\n", len(info.TLSCertificate))
+			fmt.Printf("  Hash: 0x%s\n", hex.EncodeToString(crypto.Keccak256(info.TLSCertificate)))
 		} else {
 			fmt.Println("  Not available")
 		}
@@ -137,7 +140,7 @@ var teeRegisterCmd = &cobra.Command{
 		fmt.Printf("  TLS Cert: %d bytes\n", len(tlsCert))
 
 		expectedId := crypto.Keccak256Hash(signingKey)
-		if active, _ := client.IsActive(expectedId); active {
+		if info, err := client.GetTEE(expectedId); err == nil && info != nil {
 			fmt.Printf("\nTEE already registered: 0x%s\n", hex.EncodeToString(expectedId[:]))
 			return nil
 		}
@@ -159,9 +162,9 @@ var teeRegisterCmd = &cobra.Command{
 	},
 }
 
-var teeDeactivateCmd = &cobra.Command{
-	Use:   "deactivate <tee_id>",
-	Short: "Deactivate a TEE (requires admin or operator role)",
+var teeDisableCmd = &cobra.Command{
+	Use:   "disable <tee_id>",
+	Short: "Disable a TEE (requires admin or operator role)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teeId, err := registry.ParseBytes32(args[0])
@@ -170,20 +173,20 @@ var teeDeactivateCmd = &cobra.Command{
 		}
 		account, _ := client.GetAccountAddress()
 
-		registry.Log("Deactivating TEE: 0x%s", hex.EncodeToString(teeId[:]))
-		txHash, err := client.DeactivateTEE(account, teeId)
+		registry.Log("Disabling TEE: 0x%s", hex.EncodeToString(teeId[:]))
+		txHash, err := client.DisableTEE(account, teeId)
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "TEE deactivated")
+		registry.PrintTxResult(client.WaitForTx(txHash), "TEE disabled")
 		return nil
 	},
 }
 
-var teeActivateCmd = &cobra.Command{
-	Use:   "activate <tee_id>",
-	Short: "Re-activate a previously deactivated TEE",
+var teeEnableCmd = &cobra.Command{
+	Use:   "enable <tee_id>",
+	Short: "Re-enable a previously disabled TEE",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teeId, err := registry.ParseBytes32(args[0])
@@ -192,18 +195,67 @@ var teeActivateCmd = &cobra.Command{
 		}
 		account, _ := client.GetAccountAddress()
 
-		registry.Log("Activating TEE: 0x%s", hex.EncodeToString(teeId[:]))
-		txHash, err := client.ActivateTEE(account, teeId)
+		registry.Log("Enabling TEE: 0x%s", hex.EncodeToString(teeId[:]))
+		txHash, err := client.EnableTEE(account, teeId)
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "TEE activated")
+		registry.PrintTxResult(client.WaitForTx(txHash), "TEE enabled")
+		return nil
+	},
+}
+
+var teeActiveCmd = &cobra.Command{
+	Use:   "active",
+	Short: "List active TEEs (enabled + valid PCR + fresh heartbeat)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
+
+		fmt.Println("=== Active TEEs ===")
+		fmt.Printf("Registry: %s\n", client.RegistryAddress)
+		fmt.Printf("Type: %d\n\n", teeType)
+
+		tees, err := client.GetEnabledTEEs(teeType)
+		if err != nil {
+			return fmt.Errorf("failed to get enabled TEEs: %w", err)
+		}
+
+		activeCount := 0
+		for _, teeIdHex := range tees {
+			teeId, err := registry.ParseBytes32(teeIdHex)
+			if err != nil {
+				continue
+			}
+			healthy, err := client.IsTEEActive(teeId)
+			if err != nil || !healthy {
+				continue
+			}
+
+			activeCount++
+			info, err := client.GetTEE(teeId)
+			if err != nil {
+				fmt.Printf("  [%d] 0x%s (could not fetch details)\n", activeCount, teeIdHex)
+				continue
+			}
+			fmt.Printf("  [%d] 0x%s\n", activeCount, teeIdHex)
+			fmt.Printf("      Endpoint:       %s\n", info.Endpoint)
+			fmt.Printf("      Type:           %d (%s)\n", info.TEEType, registry.GetTEETypeName(info.TEEType))
+			fmt.Printf("      Last Heartbeat: %s UTC\n\n", info.LastHeartbeatAt.UTC().Format("2006-01-02 15:04:05"))
+		}
+
+		if activeCount == 0 {
+			fmt.Println("  No active TEEs found")
+		} else {
+			fmt.Printf("Total: %d active / %d enabled\n", activeCount, len(tees))
+		}
 		return nil
 	},
 }
 
 func init() {
+	teeListCmd.Flags().Uint8("tee-type", 0, "TEE type ID to list")
+
 	teeRegisterCmd.Flags().String("enclave-host", "", "Enclave hostname or IP (required)")
 	teeRegisterCmd.Flags().String("enclave-port", "443", "Enclave TLS port for certificate fetch")
 	teeRegisterCmd.Flags().String("payment-address", "", "Payment address for the TEE (defaults to sender)")
@@ -211,6 +263,8 @@ func init() {
 	teeRegisterCmd.Flags().Uint8("tee-type", 0, "TEE type ID (e.g. 0=LLMProxy, 1=Validator)")
 	teeRegisterCmd.MarkFlagRequired("enclave-host")
 
-	teeCmd.AddCommand(teeListCmd, teeShowCmd, teeRegisterCmd, teeDeactivateCmd, teeActivateCmd)
+	teeActiveCmd.Flags().Uint8("tee-type", 0, "TEE type ID to list")
+
+	teeCmd.AddCommand(teeListCmd, teeShowCmd, teeActiveCmd, teeRegisterCmd, teeDisableCmd, teeEnableCmd)
 	rootCmd.AddCommand(teeCmd)
 }

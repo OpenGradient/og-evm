@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/hex"
 	"fmt"
-	"math/big"
 
 	"tee-mgmt-cli/registry"
 
@@ -19,14 +18,14 @@ var pcrListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all currently approved PCR hashes",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("=== Active PCRs ===")
-		pcrs, err := client.GetActivePCRs()
+		fmt.Println("=== Approved PCRs ===")
+		pcrs, err := client.GetApprovedPCRs()
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
-		fmt.Printf("Found %d active PCR(s)\n\n", len(pcrs))
-		for i, h := range pcrs {
-			fmt.Printf("  [%d] 0x%s\n", i+1, h)
+		fmt.Printf("Found %d approved PCR(s)\n\n", len(pcrs))
+		for i, k := range pcrs {
+			fmt.Printf("  [%d] 0x%s (type: %d)\n", i+1, hex.EncodeToString(k.PCRHash[:]), k.TEEType)
 		}
 		return nil
 	},
@@ -34,38 +33,26 @@ var pcrListCmd = &cobra.Command{
 
 var pcrApproveCmd = &cobra.Command{
 	Use:   "approve",
-	Short: "Approve a set of PCR measurements (PCR0, PCR1, PCR2) for TEE attestation",
+	Short: "Approve a set of PCR measurements (PCR0, PCR1, PCR2) for a specific TEE type",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		measurementsFile, _ := cmd.Flags().GetString("measurements-file")
 		pcr0Hex, _ := cmd.Flags().GetString("pcr0")
 		pcr1Hex, _ := cmd.Flags().GetString("pcr1")
 		pcr2Hex, _ := cmd.Flags().GetString("pcr2")
 		version, _ := cmd.Flags().GetString("version")
-		gracePeriodStr, _ := cmd.Flags().GetString("grace-period")
-		prevPCRStr, _ := cmd.Flags().GetString("previous-pcr")
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
 
 		pcr0, pcr1, pcr2 := registry.LoadPCRsFromArgs(measurementsFile, pcr0Hex, pcr1Hex, pcr2Hex)
-
-		gracePeriod := new(big.Int)
-		gracePeriod.SetString(gracePeriodStr, 10)
-
-		var prevPCR [32]byte
-		if prevPCRStr != "" {
-			var err error
-			prevPCR, err = registry.ParseBytes32(prevPCRStr)
-			if err != nil {
-				return fmt.Errorf("invalid --previous-pcr: %w", err)
-			}
-		}
 
 		pcrHash, _ := client.ComputePCRHash(pcr0, pcr1, pcr2)
 
 		fmt.Println("=== Approving PCR ===")
 		fmt.Printf("  PCR Hash: 0x%s\n", hex.EncodeToString(pcrHash[:]))
-		fmt.Printf("  Version:  %s\n\n", version)
+		fmt.Printf("  Version:  %s\n", version)
+		fmt.Printf("  TEE Type: %d\n\n", teeType)
 
 		account, _ := client.GetAccountAddress()
-		txHash, err := client.ApprovePCR(account, pcr0, pcr1, pcr2, version, prevPCR, gracePeriod)
+		txHash, err := client.ApprovePCR(account, pcr0, pcr1, pcr2, version, teeType)
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
@@ -77,17 +64,19 @@ var pcrApproveCmd = &cobra.Command{
 
 var pcrRevokeCmd = &cobra.Command{
 	Use:   "revoke <pcr_hash>",
-	Short: "Revoke a previously approved PCR hash",
+	Short: "Revoke a previously approved PCR hash and disable all TEEs using it",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pcrHash, err := registry.ParseBytes32(args[0])
 		if err != nil {
 			return fmt.Errorf("invalid pcrHash: %w", err)
 		}
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
+
 		account, _ := client.GetAccountAddress()
 
-		registry.Log("Revoking PCR: 0x%s", hex.EncodeToString(pcrHash[:]))
-		txHash, err := client.RevokePCR(account, pcrHash)
+		registry.Log("Revoking PCR: 0x%s (type: %d)", hex.EncodeToString(pcrHash[:]), teeType)
+		txHash, err := client.RevokePCR(account, pcrHash, teeType)
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
@@ -99,19 +88,20 @@ var pcrRevokeCmd = &cobra.Command{
 
 var pcrCheckCmd = &cobra.Command{
 	Use:   "check <pcr_hash>",
-	Short: "Check whether a PCR hash is currently approved",
+	Short: "Check whether a PCR hash is currently approved for a TEE type",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pcrHash, err := registry.ParseBytes32(args[0])
 		if err != nil {
 			return fmt.Errorf("invalid pcrHash: %w", err)
 		}
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
 
-		approved, _ := client.IsPCRApproved(pcrHash)
+		approved, _ := client.IsPCRApproved(teeType, pcrHash)
 		if approved {
-			fmt.Printf("PCR 0x%s is APPROVED\n", hex.EncodeToString(pcrHash[:]))
+			fmt.Printf("PCR 0x%s is APPROVED for type %d\n", hex.EncodeToString(pcrHash[:]), teeType)
 		} else {
-			fmt.Printf("PCR 0x%s is NOT approved\n", hex.EncodeToString(pcrHash[:]))
+			fmt.Printf("PCR 0x%s is NOT approved for type %d\n", hex.EncodeToString(pcrHash[:]), teeType)
 		}
 		return nil
 	},
@@ -146,8 +136,11 @@ func addPCRFlags(cmd *cobra.Command) {
 func init() {
 	addPCRFlags(pcrApproveCmd)
 	pcrApproveCmd.Flags().StringP("version", "v", "v1.0.0", "Version label for this PCR set")
-	pcrApproveCmd.Flags().String("grace-period", "0", "Grace period in seconds before the previous PCR is revoked")
-	pcrApproveCmd.Flags().String("previous-pcr", "", "PCR hash being rotated out (bytes32 hex)")
+	pcrApproveCmd.Flags().Uint8("tee-type", 0, "TEE type ID this PCR is valid for")
+
+	pcrRevokeCmd.Flags().Uint8("tee-type", 0, "TEE type ID the PCR is approved for")
+
+	pcrCheckCmd.Flags().Uint8("tee-type", 0, "TEE type ID to check against")
 
 	addPCRFlags(pcrComputeCmd)
 

@@ -63,7 +63,7 @@
     },
     {
       "inputs": [],
-      "name": "PCRExpired",
+      "name": "PCRAlreadyExists",
       "type": "error"
     },
     {
@@ -73,12 +73,17 @@
     },
     {
       "inputs": [],
+      "name": "PCRTypeMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "TEEAlreadyExists",
       "type": "error"
     },
     {
       "inputs": [],
-      "name": "TEENotActive",
+      "name": "TEENotEnabled",
       "type": "error"
     },
     {
@@ -117,6 +122,12 @@
           "internalType": "bytes32",
           "name": "pcrHash",
           "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
         },
         {
           "indexed": false,
@@ -226,7 +237,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "TEEActivated",
+      "name": "TEEEnabled",
       "type": "event"
     },
     {
@@ -239,7 +250,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "TEEDeactivated",
+      "name": "TEEDisabled",
       "type": "event"
     },
     {
@@ -284,19 +295,6 @@
         }
       ],
       "name": "TEETypeAdded",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "uint8",
-          "name": "typeId",
-          "type": "uint8"
-        }
-      ],
-      "name": "TEETypeDeactivated",
       "type": "event"
     },
     {
@@ -346,7 +344,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "activateTEE",
+      "name": "enableTEE",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -399,14 +397,9 @@
           "type": "string"
         },
         {
-          "internalType": "bytes32",
-          "name": "previousPcrHash",
-          "type": "bytes32"
-        },
-        {
-          "internalType": "uint256",
-          "name": "gracePeriod",
-          "type": "uint256"
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
         }
       ],
       "name": "approvePCR",
@@ -422,21 +415,21 @@
           "type": "bytes32"
         }
       ],
-      "name": "approvedPCRs",
+      "name": "pcrRecords",
       "outputs": [
         {
           "internalType": "bool",
-          "name": "active",
+          "name": "approved",
           "type": "bool"
+        },
+        {
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
         },
         {
           "internalType": "uint256",
           "name": "approvedAt",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "expiresAt",
           "type": "uint256"
         },
         {
@@ -553,27 +546,14 @@
           "type": "bytes32"
         }
       ],
-      "name": "deactivateTEE",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint8",
-          "name": "typeId",
-          "type": "uint8"
-        }
-      ],
-      "name": "deactivateTEEType",
+      "name": "disableTEE",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
     },
     {
       "inputs": [],
-      "name": "getActivePCRs",
+      "name": "getApprovedPCRs",
       "outputs": [
         {
           "internalType": "bytes32[]",
@@ -624,7 +604,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "getPublicKey",
+      "name": "getTEEPublicKey",
       "outputs": [
         {
           "internalType": "bytes",
@@ -703,7 +683,7 @@
             },
             {
               "internalType": "bool",
-              "name": "active",
+              "name": "enabled",
               "type": "bool"
             },
             {
@@ -713,7 +693,7 @@
             },
             {
               "internalType": "uint256",
-              "name": "lastUpdatedAt",
+              "name": "lastHeartbeatAt",
               "type": "uint256"
             }
           ],
@@ -740,11 +720,6 @@
               "internalType": "string",
               "name": "name",
               "type": "string"
-            },
-            {
-              "internalType": "bool",
-              "name": "active",
-              "type": "bool"
             },
             {
               "internalType": "uint256",
@@ -867,7 +842,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "isActive",
+      "name": "isTEEEnabled",
       "outputs": [
         {
           "internalType": "bool",
@@ -984,6 +959,11 @@
           "internalType": "bytes32",
           "name": "pcrHash",
           "type": "bytes32"
+        },
+        {
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
         }
       ],
       "name": "revokePCR",
@@ -1057,11 +1037,6 @@
           "type": "string"
         },
         {
-          "internalType": "bool",
-          "name": "active",
-          "type": "bool"
-        },
-        {
           "internalType": "uint256",
           "name": "addedAt",
           "type": "uint256"
@@ -1117,7 +1092,7 @@
         },
         {
           "internalType": "bool",
-          "name": "active",
+          "name": "enabled",
           "type": "bool"
         },
         {
@@ -1127,7 +1102,7 @@
         },
         {
           "internalType": "uint256",
-          "name": "lastUpdatedAt",
+          "name": "lastHeartbeatAt",
           "type": "uint256"
         }
       ],

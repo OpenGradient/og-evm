@@ -5,13 +5,13 @@ import "./cosmos/TEERegistry.sol";
 
 /// @title MockTEERegistry
 /// @notice Test-only TEERegistry that allows registering TEEs without attestation verification
-/// @dev Bypasses the precompile call. Registers TEE as inactive, then call activateTEE() to add to active list.
+/// @dev Bypasses the precompile call. Registers TEE as inactive, then call enableTEE() to add to enabled list.
 contract MockTEERegistry is TEERegistry {
 
     /// @notice Register a TEE directly for testing, bypassing attestation verification.
-    /// @dev The TEE is registered as INACTIVE. Call activateTEE(teeId) afterward from the
-    ///      same account to add it to the active list. This two-step approach is needed because
-    ///      _activeTEEList and related indexes are private in the parent contract.
+    /// @dev The TEE is registered as INACTIVE. Call enableTEE(teeId) afterward from the
+    ///      same account to add it to the enabled list. This two-step approach is needed because
+    ///      _enabledTEEList and related indexes are private in the parent contract.
     function registerTEEForTesting(
         bytes calldata signingPublicKey,
         bytes calldata tlsCertificate,
@@ -25,7 +25,7 @@ contract MockTEERegistry is TEERegistry {
         teeId = keccak256(signingPublicKey);
         if (tees[teeId].registeredAt != 0) revert TEEAlreadyExists();
 
-        // Store TEE as inactive; caller must call activateTEE(teeId) to add to active list
+        // Store TEE as inactive; caller must call enableTEE(teeId) to add to enabled list
         tees[teeId] = TEEInfo({
             owner: msg.sender,
             paymentAddress: paymentAddress,
@@ -34,10 +34,14 @@ contract MockTEERegistry is TEERegistry {
             tlsCertificate: tlsCertificate,
             pcrHash: pcrHash,
             teeType: teeType,
-            active: false,
+            enabled: false,
             registeredAt: block.timestamp,
-            lastUpdatedAt: block.timestamp
+            lastHeartbeatAt: block.timestamp
         });
+
+        // Add to indexes (matching registerTEE behavior)
+        _teesByType[teeType].push(teeId);
+        _teesByOwner[msg.sender].push(teeId);
 
         emit TEERegistered(teeId, msg.sender, teeType);
     }

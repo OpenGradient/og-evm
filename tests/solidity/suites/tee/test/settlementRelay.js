@@ -400,7 +400,6 @@ contract('InferenceSettlementRelay', function (accounts) {
         const TEE_TYPE_NITRO = 1
         const TLS_CERT = '0x' + Buffer.alloc(100, 0xAA).toString('hex')
         const ENDPOINT = 'https://tee.example.com'
-        const PCR_HASH = web3.utils.keccak256('test-pcr')
 
         before(async () => {
             // Generate RSA key pair for signing
@@ -416,12 +415,21 @@ contract('InferenceSettlementRelay', function (accounts) {
             intRegistry = await MockTEERegistry.new()
             await intRegistry.addTEEType(TEE_TYPE_NITRO, 'AWS Nitro')
 
+            // Approve PCR measurements so enableTEE passes _requirePCRValidForTEE
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0x01).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0x02).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0x03).toString('hex')
+            }
+            await intRegistry.approvePCR(pcrs, 'v1.0.0', TEE_TYPE_NITRO)
+            const pcrHash = await intRegistry.computePCRHash(pcrs)
+
             // Register and activate TEE
             await intRegistry.registerTEEForTesting(
-                publicKeyDER, TLS_CERT, user, ENDPOINT, TEE_TYPE_NITRO, PCR_HASH
+                publicKeyDER, TLS_CERT, user, ENDPOINT, TEE_TYPE_NITRO, pcrHash
             )
             intTeeId = await intRegistry.computeTEEId(publicKeyDER)
-            await intRegistry.activateTEE(intTeeId)
+            await intRegistry.enableTEE(intTeeId)
 
             // Deploy real verifier pointing at mock registry
             intVerifier = await TEEInferenceVerifier.new(intRegistry.address)
@@ -474,8 +482,8 @@ contract('InferenceSettlementRelay', function (accounts) {
             console.log('✓ End-to-end settleIndividual succeeded')
         })
 
-        it('should revert end-to-end when TEE is deactivated', async function () {
-            await intRegistry.deactivateTEE(intTeeId)
+        it('should revert end-to-end when TEE is disabled', async function () {
+            await intRegistry.disableTEE(intTeeId)
 
             const block = await web3.eth.getBlock('latest')
             const timestamp = block.timestamp
@@ -488,10 +496,10 @@ contract('InferenceSettlementRelay', function (accounts) {
                 )
             )
 
-            // Re-activate for subsequent tests
-            await intRegistry.activateTEE(intTeeId)
+            // Re-enable for subsequent tests
+            await intRegistry.enableTEE(intTeeId)
 
-            console.log('✓ Deactivated TEE rejected in end-to-end flow')
+            console.log('✓ Disabled TEE rejected in end-to-end flow')
         })
 
         it('should revert end-to-end with expired timestamp', async function () {
