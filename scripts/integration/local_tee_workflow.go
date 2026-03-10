@@ -67,7 +67,7 @@ var (
 
 	SEL_APPROVE_PCR      = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
 	SEL_REVOKE_PCR       = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
-	SEL_IS_PCR_APPROVED  = crypto.Keccak256([]byte("isPCRApproved(bytes32)"))[:4]
+	SEL_IS_PCR_APPROVED  = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
 	SEL_COMPUTE_PCR_HASH = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	SEL_GET_APPROVED_PCRS = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
 
@@ -78,16 +78,13 @@ var (
 	SEL_ENABLE_TEE  = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
 
 	SEL_GET_TEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	SEL_GET_ENABLED_TEES  = crypto.Keccak256([]byte("getEnabledTEEs()"))[:4]
+	SEL_GET_ENABLED_TEES  = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
 	SEL_GET_TEES_BY_TYPE  = crypto.Keccak256([]byte("getTEEsByType(uint8)"))[:4]
 	SEL_GET_TEES_BY_OWNER = crypto.Keccak256([]byte("getTEEsByOwner(address)"))[:4]
 	SEL_GET_TEE_PUBLIC_KEY    = crypto.Keccak256([]byte("getTEEPublicKey(bytes32)"))[:4]
-	SEL_GET_TLS_CERT      = crypto.Keccak256([]byte("getTLSCertificate(bytes32)"))[:4]
 	SEL_IS_TEE_ENABLED        = crypto.Keccak256([]byte("isTEEEnabled(bytes32)"))[:4]
-	SEL_GET_PAYMENT_ADDR  = crypto.Keccak256([]byte("getPaymentAddress(bytes32)"))[:4]
 
 	SEL_COMPUTE_TEE_ID   = crypto.Keccak256([]byte("computeTEEId(bytes)"))[:4]
-	SEL_COMPUTE_MSG_HASH = crypto.Keccak256([]byte("computeMessageHash(bytes32,bytes32,uint256)"))[:4]
 )
 
 // ============================================================================
@@ -249,7 +246,7 @@ func main() {
 			waitForTx(txHash)
 		}
 	}
-	approved, _ := callIsPCRApproved(pcrHash)
+	approved, _ := callIsPCRApproved(0, pcrHash)
 	// [LOG] Clearly show the approval status of the PCR we are about to use
 	fmt.Printf("  🔍 isPCRApproved(filePCRHash=%s) = %v\n", hex.EncodeToString(pcrHash[:]), approved)
 
@@ -263,7 +260,7 @@ func main() {
 	rand.Read(fakePCR)
 	fakeHash, _ := callComputePCRHash(fakePCR, pcr1, pcr2)
 	fmt.Printf("  🔍 isPCRApproved(fakePCRHash=%s) = expected false\n", hex.EncodeToString(fakeHash[:]))
-	approved, _ = callIsPCRApproved(fakeHash)
+	approved, _ = callIsPCRApproved(0, fakeHash)
 	results.Add("isPCRApproved returns false for unknown PCR", !approved, "")
 
 	approvedPCRs, err := callGetApprovedPCRs()
@@ -335,7 +332,7 @@ func main() {
 			realPCRHash, _ := callComputePCRHash(realPCR0, realPCR1, realPCR2)
 			fmt.Printf("  📊 Real enclave PCR hash: 0x%s\n", hex.EncodeToString(realPCRHash[:]))
 
-			realApproved, _ := callIsPCRApproved(realPCRHash)
+			realApproved, _ := callIsPCRApproved(0, realPCRHash)
 			fmt.Printf("  🔍 isPCRApproved(realPCRHash) = %v\n", realApproved)
 
 			if !realApproved {
@@ -344,7 +341,7 @@ func main() {
 				if err == nil {
 					waitForTx(txHash)
 					// [LOG] Verify the approval actually stuck
-					postApproval, _ := callIsPCRApproved(realPCRHash)
+					postApproval, _ := callIsPCRApproved(0, realPCRHash)
 					fmt.Printf("  ✅ Real PCRs approved — post-approval isPCRApproved=%v\n", postApproval)
 				} else {
 					fmt.Printf("  ❌ Failed to approve real PCRs: %v\n", err)
@@ -459,10 +456,7 @@ func main() {
 		}
 		results.Add("getTEEPublicKey returns correct key", keyMatches, "")
 
-		storedCert, err := callGetTLSCertificate(registeredTEEId)
-		results.Add("getTLSCertificate returns cert", err == nil && len(storedCert) > 0, fmt.Sprintf("%d bytes", len(storedCert)))
-
-		enabledTEEs, err := callGetEnabledTEEs()
+		enabledTEEs, err := callGetEnabledTEEs(0)
 		results.Add("getEnabledTEEs includes registered TEE", err == nil && len(enabledTEEs) > 0, fmt.Sprintf("count=%d", len(enabledTEEs)))
 
 		teesByType, err := callGetTEEsByType(0)
@@ -541,7 +535,7 @@ func main() {
 		txHash, err := callApprovePCR(account, testPCR0, testPCR1, testPCR2, "test-revoke", 0)
 		if err == nil {
 			waitForTx(txHash)
-			approved, _ := callIsPCRApproved(testPCRHash)
+			approved, _ := callIsPCRApproved(0, testPCRHash)
 			results.Add("Test PCR approved", approved, "")
 		} else {
 			results.Add("Approve test PCR", false, err.Error())
@@ -554,7 +548,7 @@ func main() {
 			results.Add("Revoke test PCR", false, err.Error())
 		} else {
 			waitForTx(txHash)
-			stillApproved, _ := callIsPCRApproved(testPCRHash)
+			stillApproved, _ := callIsPCRApproved(0, testPCRHash)
 			results.Add("Test PCR no longer approved after revocation", !stillApproved, "")
 			fmt.Println("  ✅ Test PCR successfully revoked")
 		}
@@ -616,8 +610,8 @@ func main() {
 			waitForTx(txHash)
 
 			// v1 should be revoked, v2 should still be valid
-			v1Valid, _ := callIsPCRApproved(pcrV1Hash)
-			v2Valid, _ := callIsPCRApproved(pcrV2Hash)
+			v1Valid, _ := callIsPCRApproved(0, pcrV1Hash)
+			v2Valid, _ := callIsPCRApproved(0, pcrV2Hash)
 
 			results.Add("Revoked PCR v1 is invalid", !v1Valid,
 				fmt.Sprintf("v1=%v (expected false)", v1Valid))
@@ -675,9 +669,6 @@ func main() {
 	computedId, err := callComputeTEEId(testPubKeyDER)
 	expectedId := crypto.Keccak256Hash(testPubKeyDER)
 	results.Add("computeTEEId matches keccak256", err == nil && computedId == expectedId, "")
-
-	computedHash, err := callComputeMessageHash(inputHash, outputHash, timestamp)
-	results.Add("computeMessageHash returns hash", err == nil && computedHash != [32]byte{}, "")
 
 	// Summary
 	fmt.Println("\n==========================================")
@@ -1095,10 +1086,11 @@ func callApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string, teeTyp
 	return sendTx(from, append(SEL_APPROVE_PCR, encoded...))
 }
 
-func callIsPCRApproved(pcrHash [32]byte) (bool, error) {
+func callIsPCRApproved(teeType uint8, pcrHash [32]byte) (bool, error) {
+	uint8Type, _ := abi.NewType("uint8", "", nil)
 	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}}
-	encoded, _ := args.Pack(pcrHash)
+	args := abi.Arguments{{Type: uint8Type}, {Type: bytes32Type}}
+	encoded, _ := args.Pack(teeType, pcrHash)
 	result, err := ethCall(append(SEL_IS_PCR_APPROVED, encoded...))
 	if err != nil || len(result) < 32 {
 		return false, err
@@ -1217,23 +1209,11 @@ func callGetTEEPublicKey(teeId [32]byte) ([]byte, error) {
 	return result[64 : 64+length], nil
 }
 
-func callGetTLSCertificate(teeId [32]byte) ([]byte, error) {
-	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}}
-	encoded, _ := args.Pack(teeId)
-	result, err := ethCall(append(SEL_GET_TLS_CERT, encoded...))
-	if err != nil || len(result) < 64 {
-		return nil, err
-	}
-	length := new(big.Int).SetBytes(result[32:64]).Uint64()
-	if uint64(len(result)) < 64+length {
-		return nil, fmt.Errorf("truncated")
-	}
-	return result[64 : 64+length], nil
-}
-
-func callGetEnabledTEEs() ([]string, error) {
-	result, err := ethCall(SEL_GET_ENABLED_TEES)
+func callGetEnabledTEEs(teeType uint8) ([]string, error) {
+	uint8Type, _ := abi.NewType("uint8", "", nil)
+	args := abi.Arguments{{Type: uint8Type}}
+	encoded, _ := args.Pack(teeType)
+	result, err := ethCall(append(SEL_GET_ENABLED_TEES, encoded...))
 	if err != nil || len(result) < 64 {
 		return nil, err
 	}
@@ -1301,20 +1281,6 @@ func callComputeTEEId(publicKey []byte) ([32]byte, error) {
 	var id [32]byte
 	copy(id[:], result[:32])
 	return id, nil
-}
-
-func callComputeMessageHash(inputHash, outputHash [32]byte, timestamp *big.Int) ([32]byte, error) {
-	bytes32Type, _ := abi.NewType("bytes32", "", nil)
-	uint256Type, _ := abi.NewType("uint256", "", nil)
-	args := abi.Arguments{{Type: bytes32Type}, {Type: bytes32Type}, {Type: uint256Type}}
-	encoded, _ := args.Pack(inputHash, outputHash, timestamp)
-	result, err := ethCall(append(SEL_COMPUTE_MSG_HASH, encoded...))
-	if err != nil || len(result) < 32 {
-		return [32]byte{}, err
-	}
-	var hash [32]byte
-	copy(hash[:], result[:32])
-	return hash, nil
 }
 
 // ============================================================================

@@ -164,7 +164,7 @@ contract('TEERegistry', function (accounts) {
             const result = await registry.revokePCR(pcrHashRevoke, TEE_TYPE)
 
             truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
-                return ev.pcrHash === pcrHashRevoke
+                return ev.pcrHash === pcrHashRevoke && ev.teeType.toNumber() === TEE_TYPE
             })
 
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHashRevoke)).to.be.false
@@ -517,7 +517,7 @@ contract('TEERegistry', function (accounts) {
             const result = await registry.revokePCR(pcrHash, TEE_TYPE)
 
             truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
-                return ev.pcrHash === pcrHash
+                return ev.pcrHash === pcrHash && ev.teeType.toNumber() === TEE_TYPE
             })
 
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.false
