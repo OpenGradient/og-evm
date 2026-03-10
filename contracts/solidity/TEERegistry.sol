@@ -79,10 +79,10 @@ contract TEERegistry is AccessControl {
     mapping(uint8 => mapping(bytes32 => uint256)) private _activeTEEIndex;
 
     // All TEEs by type (active + inactive)
-    mapping(uint8 => bytes32[]) private _teesByType;
+    mapping(uint8 => bytes32[]) internal _teesByType;
 
     // TEEs by owner
-    mapping(address => bytes32[]) private _teesByOwner;
+    mapping(address => bytes32[]) internal _teesByOwner;
 
     // ============ Events ============
 

@@ -39,6 +39,10 @@ contract MockTEERegistry is TEERegistry {
             lastUpdatedAt: block.timestamp
         });
 
+        // Add to indexes (matching registerTEE behavior)
+        _teesByType[teeType].push(teeId);
+        _teesByOwner[msg.sender].push(teeId);
+
         emit TEERegistered(teeId, msg.sender, teeType);
     }
 }
