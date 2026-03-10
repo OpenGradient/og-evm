@@ -62,7 +62,7 @@ contract('TEERegistry', function (accounts) {
 
             const typeInfo = await registry.teeTypes(TYPE_AWS_NITRO)
             expect(typeInfo.name).to.equal('AWS Nitro')
-            expect(typeInfo.active).to.be.true
+            expect(typeInfo.addedAt.toNumber()).to.be.greaterThan(0)
 
             console.log('✓ TEE type added successfully')
         })

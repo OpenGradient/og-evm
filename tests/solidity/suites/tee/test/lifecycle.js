@@ -110,14 +110,13 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             console.log('✓ TEE removed from enabled list')
         })
 
-        it('should be a no-op when disabling already disabled TEE', async function () {
+        it('should revert when disabling already disabled TEE', async function () {
             // TEE is already inactive from the previous test
-            const result = await registry.disableTEE(localTeeId, { from: teeOperator })
+            await truffleAssert.reverts(
+                registry.disableTEE(localTeeId, { from: teeOperator })
+            )
 
-            // No event should be emitted for a no-op
-            truffleAssert.eventNotEmitted(result, 'TEEDisabled')
-
-            console.log('✓ Double-disabling is a no-op')
+            console.log('✓ Double-disabling reverts with TEENotEnabled')
         })
 
         it('should allow admin to disable any TEE', async function () {
