@@ -95,6 +95,7 @@ contract TEERegistry is AccessControl {
     event TEEActivated(bytes32 indexed teeId);
     event AWSCertificateUpdated(bytes32 indexed certHash);
     event HeartbeatReceived(bytes32 indexed teeId, uint256 timestamp);
+    event TEERemoved(bytes32 indexed teeId);
 
     // ============ Errors ============
 
@@ -316,7 +317,6 @@ contract TEERegistry is AccessControl {
         if (!tee.active) return;
 
         tee.active = false;
-        tee.lastUpdatedAt = block.timestamp;
         _removeFromActiveList(teeId, tee.teeType);
         emit TEEDeactivated(teeId);
     }
@@ -334,9 +334,35 @@ contract TEERegistry is AccessControl {
         _requirePCRValidForTEE(tee.pcrHash, tee.teeType);
 
         tee.active = true;
-        tee.lastUpdatedAt = block.timestamp;
         _addToActiveList(teeId, tee.teeType);
         emit TEEActivated(teeId);
+    }
+
+    /// @notice Permanently remove a TEE from all storage
+    /// @dev Callable by TEE owner (with TEE_OPERATOR role) or admin.
+    ///      Use to clean up decommissioned or upgraded TEEs and reclaim storage.
+    /// @param teeId The TEE identifier to remove
+    function removeTEE(bytes32 teeId) external onlyTEEOwnerOrAdmin(teeId) {
+        TEEInfo storage tee = tees[teeId];
+
+        uint8 teeType = tee.teeType;
+        address owner = tee.owner;
+
+        // Remove from active list if active
+        if (tee.active) {
+            _removeFromActiveList(teeId, teeType);
+        }
+
+        // Remove from _teesByType
+        _removeFromArray(_teesByType[teeType], teeId);
+
+        // Remove from _teesByOwner
+        _removeFromArray(_teesByOwner[owner], teeId);
+
+        // Delete TEE data
+        delete tees[teeId];
+
+        emit TEERemoved(teeId);
     }
 
     function _addToActiveList(bytes32 teeId, uint8 teeType) private {
@@ -356,6 +382,17 @@ contract TEERegistry is AccessControl {
 
         _activeTEEList[teeType].pop();
         delete _activeTEEIndex[teeType][teeId];
+    }
+
+    /// @dev Swap-and-pop removal from an unordered bytes32 array
+    function _removeFromArray(bytes32[] storage arr, bytes32 value) private {
+        for (uint256 i = 0; i < arr.length; i++) {
+            if (arr[i] == value) {
+                arr[i] = arr[arr.length - 1];
+                arr.pop();
+                return;
+            }
+        }
     }
 
     // ============ Heartbeat ============
