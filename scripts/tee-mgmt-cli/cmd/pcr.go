@@ -72,14 +72,15 @@ var pcrRevokeCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("invalid pcrHash: %w", err)
 		}
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
 		gracePeriodStr, _ := cmd.Flags().GetString("grace-period")
 		gracePeriod := new(big.Int)
 		gracePeriod.SetString(gracePeriodStr, 10)
 
 		account, _ := client.GetAccountAddress()
 
-		registry.Log("Revoking PCR: 0x%s (grace period: %s seconds)", hex.EncodeToString(pcrHash[:]), gracePeriod.String())
-		txHash, err := client.RevokePCR(account, pcrHash, gracePeriod)
+		registry.Log("Revoking PCR: 0x%s (type: %d, grace period: %s seconds)", hex.EncodeToString(pcrHash[:]), teeType, gracePeriod.String())
+		txHash, err := client.RevokePCR(account, pcrHash, teeType, gracePeriod)
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
@@ -91,19 +92,20 @@ var pcrRevokeCmd = &cobra.Command{
 
 var pcrCheckCmd = &cobra.Command{
 	Use:   "check <pcr_hash>",
-	Short: "Check whether a PCR hash is currently approved",
+	Short: "Check whether a PCR hash is currently approved for a TEE type",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pcrHash, err := registry.ParseBytes32(args[0])
 		if err != nil {
 			return fmt.Errorf("invalid pcrHash: %w", err)
 		}
+		teeType, _ := cmd.Flags().GetUint8("tee-type")
 
-		approved, _ := client.IsPCRApproved(pcrHash)
+		approved, _ := client.IsPCRApproved(teeType, pcrHash)
 		if approved {
-			fmt.Printf("PCR 0x%s is APPROVED\n", hex.EncodeToString(pcrHash[:]))
+			fmt.Printf("PCR 0x%s is APPROVED for type %d\n", hex.EncodeToString(pcrHash[:]), teeType)
 		} else {
-			fmt.Printf("PCR 0x%s is NOT approved\n", hex.EncodeToString(pcrHash[:]))
+			fmt.Printf("PCR 0x%s is NOT approved for type %d\n", hex.EncodeToString(pcrHash[:]), teeType)
 		}
 		return nil
 	},
@@ -140,7 +142,10 @@ func init() {
 	pcrApproveCmd.Flags().StringP("version", "v", "v1.0.0", "Version label for this PCR set")
 	pcrApproveCmd.Flags().Uint8("tee-type", 0, "TEE type ID this PCR is valid for")
 
+	pcrRevokeCmd.Flags().Uint8("tee-type", 0, "TEE type ID the PCR is approved for")
 	pcrRevokeCmd.Flags().String("grace-period", "0", "Grace period in seconds before revocation takes effect (0 = immediate)")
+
+	pcrCheckCmd.Flags().Uint8("tee-type", 0, "TEE type ID to check against")
 
 	addPCRFlags(pcrComputeCmd)
 
