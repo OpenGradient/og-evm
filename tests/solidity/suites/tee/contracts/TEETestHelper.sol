@@ -130,8 +130,8 @@ contract TEETestHelper {
         return registry.getEnabledTEEs(teeType);
     }
 
-    function getHealthyTEEs(uint8 teeType) external view returns (TEERegistry.TEEInfo[] memory) {
-        return registry.getHealthyTEEs(teeType);
+    function getActiveTEEs(uint8 teeType) external view returns (TEERegistry.TEEInfo[] memory) {
+        return registry.getActiveTEEs(teeType);
     }
 
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory) {

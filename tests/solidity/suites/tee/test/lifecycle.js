@@ -557,23 +557,23 @@ contract('TEERegistry Lifecycle & Queries', function (accounts) {
             console.log('✓ getTEEsByType returns all TEEs including inactive')
         })
 
-        it('should return healthy TEEs filtered by heartbeat and PCR', async function () {
-            const healthyTEEs = await registry.getHealthyTEEs(TEE_TYPE_NITRO)
-            // healthyTEEs returns TEEInfo structs, check they have valid fields
-            for (let i = 0; i < healthyTEEs.length; i++) {
-                expect(healthyTEEs[i].active).to.be.true
-                expect(Number(healthyTEEs[i].registeredAt)).to.be.greaterThan(0)
+        it('should return active TEEs filtered by heartbeat and PCR', async function () {
+            const activeTEEs = await registry.getActiveTEEs(TEE_TYPE_NITRO)
+            // activeTEEs returns TEEInfo structs, check they have valid fields
+            for (let i = 0; i < activeTEEs.length; i++) {
+                expect(activeTEEs[i].active).to.be.true
+                expect(Number(activeTEEs[i].registeredAt)).to.be.greaterThan(0)
             }
 
-            console.log('Healthy TEEs count:', healthyTEEs.length)
-            console.log('✓ getHealthyTEEs returns filtered results')
+            console.log('Active TEEs count:', activeTEEs.length)
+            console.log('✓ getActiveTEEs returns filtered results')
         })
 
-        it('should return empty from getHealthyTEEs for unused type', async function () {
-            const healthyTEEs = await registry.getHealthyTEEs(50)
-            expect(healthyTEEs.length).to.equal(0)
+        it('should return empty from getActiveTEEs for unused type', async function () {
+            const activeTEEs = await registry.getActiveTEEs(50)
+            expect(activeTEEs.length).to.equal(0)
 
-            console.log('✓ getHealthyTEEs returns empty for unused type')
+            console.log('✓ getActiveTEEs returns empty for unused type')
         })
     })
 

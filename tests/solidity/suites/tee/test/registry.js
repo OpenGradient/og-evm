@@ -411,11 +411,11 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ Empty array returned from getEnabledTEEs for unused type')
         })
 
-        it('should return empty array from getHealthyTEEs for unused type', async function () {
-            const tees = await registry.getHealthyTEEs(50)
+        it('should return empty array from getActiveTEEs for unused type', async function () {
+            const tees = await registry.getActiveTEEs(50)
             expect(tees.length).to.equal(0)
 
-            console.log('✓ Empty array returned from getHealthyTEEs for unused type')
+            console.log('✓ Empty array returned from getActiveTEEs for unused type')
         })
     })
 

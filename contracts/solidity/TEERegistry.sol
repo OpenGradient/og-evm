@@ -37,13 +37,13 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///  The contract exposes three tiers of TEE queries with increasing strictness:
 ///    - `getTEEsByType`     — all TEEs ever registered for a type (enabled + disabled).
 ///    - `getEnabledTEEs`    — only TEEs in the enabled list (no heartbeat/PCR check).
-///    - `getHealthyTEEs`    — enabled TEEs with a valid PCR **and** a fresh heartbeat.
+///    - `getActiveTEEs`     — enabled TEEs with a valid PCR **and** a fresh heartbeat.
 ///
 /// ## Client Integration Guide
 ///
 ///  **Choosing a query method:**
 ///
-///  - `getHealthyTEEs(teeType)` — **Recommended for most clients.** Returns only TEEs
+///  - `getActiveTEEs(teeType)` — **Recommended for most clients.** Returns only TEEs
 ///    that are enabled, running approved (non-revoked) enclave code, and have sent a
 ///    recent heartbeat. These are fully verified and ready to serve requests.
 ///
@@ -65,7 +65,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///  This certificate was bound to the enclave at registration time via attestation
 ///  verification. Without this check, a compromised or spoofed endpoint could
 ///  impersonate a registered TEE. The recommended flow is:
-///    1. Query the registry for a healthy TEE (e.g. via `getHealthyTEEs`).
+///    1. Query the registry for a healthy TEE (e.g. via `getActiveTEEs`).
 ///    2. Open a TLS connection to the TEE's `endpoint`.
 ///    3. Compare the server's presented certificate against `TEEInfo.tlsCertificate`.
 ///    4. Abort the connection if they do not match.
@@ -481,7 +481,7 @@ contract TEERegistry is AccessControl {
 
     /// @notice Get TEE IDs that are currently enabled for a given type
     /// @dev Does NOT filter by heartbeat freshness. 
-    ///      Use getHealthyTEEs() for fully verified results.
+    ///      Use getActiveTEEs() for fully verified results.
     /// @param teeType The TEE type to query
     /// @return Array of TEE IDs
     function getEnabledTEEs(uint8 teeType) external view returns (bytes32[] memory) {
@@ -492,18 +492,18 @@ contract TEERegistry is AccessControl {
     /// @dev More expensive than getEnabledTEEs() due to on-chain filtering.
     ///      Use this when you need guaranteed-live TEEs without client-side checks.
     /// @param teeType The TEE type to query
-    /// @return Array of TEEInfo structs for healthy TEEs
-    function getHealthyTEEs(uint8 teeType) external view returns (TEEInfo[] memory) {
+    /// @return Array of TEEInfo structs for active TEEs
+    function getActiveTEEs(uint8 teeType) external view returns (TEEInfo[] memory) {
         bytes32[] storage list = _enabledTEEList[teeType];
         uint256 count = 0;
         for (uint256 i = 0; i < list.length; i++) {
-            if (_isHealthy(tees[list[i]])) count++;
+            if (_isTEEActive(tees[list[i]])) count++;
         }
 
         TEEInfo[] memory result = new TEEInfo[](count);
         uint256 j = 0;
         for (uint256 i = 0; i < list.length; i++) {
-            if (_isHealthy(tees[list[i]])) {
+            if (_isTEEActive(tees[list[i]])) {
                 result[j++] = tees[list[i]];
             }
         }
@@ -529,12 +529,12 @@ contract TEERegistry is AccessControl {
         return tees[teeId].enabled;
     }
 
-    /// @notice Check if a TEE is healthy (enabled + valid PCR + fresh heartbeat)
-    function isHealthy(bytes32 teeId) external view returns (bool) {
-        return _isHealthy(tees[teeId]);
+    /// @notice Check if a TEE is active (enabled + valid PCR + fresh heartbeat)
+    function isTEEActive(bytes32 teeId) external view returns (bool) {
+        return _isTEEActive(tees[teeId]);
     }
 
-    function _isHealthy(TEEInfo storage tee) private view returns (bool) {
+    function _isTEEActive(TEEInfo storage tee) private view returns (bool) {
         if (!tee.enabled) return false;
         if (block.timestamp - tee.lastHeartbeatAt > heartbeatMaxAge) return false;
         if (!isPCRApproved(tee.teeType, tee.pcrHash)) return false;

@@ -206,13 +206,13 @@ var teeEnableCmd = &cobra.Command{
 	},
 }
 
-var teeHealthyCmd = &cobra.Command{
-	Use:   "healthy",
-	Short: "List healthy TEEs (enabled + valid PCR + fresh heartbeat)",
+var teeActiveCmd = &cobra.Command{
+	Use:   "active",
+	Short: "List active TEEs (enabled + valid PCR + fresh heartbeat)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teeType, _ := cmd.Flags().GetUint8("tee-type")
 
-		fmt.Println("=== Healthy TEEs ===")
+		fmt.Println("=== Active TEEs ===")
 		fmt.Printf("Registry: %s\n", client.RegistryAddress)
 		fmt.Printf("Type: %d\n\n", teeType)
 
@@ -221,33 +221,33 @@ var teeHealthyCmd = &cobra.Command{
 			return fmt.Errorf("failed to get enabled TEEs: %w", err)
 		}
 
-		healthyCount := 0
+		activeCount := 0
 		for _, teeIdHex := range tees {
 			teeId, err := registry.ParseBytes32(teeIdHex)
 			if err != nil {
 				continue
 			}
-			healthy, err := client.IsHealthy(teeId)
+			healthy, err := client.IsTEEActive(teeId)
 			if err != nil || !healthy {
 				continue
 			}
 
-			healthyCount++
+			activeCount++
 			info, err := client.GetTEE(teeId)
 			if err != nil {
-				fmt.Printf("  [%d] 0x%s (could not fetch details)\n", healthyCount, teeIdHex)
+				fmt.Printf("  [%d] 0x%s (could not fetch details)\n", activeCount, teeIdHex)
 				continue
 			}
-			fmt.Printf("  [%d] 0x%s\n", healthyCount, teeIdHex)
+			fmt.Printf("  [%d] 0x%s\n", activeCount, teeIdHex)
 			fmt.Printf("      Endpoint:       %s\n", info.Endpoint)
 			fmt.Printf("      Type:           %d (%s)\n", info.TEEType, registry.GetTEETypeName(info.TEEType))
 			fmt.Printf("      Last Heartbeat: %s UTC\n\n", info.LastHeartbeatAt.UTC().Format("2006-01-02 15:04:05"))
 		}
 
-		if healthyCount == 0 {
-			fmt.Println("  No healthy TEEs found")
+		if activeCount == 0 {
+			fmt.Println("  No active TEEs found")
 		} else {
-			fmt.Printf("Total: %d healthy / %d enabled\n", healthyCount, len(tees))
+			fmt.Printf("Total: %d active / %d enabled\n", activeCount, len(tees))
 		}
 		return nil
 	},
@@ -263,8 +263,8 @@ func init() {
 	teeRegisterCmd.Flags().Uint8("tee-type", 0, "TEE type ID (e.g. 0=LLMProxy, 1=Validator)")
 	teeRegisterCmd.MarkFlagRequired("enclave-host")
 
-	teeHealthyCmd.Flags().Uint8("tee-type", 0, "TEE type ID to list")
+	teeActiveCmd.Flags().Uint8("tee-type", 0, "TEE type ID to list")
 
-	teeCmd.AddCommand(teeListCmd, teeShowCmd, teeHealthyCmd, teeRegisterCmd, teeDisableCmd, teeEnableCmd)
+	teeCmd.AddCommand(teeListCmd, teeShowCmd, teeActiveCmd, teeRegisterCmd, teeDisableCmd, teeEnableCmd)
 	rootCmd.AddCommand(teeCmd)
 }

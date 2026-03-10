@@ -49,7 +49,7 @@ var (
 	selEnableTEE        = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
 	selGetEnabledTEEs   = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
 	selGetTEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	selIsHealthy        = crypto.Keccak256([]byte("isHealthy(bytes32)"))[:4]
+	selIsTEEActive        = crypto.Keccak256([]byte("isTEEActive(bytes32)"))[:4]
 )
 
 // Structs
@@ -234,8 +234,8 @@ func (c *Client) EnableTEE(from string, teeId [32]byte) (string, error) {
 }
 
 
-func (c *Client) IsHealthy(teeId [32]byte) (bool, error) {
-	result, err := c.ethCall(encodeBytes32(selIsHealthy, teeId))
+func (c *Client) IsTEEActive(teeId [32]byte) (bool, error) {
+	result, err := c.ethCall(encodeBytes32(selIsTEEActive, teeId))
 	return len(result) >= 32 && result[31] == 1, err
 }
 
