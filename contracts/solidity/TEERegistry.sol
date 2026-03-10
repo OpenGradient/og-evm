@@ -497,6 +497,16 @@ contract TEERegistry is AccessControl {
         return _teesByOwner[owner];
     }
 
+    /// @notice Check if a TEE is currently active
+    function isActive(bytes32 teeId) external view returns (bool) {
+        return tees[teeId].active;
+    }
+
+    /// @notice Get a TEE's public key
+    function getPublicKey(bytes32 teeId) external view returns (bytes memory) {
+        return tees[teeId].publicKey;
+    }
+
     /// @notice Compute TEE ID from its public key
     /// @param publicKey The TEE's public key
     /// @return The TEE identifier (keccak256 hash)
