@@ -68,11 +68,6 @@
     },
     {
       "inputs": [],
-      "name": "PCRExpired",
-      "type": "error"
-    },
-    {
-      "inputs": [],
       "name": "PCRNotApproved",
       "type": "error"
     },
@@ -88,7 +83,7 @@
     },
     {
       "inputs": [],
-      "name": "TEENotActive",
+      "name": "TEENotEnabled",
       "type": "error"
     },
     {
@@ -152,12 +147,6 @@
           "internalType": "bytes32",
           "name": "pcrHash",
           "type": "bytes32"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "gracePeriod",
-          "type": "uint256"
         }
       ],
       "name": "PCRRevoked",
@@ -248,7 +237,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "TEEActivated",
+      "name": "TEEEnabled",
       "type": "event"
     },
     {
@@ -261,7 +250,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "TEEDeactivated",
+      "name": "TEEDisabled",
       "type": "event"
     },
     {
@@ -368,7 +357,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "activateTEE",
+      "name": "enableTEE",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -454,11 +443,6 @@
         {
           "internalType": "uint256",
           "name": "approvedAt",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "expiresAt",
           "type": "uint256"
         },
         {
@@ -575,7 +559,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "deactivateTEE",
+      "name": "disableTEE",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -735,7 +719,7 @@
             },
             {
               "internalType": "uint256",
-              "name": "lastUpdatedAt",
+              "name": "lastHeartbeatAt",
               "type": "uint256"
             }
           ],
@@ -889,7 +873,7 @@
           "type": "bytes32"
         }
       ],
-      "name": "isActive",
+      "name": "isEnabled",
       "outputs": [
         {
           "internalType": "bool",
@@ -1008,9 +992,9 @@
           "type": "bytes32"
         },
         {
-          "internalType": "uint256",
-          "name": "gracePeriod",
-          "type": "uint256"
+          "internalType": "uint8",
+          "name": "teeType",
+          "type": "uint8"
         }
       ],
       "name": "revokePCR",
@@ -1154,7 +1138,7 @@
         },
         {
           "internalType": "uint256",
-          "name": "lastUpdatedAt",
+          "name": "lastHeartbeatAt",
           "type": "uint256"
         }
       ],

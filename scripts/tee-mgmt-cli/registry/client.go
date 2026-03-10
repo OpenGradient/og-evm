@@ -39,18 +39,17 @@ var (
 	selDeactivateTEETyp = crypto.Keccak256([]byte("deactivateTEEType(uint8)"))[:4]
 	selIsValidType      = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
 	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
-	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint8,uint256)"))[:4]
+	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
 	selIsPCRApproved    = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
 	selComputePCRHash   = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	selGetActivePCRs    = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
 	selSetAWSRootCert   = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 	selRegisterTEE      = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
-	selDeactivateTEE    = crypto.Keccak256([]byte("deactivateTEE(bytes32)"))[:4]
-	selActivateTEE      = crypto.Keccak256([]byte("activateTEE(bytes32)"))[:4]
-	selRemoveTEE        = crypto.Keccak256([]byte("removeTEE(bytes32)"))[:4]
-	selGetActivatedTEEs = crypto.Keccak256([]byte("getActivatedTEEs(uint8)"))[:4]
+	selDisableTEE       = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
+	selEnableTEE        = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
+	selGetEnabledTEEs   = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
 	selGetTEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	selIsLive           = crypto.Keccak256([]byte("isLive(bytes32)"))[:4]
+	selIsHealthy        = crypto.Keccak256([]byte("isHealthy(bytes32)"))[:4]
 )
 
 // Structs
@@ -63,9 +62,9 @@ type TEEInfo struct {
 	TLSCertificate []byte
 	PCRHash        [32]byte
 	TEEType        uint8
-	IsActive       bool
+	IsEnabled      bool
 	RegisteredAt   time.Time
-	LastUpdatedAt  time.Time
+	LastHeartbeatAt time.Time
 }
 
 type AttestationResponse struct {
@@ -132,10 +131,10 @@ func (c *Client) getFirstAccount() (string, error) {
 
 // TEE Calls
 
-func (c *Client) GetActivatedTEEs(teeType uint8) ([]string, error) {
+func (c *Client) GetEnabledTEEs(teeType uint8) ([]string, error) {
 	u8T, _ := abi.NewType("uint8", "", nil)
 	encoded, _ := abi.Arguments{{Type: u8T}}.Pack(teeType)
-	result, err := c.ethCall(append(selGetActivatedTEEs, encoded...))
+	result, err := c.ethCall(append(selGetEnabledTEEs, encoded...))
 	if err != nil {
 		return nil, err
 	}
@@ -155,9 +154,9 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		Endpoint       string
 		PCRHash        [32]byte
 		TEEType        uint8
-		IsActive       bool
+		IsEnabled      bool
 		RegisteredAt   *big.Int
-		LastUpdatedAt  *big.Int
+		LastHeartbeatAt *big.Int
 	}
 
 	tupleType, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
@@ -168,9 +167,9 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "tlsCertificate", Type: "bytes"},
 		{Name: "pcrHash", Type: "bytes32"},
 		{Name: "teeType", Type: "uint8"},
-		{Name: "isActive", Type: "bool"},
+		{Name: "isEnabled", Type: "bool"},
 		{Name: "registeredAt", Type: "uint256"},
-		{Name: "lastUpdatedAt", Type: "uint256"},
+		{Name: "lastHeartbeatAt", Type: "uint256"},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ABI type: %v", err)
@@ -196,9 +195,9 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		TlsCertificate []byte         `json:"tlsCertificate"`
 		PcrHash        [32]byte       `json:"pcrHash"`
 		TeeType        uint8          `json:"teeType"`
-		IsActive       bool           `json:"isActive"`
+		IsEnabled      bool           `json:"isEnabled"`
 		RegisteredAt   *big.Int       `json:"registeredAt"`
-		LastUpdatedAt  *big.Int       `json:"lastUpdatedAt"`
+		LastHeartbeatAt *big.Int      `json:"lastHeartbeatAt"`
 	})
 
 	return &TEEInfo{
@@ -209,9 +208,9 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		TLSCertificate: s.TlsCertificate,
 		PCRHash:        s.PcrHash,
 		TEEType:        s.TeeType,
-		IsActive:       s.IsActive,
+		IsEnabled:      s.IsEnabled,
 		RegisteredAt:   time.Unix(s.RegisteredAt.Int64(), 0),
-		LastUpdatedAt:  time.Unix(s.LastUpdatedAt.Int64(), 0),
+		LastHeartbeatAt: time.Unix(s.LastHeartbeatAt.Int64(), 0),
 	}, nil
 }
 
@@ -226,20 +225,17 @@ func (c *Client) RegisterTEE(from string, attestation, signingKey, tlsCert []byt
 	return c.sendTx(from, append(selRegisterTEE, encoded...))
 }
 
-func (c *Client) DeactivateTEE(from string, teeId [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selDeactivateTEE, teeId))
+func (c *Client) DisableTEE(from string, teeId [32]byte) (string, error) {
+	return c.sendTx(from, encodeBytes32(selDisableTEE, teeId))
 }
 
-func (c *Client) ActivateTEE(from string, teeId [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selActivateTEE, teeId))
+func (c *Client) EnableTEE(from string, teeId [32]byte) (string, error) {
+	return c.sendTx(from, encodeBytes32(selEnableTEE, teeId))
 }
 
-func (c *Client) RemoveTEE(from string, teeId [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selRemoveTEE, teeId))
-}
 
-func (c *Client) IsLive(teeId [32]byte) (bool, error) {
-	result, err := c.ethCall(encodeBytes32(selIsLive, teeId))
+func (c *Client) IsHealthy(teeId [32]byte) (bool, error) {
+	result, err := c.ethCall(encodeBytes32(selIsHealthy, teeId))
 	return len(result) >= 32 && result[31] == 1, err
 }
 
@@ -279,12 +275,11 @@ func (c *Client) ApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string
 	return c.sendTx(from, append(selApprovePCR, encoded...))
 }
 
-func (c *Client) RevokePCR(from string, pcrHash [32]byte, teeType uint8, gracePeriod *big.Int) (string, error) {
+func (c *Client) RevokePCR(from string, pcrHash [32]byte, teeType uint8) (string, error) {
 	b32T, _ := abi.NewType("bytes32", "", nil)
 	u8T, _ := abi.NewType("uint8", "", nil)
-	u256T, _ := abi.NewType("uint256", "", nil)
-	args := abi.Arguments{{Type: b32T}, {Type: u8T}, {Type: u256T}}
-	encoded, _ := args.Pack(pcrHash, teeType, gracePeriod)
+	args := abi.Arguments{{Type: b32T}, {Type: u8T}}
+	encoded, _ := args.Pack(pcrHash, teeType)
 	return c.sendTx(from, append(selRevokePCR, encoded...))
 }
 

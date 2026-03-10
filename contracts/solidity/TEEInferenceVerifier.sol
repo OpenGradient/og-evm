@@ -98,8 +98,8 @@ contract TEEInferenceVerifier is AccessControl {
         uint256 timestamp,
         bytes calldata signature
     ) public view returns (bool) {
-        // 1. TEE must be active in the registry
-        if (!registry.isActive(teeId)) return false;
+        // 1. TEE must be enabled in the registry
+        if (!registry.isEnabled(teeId)) return false;
 
         // 2. Timestamp bounds
         uint256 minTs = block.timestamp > MAX_INFERENCE_AGE 

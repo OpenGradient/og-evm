@@ -147,12 +147,10 @@ contract('TEERegistry', function (accounts) {
             const pcrInfo = await registry.approvedPCRs(TEE_TYPE, pcrHash)
             expect(pcrInfo.active).to.be.true
             expect(pcrInfo.version).to.equal('v1.0.0')
-            expect(pcrInfo.expiresAt.toString()).to.equal('0')
-
             console.log('✓ PCR approved successfully')
         })
 
-        it('should handle PCR versioning with grace period via revokePCR', async function () {
+        it('should handle PCR versioning via revokePCR', async function () {
             const pcrsV2 = {
                 pcr0: '0x' + Buffer.alloc(48, 0x04).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x05).toString('hex'),
@@ -160,22 +158,18 @@ contract('TEERegistry', function (accounts) {
             }
 
             const pcrHashV2 = await registry.computePCRHash(pcrsV2)
-            const gracePeriod = 3600 // 1 hour
 
             // Approve v2
             await registry.approvePCR(pcrsV2, 'v2.0.0', TEE_TYPE)
 
-            // Revoke v1 with grace period
-            await registry.revokePCR(pcrHash, TEE_TYPE, gracePeriod)
+            // Revoke v1
+            await registry.revokePCR(pcrHash, TEE_TYPE)
 
-            // Both should be valid during grace period
-            expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.true
+            // v1 should be revoked, v2 should still be valid
+            expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.false
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHashV2)).to.be.true
 
-            const pcrV1Info = await registry.approvedPCRs(TEE_TYPE, pcrHash)
-            expect(pcrV1Info.expiresAt.toNumber()).to.be.greaterThan(0)
-
-            console.log('✓ PCR versioning with grace period works')
+            console.log('✓ PCR versioning works')
         })
 
         it('should allow admin to revoke PCR', async function () {
@@ -190,10 +184,10 @@ contract('TEERegistry', function (accounts) {
             await registry.approvePCR(pcrsRevoke, 'v1.0.0-revoke', TEE_TYPE)
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHashRevoke)).to.be.true
 
-            const result = await registry.revokePCR(pcrHashRevoke, TEE_TYPE, 0)
+            const result = await registry.revokePCR(pcrHashRevoke, TEE_TYPE)
 
             truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
-                return ev.pcrHash === pcrHashRevoke && ev.gracePeriod.toString() === '0'
+                return ev.pcrHash === pcrHashRevoke
             })
 
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHashRevoke)).to.be.false
@@ -225,13 +219,13 @@ contract('TEERegistry', function (accounts) {
 
         it('should reject non-admin revoking PCR', async function () {
             await truffleAssert.reverts(
-                registry.revokePCR(pcrHash, TEE_TYPE, 0, { from: user1 })
+                registry.revokePCR(pcrHash, TEE_TYPE, { from: user1 })
             )
 
             console.log('✓ Non-admin cannot revoke PCR')
         })
 
-        it('should reject expired PCR after grace period elapses', async function () {
+        it('should reject revoked PCR immediately', async function () {
             const pcrsExpiry = {
                 pcr0: '0x' + Buffer.alloc(48, 0xE1).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0xE2).toString('hex'),
@@ -244,16 +238,13 @@ contract('TEERegistry', function (accounts) {
             await registry.approvePCR(pcrsExpiry, 'v-expiry', TEE_TYPE)
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHashExpiry)).to.be.true
 
-            // Revoke with gracePeriod=1s
-            await registry.revokePCR(pcrHashExpiry, TEE_TYPE, 1)
+            // Revoke
+            await registry.revokePCR(pcrHashExpiry, TEE_TYPE)
 
-            // Send a dummy transaction to mine a new block with an advanced timestamp
-            await registry.setAWSRootCertificate('0x01')
-
-            // The expiry PCR should now be rejected (block.timestamp > expiresAt)
+            // The PCR should now be rejected
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHashExpiry)).to.be.false
 
-            console.log('✓ Expired PCR rejected after grace period elapses')
+            console.log('✓ Revoked PCR rejected immediately')
         })
     })
 
@@ -413,18 +404,18 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ Empty array returned for unused TEE type')
         })
 
-        it('should return empty array from getActivatedTEEs for unused type', async function () {
-            const tees = await registry.getActivatedTEEs(50)
+        it('should return empty array from getEnabledTEEs for unused type', async function () {
+            const tees = await registry.getEnabledTEEs(50)
             expect(tees.length).to.equal(0)
 
-            console.log('✓ Empty array returned from getActivatedTEEs for unused type')
+            console.log('✓ Empty array returned from getEnabledTEEs for unused type')
         })
 
-        it('should return empty array from getLiveTEEs for unused type', async function () {
-            const tees = await registry.getLiveTEEs(50)
+        it('should return empty array from getHealthyTEEs for unused type', async function () {
+            const tees = await registry.getHealthyTEEs(50)
             expect(tees.length).to.equal(0)
 
-            console.log('✓ Empty array returned from getLiveTEEs for unused type')
+            console.log('✓ Empty array returned from getHealthyTEEs for unused type')
         })
     })
 
@@ -493,7 +484,7 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ Re-approval of active PCR updates version')
         })
 
-        it('should allow re-approval to cancel pending grace-period revocation', async function () {
+        it('should allow re-approval after revocation', async function () {
             const pcrs = {
                 pcr0: '0x' + Buffer.alloc(48, 0x23).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x24).toString('hex'),
@@ -501,24 +492,19 @@ contract('TEERegistry', function (accounts) {
             }
             const pcrHash = await registry.computePCRHash(pcrs)
 
-            // Approve, then revoke with grace period
-            await registry.approvePCR(pcrs, 'v-grace-cancel', TEE_TYPE)
-            await registry.revokePCR(pcrHash, TEE_TYPE, 3600)
+            // Approve, then revoke
+            await registry.approvePCR(pcrs, 'v-revoke-reapprove', TEE_TYPE)
+            await registry.revokePCR(pcrHash, TEE_TYPE)
+            expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.false
 
-            // Still valid during grace period, but expiresAt is set
-            const infoBefore = await registry.approvedPCRs(TEE_TYPE, pcrHash)
-            expect(infoBefore.expiresAt.toNumber()).to.be.greaterThan(0)
+            // Re-approve
+            await registry.approvePCR(pcrs, 'v-revoke-reapprove-fixed', TEE_TYPE)
 
-            // Re-approve to cancel the pending revocation
-            await registry.approvePCR(pcrs, 'v-grace-cancel-fixed', TEE_TYPE)
-
-            // expiresAt should be reset to 0
             const infoAfter = await registry.approvedPCRs(TEE_TYPE, pcrHash)
-            expect(infoAfter.expiresAt.toString()).to.equal('0')
             expect(infoAfter.active).to.be.true
-            expect(infoAfter.version).to.equal('v-grace-cancel-fixed')
+            expect(infoAfter.version).to.equal('v-revoke-reapprove-fixed')
 
-            console.log('✓ Re-approval cancels pending grace-period revocation')
+            console.log('✓ Re-approval after revocation works')
         })
 
         it('should allow re-approval of revoked PCR', async function () {
@@ -531,7 +517,7 @@ contract('TEERegistry', function (accounts) {
             const pcrHash = await registry.computePCRHash(pcrs)
 
             await registry.approvePCR(pcrs, 'v-reapprove-1', TEE_TYPE)
-            await registry.revokePCR(pcrHash, TEE_TYPE, 0)
+            await registry.revokePCR(pcrHash, TEE_TYPE)
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.false
 
             // Re-approval should succeed after revocation
@@ -541,7 +527,7 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ Re-approval of revoked PCR works')
         })
 
-        it('should revoke PCR immediately when gracePeriod is 0', async function () {
+        it('should revoke PCR immediately', async function () {
             const pcrs = {
                 pcr0: '0x' + Buffer.alloc(48, 0x30).toString('hex'),
                 pcr1: '0x' + Buffer.alloc(48, 0x31).toString('hex'),
@@ -551,76 +537,15 @@ contract('TEERegistry', function (accounts) {
 
             await registry.approvePCR(pcrs, 'v-immediate-revoke', TEE_TYPE)
 
-            const result = await registry.revokePCR(pcrHash, TEE_TYPE, 0)
+            const result = await registry.revokePCR(pcrHash, TEE_TYPE)
 
             truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
-                return ev.pcrHash === pcrHash && ev.gracePeriod.toString() === '0'
+                return ev.pcrHash === pcrHash
             })
 
             expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.false
 
-            console.log('✓ Immediate PCR revocation works')
-        })
-
-        it('should revoke PCR with grace period', async function () {
-            const pcrs = {
-                pcr0: '0x' + Buffer.alloc(48, 0x70).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x71).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x72).toString('hex')
-            }
-
-            const pcrHash = await registry.computePCRHash(pcrs)
-            const gracePeriod = 3600 // 1 hour
-
-            await registry.approvePCR(pcrs, 'v-grace-revoke', TEE_TYPE)
-
-            const result = await registry.revokePCR(pcrHash, TEE_TYPE, gracePeriod)
-
-            truffleAssert.eventEmitted(result, 'PCRRevoked', (ev) => {
-                return ev.pcrHash === pcrHash && ev.gracePeriod.toString() === gracePeriod.toString()
-            })
-
-            // Should still be valid during grace period
-            expect(await registry.isPCRApproved(TEE_TYPE, pcrHash)).to.be.true
-
-            const pcrInfo = await registry.approvedPCRs(TEE_TYPE, pcrHash)
-            expect(pcrInfo.expiresAt.toNumber()).to.be.greaterThan(0)
-
-            console.log('✓ PCR revocation with grace period works')
-        })
-
-        it('should maintain both old and new PCRs during grace period', async function () {
-            const pcrsV1 = {
-                pcr0: '0x' + Buffer.alloc(48, 0x80).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x81).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x82).toString('hex')
-            }
-
-            const pcrsV2 = {
-                pcr0: '0x' + Buffer.alloc(48, 0x90).toString('hex'),
-                pcr1: '0x' + Buffer.alloc(48, 0x91).toString('hex'),
-                pcr2: '0x' + Buffer.alloc(48, 0x92).toString('hex')
-            }
-
-            const v1Hash = await registry.computePCRHash(pcrsV1)
-            const v2Hash = await registry.computePCRHash(pcrsV2)
-
-            // Approve v1, then v2
-            await registry.approvePCR(pcrsV1, 'v1-grace', TEE_TYPE)
-            await registry.approvePCR(pcrsV2, 'v2-grace', TEE_TYPE)
-
-            // Revoke v1 with 1 hour grace period
-            await registry.revokePCR(v1Hash, TEE_TYPE, 3600)
-
-            // Both should be valid during grace period
-            expect(await registry.isPCRApproved(TEE_TYPE, v1Hash)).to.be.true
-            expect(await registry.isPCRApproved(TEE_TYPE, v2Hash)).to.be.true
-
-            // v1 should have expiry set
-            const v1Info = await registry.approvedPCRs(TEE_TYPE, v1Hash)
-            expect(v1Info.expiresAt.toNumber()).to.be.greaterThan(0)
-
-            console.log('✓ Both PCRs valid during grace period')
+            console.log('✓ PCR revocation works')
         })
     })
 })

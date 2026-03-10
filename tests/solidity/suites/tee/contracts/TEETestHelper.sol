@@ -42,8 +42,8 @@ contract TEETestHelper {
         registry.approvePCR(pcrs, version, teeType);
     }
 
-    function revokePCR(bytes32 pcrHash, uint8 teeType, uint256 gracePeriod) external {
-        registry.revokePCR(pcrHash, teeType, gracePeriod);
+    function revokePCR(bytes32 pcrHash, uint8 teeType) external {
+        registry.revokePCR(pcrHash, teeType);
     }
 
     function isPCRApproved(uint8 teeType, bytes32 pcrHash) external view returns (bool) {
@@ -102,16 +102,12 @@ contract TEETestHelper {
 
     // ============ TEE Management Wrappers ============
 
-    function deactivateTEE(bytes32 teeId) external {
-        registry.deactivateTEE(teeId);
+    function disableTEE(bytes32 teeId) external {
+        registry.disableTEE(teeId);
     }
 
-    function activateTEE(bytes32 teeId) external {
-        registry.activateTEE(teeId);
-    }
-
-    function removeTEE(bytes32 teeId) external {
-        registry.removeTEE(teeId);
+    function enableTEE(bytes32 teeId) external {
+        registry.enableTEE(teeId);
     }
 
     // ============ Verification Wrappers ============
@@ -130,12 +126,12 @@ contract TEETestHelper {
         return registry.getTEE(teeId);
     }
 
-    function getActivatedTEEs(uint8 teeType) external view returns (bytes32[] memory) {
-        return registry.getActivatedTEEs(teeType);
+    function getEnabledTEEs(uint8 teeType) external view returns (bytes32[] memory) {
+        return registry.getEnabledTEEs(teeType);
     }
 
-    function getLiveTEEs(uint8 teeType) external view returns (TEERegistry.TEEInfo[] memory) {
-        return registry.getLiveTEEs(teeType);
+    function getHealthyTEEs(uint8 teeType) external view returns (TEERegistry.TEEInfo[] memory) {
+        return registry.getHealthyTEEs(teeType);
     }
 
     function getTEEsByType(uint8 teeType) external view returns (bytes32[] memory) {
