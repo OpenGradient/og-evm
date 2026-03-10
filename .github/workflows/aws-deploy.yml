@@ -6,6 +6,8 @@ on:
 jobs:
   build-and-push:
     name: Build and Push Image
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     environment: production
 
