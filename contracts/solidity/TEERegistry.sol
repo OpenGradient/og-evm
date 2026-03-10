@@ -5,7 +5,6 @@ import "./precompiles/tee/ITEEVerifier.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title TEERegistry - TEE Registration and Management
-/// @author 0G Labs
 /// @notice On-chain registry for Trusted Execution Environment (TEE) nodes that provide
 ///         verifiable AI inference. Manages the full TEE lifecycle: registration, activation,
 ///         heartbeat liveness, and decommissioning.
