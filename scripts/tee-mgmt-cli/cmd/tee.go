@@ -152,10 +152,15 @@ var teeRegisterCmd = &cobra.Command{
 		}
 
 		fmt.Printf("  TX: %s\n", txHash)
-		if client.WaitForTx(txHash) {
+		success, revertReason := client.WaitForTx(txHash)
+		if success {
 			fmt.Printf("\nTEE registered! ID: 0x%s\n", hex.EncodeToString(expectedId[:]))
 		} else {
-			fmt.Println("\nRegistration failed")
+			if revertReason != "" {
+				fmt.Printf("\nRegistration failed: %s\n", revertReason)
+			} else {
+				fmt.Println("\nRegistration failed")
+			}
 			os.Exit(1)
 		}
 		return nil
@@ -179,7 +184,8 @@ var teeDisableCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "TEE disabled")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "TEE disabled")
 		return nil
 	},
 }
@@ -201,7 +207,8 @@ var teeEnableCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "TEE enabled")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "TEE enabled")
 		return nil
 	},
 }

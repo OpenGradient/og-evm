@@ -43,7 +43,8 @@ var typeAddCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "Type added")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "Type added")
 		return nil
 	},
 }

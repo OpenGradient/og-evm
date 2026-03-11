@@ -38,7 +38,8 @@ var heartbeatSetMaxAgeCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), fmt.Sprintf("Heartbeat max age set to %s seconds", maxAge.String()))
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, fmt.Sprintf("Heartbeat max age set to %s seconds", maxAge.String()))
 		return nil
 	},
 }

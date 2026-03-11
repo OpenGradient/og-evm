@@ -26,7 +26,8 @@ var roleGrantAdminCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "Admin added")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "Admin added")
 		return nil
 	},
 }
@@ -43,7 +44,8 @@ var roleGrantOperatorCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "Operator added")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "Operator added")
 		return nil
 	},
 }
@@ -60,7 +62,8 @@ var roleRevokeAdminCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "Admin revoked")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "Admin revoked")
 		return nil
 	},
 }
@@ -77,7 +80,8 @@ var roleRevokeOperatorCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "Operator revoked")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "Operator revoked")
 		return nil
 	},
 }
