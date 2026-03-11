@@ -263,6 +263,9 @@ var teeSetHeartbeatMaxAgeCmd = &cobra.Command{
 		if !ok || maxAge.Sign() < 0 {
 			return fmt.Errorf("invalid max age: %s (must be a non-negative integer)", args[0])
 		}
+		if maxAge.BitLen() > 256 {
+			return fmt.Errorf("invalid max age: %s (must fit into a 256-bit unsigned integer)", args[0])
+		}
 
 		account, err := client.GetAccountAddress()
 		if err != nil {
