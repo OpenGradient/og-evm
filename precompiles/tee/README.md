@@ -47,7 +47,7 @@ registry.approvePCR(pcrs, "v1.0.0", 0);
 bytes32 teeId = registry.registerTEEWithAttestation(
     attestationDoc, signingKey, tlsCert, paymentAddr, endpoint, 0
 );
-// TEE is now active and in the active TEE list
+// TEE is now enabled and in the active TEE list
 ```
 
 ### 3. Heartbeat (TEE)
@@ -71,23 +71,19 @@ relay.settleIndividual(teeId, inputHash, outputHash, timestamp, ethAddress, blob
 ### 5. PCR Revocation (Admin)
 
 ```solidity
-// Immediate revocation
+// Immediate revocation — disables all TEEs running this PCR
 registry.revokePCR(pcrHash, 0);
-
-// Or with grace period (e.g., 1 hour for TEEs to upgrade)
-registry.revokePCR(pcrHash, 3600);
 ```
 
-PCR revocation is enforced lazily — TEEs with revoked PCRs are caught at:
-- `activateTEE()` — cannot re-activate with a revoked PCR
-- `heartbeat()` — next heartbeat will fail
+PCR revocation is immediate — all TEEs using the revoked PCR are disabled.
+Additionally, `heartbeat()` will fail for TEEs with revoked PCRs.
 
 ### 6. TEE Lifecycle (Owner/Admin)
 
 ```solidity
-// Owner or admin can deactivate/reactivate
-registry.deactivateTEE(teeId);
-registry.activateTEE(teeId);  // requires PCR to still be approved
+// Owner or admin can disable/enable
+registry.disableTEE(teeId);
+registry.enableTEE(teeId);  // requires PCR to still be approved
 ```
 
 ## Key Functions
@@ -96,18 +92,18 @@ registry.activateTEE(teeId);  // requires PCR to still be approved
 |----------|-----|---------|
 | `addTEEType()` | Admin | Add TEE category |
 | `approvePCR()` | Admin | Approve enclave code hash for a TEE type |
-| `revokePCR()` | Admin | Revoke PCR (immediate or with grace period) |
+| `revokePCR()` | Admin | Revoke PCR (immediate, disables affected TEEs) |
 | `registerTEEWithAttestation()` | Operator | Register new TEE via attestation |
-| `activateTEE()` | Owner/Admin | Re-activate TEE (checks PCR validity) |
-| `deactivateTEE()` | Owner/Admin | Deactivate TEE |
+| `enableTEE()` | Owner/Admin | Re-enable TEE (checks PCR validity) |
+| `disableTEE()` | Owner/Admin | Disable TEE |
 | `heartbeat()` | Anyone (relayed) | Prove TEE liveness (checks PCR validity) |
 | `verifySignature()` | TEEInferenceVerifier | Verify TEE inference signature |
 | `settleIndividual()` | Settlement Relay | Settle with signature verification |
 | `batchSettle()` | Settlement Relay | Emit batch settlement root |
 | `getTEE()` | Anyone | Get TEE info |
 | `getTLSCertificate()` | Anyone | Get TLS cert for HTTPS |
-| `isActive()` | Anyone | Check TEE status |
-| `getActiveTEEs()` | Anyone | List all active TEE IDs |
+| `getEnabledTEEs()` | Anyone | List enabled TEE IDs by type |
+| `getActiveTEEs()` | Anyone | List active TEE details by type |
 | `getApprovedPCRs()` | Anyone | List all approved PCR hashes |
 
 ## Access Control
@@ -127,7 +123,7 @@ The `tee-mgmt-cli` tool (`scripts/tee-mgmt-cli/`) provides commands for all admi
 ```bash
 # PCR management
 tee-mgmt-cli pcr approve --measurements-file measurements.json --version v1.0.0 --tee-type 0
-tee-mgmt-cli pcr revoke <pcr_hash> --grace-period 3600
+tee-mgmt-cli pcr revoke <pcr_hash>
 tee-mgmt-cli pcr list
 tee-mgmt-cli pcr check <pcr_hash>
 tee-mgmt-cli pcr compute --measurements-file measurements.json
@@ -136,8 +132,8 @@ tee-mgmt-cli pcr compute --measurements-file measurements.json
 tee-mgmt-cli tee list
 tee-mgmt-cli tee info <tee_id>
 tee-mgmt-cli tee register --host <enclave_host>
-tee-mgmt-cli tee deactivate <tee_id>
-tee-mgmt-cli tee activate <tee_id>
+tee-mgmt-cli tee disable <tee_id>
+tee-mgmt-cli tee enable <tee_id>
 ```
 
 ## Environment Variables
