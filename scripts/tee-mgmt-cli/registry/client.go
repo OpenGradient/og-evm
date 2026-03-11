@@ -48,7 +48,9 @@ var (
 	selEnableTEE        = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
 	selGetEnabledTEEs   = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
 	selGetTEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	selIsTEEActive        = crypto.Keccak256([]byte("isTEEActive(bytes32)"))[:4]
+	selIsTEEActive          = crypto.Keccak256([]byte("isTEEActive(bytes32)"))[:4]
+	selSetHeartbeatMaxAge   = crypto.Keccak256([]byte("setHeartbeatMaxAge(uint256)"))[:4]
+	selHeartbeatMaxAge      = crypto.Keccak256([]byte("heartbeatMaxAge()"))[:4]
 )
 
 // Structs
@@ -330,6 +332,25 @@ func (c *Client) SetAWSRootCertificate(from string, cert []byte) (string, error)
 	bytesT, _ := abi.NewType("bytes", "", nil)
 	encoded, _ := abi.Arguments{{Type: bytesT}}.Pack(cert)
 	return c.sendTx(from, append(selSetAWSRootCert, encoded...))
+}
+
+// Heartbeat Config Calls
+
+func (c *Client) SetHeartbeatMaxAge(from string, maxAge *big.Int) (string, error) {
+	u256T, _ := abi.NewType("uint256", "", nil)
+	encoded, _ := abi.Arguments{{Type: u256T}}.Pack(maxAge)
+	return c.sendTx(from, append(selSetHeartbeatMaxAge, encoded...))
+}
+
+func (c *Client) GetHeartbeatMaxAge() (*big.Int, error) {
+	result, err := c.ethCall(selHeartbeatMaxAge)
+	if err != nil {
+		return nil, err
+	}
+	if len(result) >= 32 {
+		return new(big.Int).SetBytes(result[:32]), nil
+	}
+	return nil, fmt.Errorf("empty result")
 }
 
 // Role Calls
