@@ -455,15 +455,25 @@ func (c *Client) sendTxSigned(data []byte) (string, error) {
 
 func (c *Client) WaitForTx(txHash string) (bool, string) {
 	Log("Waiting for confirmation...")
+	var lastErr error
 	for i := 0; i < 30; i++ {
-		resp, _ := c.rpcCall("eth_getTransactionReceipt", []string{txHash})
+		resp, err := c.rpcCall("eth_getTransactionReceipt", []string{txHash})
+		if err != nil {
+			lastErr = err
+			time.Sleep(time.Second)
+			continue
+		}
 		var result struct {
 			Result *struct {
 				Status      string `json:"status"`
 				BlockNumber string `json:"blockNumber"`
 			} `json:"result"`
 		}
-		json.Unmarshal(resp, &result)
+		if err := json.Unmarshal(resp, &result); err != nil {
+			lastErr = fmt.Errorf("failed to parse receipt response: %w", err)
+			time.Sleep(time.Second)
+			continue
+		}
 		if result.Result != nil {
 			if result.Result.Status == "0x1" {
 				return true, ""
@@ -472,6 +482,9 @@ func (c *Client) WaitForTx(txHash string) (bool, string) {
 			return false, reason
 		}
 		time.Sleep(time.Second)
+	}
+	if lastErr != nil {
+		return false, fmt.Sprintf("RPC error: %v", lastErr)
 	}
 	return false, "timed out waiting for receipt"
 }
