@@ -57,7 +57,8 @@ var pcrApproveCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "PCR approved")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "PCR approved")
 		return nil
 	},
 }
@@ -81,7 +82,8 @@ var pcrRevokeCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "PCR revoked")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "PCR revoked")
 		return nil
 	},
 }
