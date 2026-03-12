@@ -114,7 +114,7 @@ Expected output:
 === TEE Details: 0xe10366dfcd1a40e97042fbd7b422cd9033921291d0d1b7f40a2a15fc748ae711 ===
   Owner:          0x24E4BEa7164BCFb52CCAe10EdE4f5a0cB9F09C4b
   Payment Addr:   0x24E4BEa7164BCFb52CCAe10EdE4f5a0cB9F09C4b
-  Endpoint:       https://3.15.214.21
+  Endpoint:       https://127.0.0.1
   PCR Hash:       0x77786f3515030fe50a260c26d229eff15d2db0e211008f1581dc3e91bfd25703
   TEE Type:       0 (LLMProxy)
   Enabled:        true
@@ -191,7 +191,7 @@ curl -k https://enclave_host/enclave/attestation?nonce=abc123...
 ## Quick Reference
 ```bash
 # Complete registration flow (assuming admin setup done)
-./tee-cli tee register --enclave-host 3.15.214.21 --tee-type 0
+./tee-cli tee register --enclave-host 127.0.0.1 --tee-type 0
 ./tee-cli tee list
 ./tee-cli tee show <tee_id>
 
