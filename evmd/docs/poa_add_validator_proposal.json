@@ -1,0 +1,25 @@
+{
+  "messages": [
+    {
+      "@type": "/poa.MsgAddValidator",
+      "authority": "og10d07y265gmmuvt4z0w9aw880jnsr700jrdya3k",
+      "validator_address": "og1warvjhukk7th2xprz7mhfa48h32cfm9jw5dl0c",
+      "description": {
+        "moniker": "newvalidator",
+        "identity": "",
+        "website": "",
+        "security_contact": "",
+        "details": ""
+      },
+      "pubkey": {
+        "@type": "/cosmos.crypto.ed25519.PubKey",
+        "key": "aHlSZw+054g3XnuDblDq6TafZrXVK7xGuk9081g1FAk="
+      }
+    }
+  ],
+  "metadata": "Add PoA validator",
+  "deposit": "10000000ogwei",
+  "title": "Add validator",
+  "summary": "Add a second validator via PoA governance",
+  "expedited": false
+}
