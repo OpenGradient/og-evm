@@ -15,6 +15,7 @@ import (
 	precisebanktypes "github.com/cosmos/evm/x/precisebank/types"
 	vmtypes "github.com/cosmos/evm/x/vm/types"
 	transfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
+	poatypes "github.com/xrplevm/node/v10/x/poa/types"
 	corevm "github.com/ethereum/go-ethereum/core/vm"
 )
 
@@ -59,6 +60,7 @@ var maccPerms = map[string][]string{
 	stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
 	stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
 	govtypes.ModuleName:            {authtypes.Burner},
+	poatypes.ModuleName:            {authtypes.Minter, authtypes.Burner},
 
 	// Cosmos EVM modules
 	vmtypes.ModuleName:          {authtypes.Minter, authtypes.Burner},
