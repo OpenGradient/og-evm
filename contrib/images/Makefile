@@ -1,10 +1,10 @@
-all: evmd-env
+all: ogd-env
 
-evmd-env: evmd-rmi
-	docker build --tag cosmos/evmd -f evmd-env/Dockerfile \
+ogd-env: ogd-rmi
+	docker build --tag cosmos/ogd -f ogd-env/Dockerfile \
 		$(shell git rev-parse --show-toplevel)
 
-evmd-rmi:
-	docker rmi cosmos/evmd 2>/dev/null; true
+ogd-rmi:
+	docker rmi cosmos/ogd 2>/dev/null; true
 
-.PHONY: all evmd-env evmd-rmi
+.PHONY: all ogd-env ogd-rmi

@@ -25,10 +25,10 @@ RUN adduser -D nonroot -u 1025 -G nonroot
 EXPOSE 26656 26657 1317 9090 26660 8545 8100
 STOPSIGNAL SIGTERM
 VOLUME /evmd
-WORKDIR /evmd
+WORKDIR /ogd
 
 # Copy the wrapper script and binary to expected locations
-COPY contrib/images/evmd-env/wrapper.sh /usr/bin/wrapper.sh
+COPY contrib/images/ogd-env/wrapper.sh /usr/bin/wrapper.sh
 COPY test_deployment.sh /usr/bin/test_deployment.sh
 COPY multi_node_startup.sh /usr/bin/multi_node_startup.sh
 COPY --from=evmd-builder /work/build/evmd /evmd/
