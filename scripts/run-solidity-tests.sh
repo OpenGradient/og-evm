@@ -4,12 +4,12 @@ export GOPATH="$HOME"/go
 export PATH="$PATH":"$GOPATH"/bin
 
 # remove existing data
-rm -rf "$HOME"/.tmp-evmd-solidity-tests
+rm -rf "$HOME"/.tmp-ogd-solidity-tests
 
 # used to exit on first error (any non-zero exit code)
 set -e
 
-# build evmd binary
+# build ogd binary
 make install
 
 cd tests/solidity || exit

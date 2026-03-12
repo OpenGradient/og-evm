@@ -9,7 +9,7 @@ KEYRING="test"
 KEYALGO="eth_secp256k1"
 
 LOGLEVEL="info"
-# Set dedicated home directory for the evmd instance
+# Set dedicated home directory for the ogd instance
 CHAINDIR="$HOME/.og-evm-devnet"
 
 BASEFEE=10000000
@@ -47,7 +47,7 @@ Options:
   --no-install             Skip 'make install'
   --remote-debugging       Build with nooptimization,nostrip
   --additional-users N     Create N extra users: dev4, dev5, ...
-  --mnemonic-file PATH     Where to write mnemonics YAML (default: \$HOME/.evmd/mnemonics.yaml)
+  --mnemonic-file PATH     Where to write mnemonics YAML (default: \$HOME/.ogd/mnemonics.yaml)
   --mnemonics-input PATH   Read dev mnemonics from a yaml file (key: mnemonics:)
 EOF
 }
@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
       overwrite="n"; shift
       ;;
     --no-install)
-      echo "Flag --no-install passed -> Skipping installation of the evmd binary."
+      echo "Flag --no-install passed -> Skipping installation of the ogd binary."
       install=false; shift
       ;;
     --remote-debugging)
@@ -168,17 +168,17 @@ write_mnemonics_yaml() {
 # ---------- Add funded account ----------
 add_genesis_funds() {
   local keyname="$1"
-  evmd genesis add-genesis-account "$keyname" 1000000000000000000000ogwei --keyring-backend "$KEYRING" --home "$CHAINDIR"
+  ogd genesis add-genesis-account "$keyname" 1000000000000000000000ogwei --keyring-backend "$KEYRING" --home "$CHAINDIR"
 }
 
 # Setup local node if overwrite is set to Yes, otherwise skip setup
 if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
-  evmd config set client chain-id "$CHAINID" --home "$CHAINDIR"
-  evmd config set client keyring-backend "$KEYRING" --home "$CHAINDIR"
+  ogd config set client chain-id "$CHAINID" --home "$CHAINDIR"
+  ogd config set client keyring-backend "$KEYRING" --home "$CHAINDIR"
 
   # ---------------- Validator key ----------------
   VAL_KEY="mykey"
-  evmd keys add "$VAL_KEY" --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$CHAINDIR"
+  ogd keys add "$VAL_KEY" --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$CHAINDIR"
 
 
   provided_mnemonics=()
@@ -211,7 +211,7 @@ if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
   fi
 
   # init chain w/ validator mnemonic
-  evmd init $MONIKER -o --chain-id "$CHAINID" --home "$CHAINDIR"
+  ogd init $MONIKER -o --chain-id "$CHAINID" --home "$CHAINDIR"
 
   # ---------- Genesis customizations ----------
   jq '.app_state["staking"]["params"]["bond_denom"]="ogwei"' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
@@ -221,7 +221,7 @@ if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
   jq '.app_state["evm"]["params"]["evm_denom"]="ogwei"' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
   jq '.app_state["mint"]["params"]["mint_denom"]="ogwei"' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
-  jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for evmd.","denom_units":[{"denom":"ogwei","exponent":0,"aliases":[]},{"denom":"OGETH","exponent":18,"aliases":[]}],"base":"ogwei","display":"OGETH","name":"ETH Token","symbol":"OGETH","uri":"","uri_hash":""}]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
+  jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for ogd.","denom_units":[{"denom":"ogwei","exponent":0,"aliases":[]},{"denom":"OGETH","exponent":18,"aliases":[]}],"base":"ogwei","display":"OGETH","name":"ETH Token","symbol":"OGETH","uri":"","uri_hash":""}]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
   jq '.app_state["evm"]["params"]["active_static_precompiles"]=["0x0000000000000000000000000000000000000100","0x0000000000000000000000000000000000000400","0x0000000000000000000000000000000000000800","0x0000000000000000000000000000000000000801","0x0000000000000000000000000000000000000802","0x0000000000000000000000000000000000000803","0x0000000000000000000000000000000000000804","0x0000000000000000000000000000000000000805", "0x0000000000000000000000000000000000000806", "0x0000000000000000000000000000000000000807"]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
@@ -238,7 +238,7 @@ if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
   sed -i.bak 's/"expedited_voting_period": "86400s"/"expedited_voting_period": "15s"/g' "$GENESIS"
 
   # fund validator (devs already funded in the loop)
-  evmd genesis add-genesis-account "$VAL_KEY" 100000000000000000000000000ogwei --keyring-backend "$KEYRING" --home "$CHAINDIR"
+  ogd genesis add-genesis-account "$VAL_KEY" 100000000000000000000000000ogwei --keyring-backend "$KEYRING" --home "$CHAINDIR"
 
   # ---------- Config customizations ----------
   sed -i.bak 's/timeout_propose = "3s"/timeout_propose = "2s"/g' "$CONFIG_TOML"
@@ -273,7 +273,7 @@ if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
     echo "adding key for $keyname"
 
     # Create key
-    evmd keys add "$keyname" --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$CHAINDIR"
+    ogd keys add "$keyname" --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$CHAINDIR"
 
     # Fund the account in genesis
     add_genesis_funds "$keyname"
@@ -286,7 +286,7 @@ if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
       keyname="dev${idx}"
 
       # create key and capture mnemonic
-      mnemonic_out="$(evmd keys add "$keyname" --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$CHAINDIR" 2>&1)"
+      mnemonic_out="$(ogd keys add "$keyname" --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$CHAINDIR" 2>&1)"
       # try to grab a line that looks like a seed phrase (>=12 words), else last line
       user_mnemonic="$(echo "$mnemonic_out" | grep -E '([[:alpha:]]+[[:space:]]+){11,}[[:alpha:]]+$' | tail -1)"
       if [[ -z "$user_mnemonic" ]]; then
@@ -305,9 +305,9 @@ if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
   fi
 
   # --------- Finalize genesis ---------
-  evmd genesis gentx "$VAL_KEY" 1000000000000000000000ogwei --gas-prices ${BASEFEE}ogwei --keyring-backend "$KEYRING" --chain-id "$CHAINID" --home "$CHAINDIR"
-  evmd genesis collect-gentxs --home "$CHAINDIR"
-  evmd genesis validate-genesis --home "$CHAINDIR"
+  ogd genesis gentx "$VAL_KEY" 1000000000000000000000ogwei --gas-prices ${BASEFEE}ogwei --keyring-backend "$KEYRING" --chain-id "$CHAINID" --home "$CHAINDIR"
+  ogd genesis collect-gentxs --home "$CHAINDIR"
+  ogd genesis validate-genesis --home "$CHAINDIR"
 
   # --------- Write YAML with mnemonics if the user specified more ---------
   if [[ "$ADDITIONAL_USERS" -gt 0 ]]; then
@@ -320,7 +320,7 @@ if [[ $overwrite == "y" || $overwrite == "Y" ]]; then
 fi
 
 # Start the node
-evmd start "$TRACE" \
+ogd start "$TRACE" \
 	--pruning nothing \
 	--log_level $LOGLEVEL \
 	--minimum-gas-prices=0ogwei \

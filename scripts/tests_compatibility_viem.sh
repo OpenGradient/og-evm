@@ -44,7 +44,7 @@ trap cleanup_node EXIT
 sleep 3
 
 # Wait for the node to be ready
-echo "Waiting for evmd node to be ready..."
+echo "Waiting for ogd node to be ready..."
 
 wait_for_node 10
 

@@ -1,16 +1,16 @@
 version: "3"
 
 services:
-  evmd:
-    container_name: evmd-compat-test
-    image: "cosmos/evmd"
+  ogd:
+    container_name: ogd-compat-test
+    image: "cosmos/ogd"
     privileged: true
     user: root
     environment:
       - DEBUG=0
       - ID=0
-      - LOG=${LOG:-evmd.log}
-      - EVMDHOME=/data/node0/evmd
+      - LOG=${LOG:-ogd.log}
+      - OGDHOME=/data/node0/ogd
     cap_add:
       - SYS_PTRACE
     security_opt:
@@ -19,12 +19,12 @@ services:
       - "8545:8545"
       - "8546:8546"
     volumes:
-      - ./.evmd:/data:Z
-      - ./scripts/evmd/container-start-evmd.sh:/container-start-evmd.sh:ro
+      - ./.ogd:/data:Z
+      - ./scripts/ogd/container-start-ogd.sh:/container-start-ogd.sh:ro
     networks:
       - jsonrpc-test
     entrypoint: ["/bin/sh", "-c"]
-    command: ["/container-start-evmd.sh"]
+    command: ["/container-start-ogd.sh"]
     healthcheck:
       test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --timeout=5 --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}' --header='Content-Type: application/json' -O- http://localhost:8545 | grep -q result || exit 1"]
       interval: 10s
@@ -72,7 +72,7 @@ services:
       context: ../../
       dockerfile: tests/jsonrpc/Dockerfile
     depends_on:
-      evmd:
+      ogd:
         condition: service_healthy
       geth:
         condition: service_healthy
@@ -80,8 +80,8 @@ services:
     networks:
       - jsonrpc-test
     environment:
-      - EVMD_URL=http://evmd:8545
-      - EVMD_WS_URL=ws://evmd:8546
+      - ogd_URL=http://ogd:8545
+      - ogd_WS_URL=ws://ogd:8546
       - GETH_URL=http://geth:8545
       - GETH_WS_URL=ws://geth:8546
     volumes:

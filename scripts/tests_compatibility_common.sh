@@ -6,14 +6,14 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
-# Start evmd node in background
+# Start ogd node in background
 start_node() {
 	local print_log="${1:-false}"
 	pushd "$ROOT" >/dev/null
 	if [ "$print_log" = true ]; then
 		./local_node.sh -y &
 	else
-		./local_node.sh -y >/tmp/evmd.log 2>&1 &
+		./local_node.sh -y >/tmp/ogd.log 2>&1 &
 	fi
 	NODE_PID=$!
 	popd >/dev/null
@@ -25,7 +25,7 @@ wait_for_node() {
 	local rpc="http://127.0.0.1:8545"
 	local timeout=60
 	local elapsed=0
-	echo "Waiting for evmd node to be ready..."
+	echo "Waiting for ogd node to be ready..."
 	while [ $elapsed -lt $timeout ]; do
 		RESPONSE=$(curl -s -X POST -H "Content-Type: application/json" \
 			--data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
@@ -50,7 +50,7 @@ wait_for_node() {
 		echo "Error: Node failed to reach block $target within $timeout seconds"
 		echo "Last response: $RESPONSE"
 		echo "Checking node logs:"
-		tail -20 /tmp/evmd.log 2>/dev/null || echo "No evmd logs found"
+		tail -20 /tmp/ogd.log 2>/dev/null || echo "No ogd logs found"
 		exit 1
 	fi
 }
@@ -58,7 +58,7 @@ wait_for_node() {
 # Stop the node
 cleanup_node() {
 	if [ -n "${NODE_PID:-}" ]; then
-		echo "Stopping evmd node..."
+		echo "Stopping ogd node..."
 		kill "$NODE_PID" 2>/dev/null || true
 		wait "$NODE_PID" 2>/dev/null || true
 	fi

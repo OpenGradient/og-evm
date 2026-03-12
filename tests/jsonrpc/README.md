@@ -11,7 +11,7 @@ make test-rpc-compat
 
 ## Test Guide
 
-### 1. Build EVMD Docker Image
+### 1. Build ogd Docker Image
 
 ```bash
 # From project root
@@ -21,8 +21,8 @@ make localnet-build-env
 ### 2. Start Nodes
 
 ```bash
-# Start evmd with JSON-RPC enabled
-./tests/jsonrpc/scripts/evmd/start-evmd.sh
+# Start ogd with JSON-RPC enabled
+./tests/jsonrpc/scripts/ogd/start-ogd.sh
 
 # Start geth for comparison
 ./tests/jsonrpc/scripts/geth/start-geth.sh
@@ -43,8 +43,8 @@ go build .
 ### 4. Stop Nodes
 
 ```bash
-# Stop evmd
-./tests/jsonrpc/scripts/evmd/stop-evmd.sh
+# Stop ogd
+./tests/jsonrpc/scripts/ogd/stop-ogd.sh
 
 # Stop geth
 ./tests/jsonrpc/scripts/geth/stop-geth.sh
@@ -55,7 +55,7 @@ go build .
 
 ## Available Endpoints
 
-### evmd Endpoints
+### ogd Endpoints
 
 - **JSON-RPC**: http://localhost:8545
 - **WebSocket**: http://localhost:8546  
@@ -70,10 +70,10 @@ go build .
 
 ## Scripts Structure
 
-### `scripts/evmd/`
+### `scripts/ogd/`
 
-- `start-evmd.sh` - Initialize and start single-node evmd for testing
-- `stop-evmd.sh` - Stop the evmd testing node
+- `start-ogd.sh` - Initialize and start single-node ogd for testing
+- `stop-ogd.sh` - Stop the ogd testing node
 
 ### `scripts/geth/`
 
@@ -82,7 +82,7 @@ go build .
 
 ### `scripts/`
 
-- `start-both.sh` - Start both evmd and geth nodes
+- `start-both.sh` - Start both ogd and geth nodes
 - `stop-both.sh` - Stop both nodes
 
 ## Testing with Simulator
@@ -99,12 +99,12 @@ go build .
 
 The scripts use the following defaults:
 
-### evmd Configuration
+### ogd Configuration
 
-- Container name: `evmd-jsonrpc-test`
+- Container name: `ogd-jsonrpc-test`
 - Chain ID: `local-4221`
 - Validator count: 1
-- Data directory: `tests/jsonrpc/.evmd`
+- Data directory: `tests/jsonrpc/.ogd`
 
 ### geth Configuration
 
@@ -116,11 +116,11 @@ The scripts use the following defaults:
 
 ### Container fails to start
 
-- Check if the Docker image was built: `docker images | grep cosmos/evmd`
-- Check container logs: `docker logs evmd-jsonrpc-test`
+- Check if the Docker image was built: `docker images | grep cosmos/ogd`
+- Check container logs: `docker logs ogd-jsonrpc-test`
 
 ### JSON-RPC not responding
 
-- Verify the container is running: `docker ps | grep evmd-jsonrpc-test`
-- Check if ports are bound: `docker port evmd-jsonrpc-test`
+- Verify the container is running: `docker ps | grep ogd-jsonrpc-test`
+- Check if ports are bound: `docker port ogd-jsonrpc-test`
 - Test with curl: `curl -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' http://localhost:8545`
