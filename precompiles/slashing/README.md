@@ -176,7 +176,7 @@ The precompile uses different address types:
 
 Consensus addresses are typically found in:
 
-- `$HOME/.evmd/config/priv_validator_key.json`
+- `$HOME/.ogd/config/priv_validator_key.json`
 - Validator info queries
 
 ## Integration Notes

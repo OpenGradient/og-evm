@@ -166,7 +166,7 @@ func LegacyEIP712Cmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "legacy-eip712 [file] [evm-chain-id]",
 		Short:   "Output types of legacy eip712 typed data according to the given transaction",
-		Example: fmt.Sprintf(`$ %s debug legacy-eip712 tx.json 4221 --chain-id evmd-1`, version.AppName),
+		Example: fmt.Sprintf(`$ %s debug legacy-eip712 tx.json 4221 --chain-id ogd-1`, version.AppName),
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)

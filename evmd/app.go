@@ -136,7 +136,7 @@ func init() {
 	defaultNodeHome = evmconfig.MustGetDefaultNodeHome()
 }
 
-const appName = "evmd"
+const appName = "ogd"
 
 // defaultNodeHome default home directories for the application daemon
 var defaultNodeHome string

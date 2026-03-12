@@ -3,7 +3,7 @@ const hre = require('hardhat');
 
 describe('Slashing – query methods', function () {
     const SLASHING_ADDRESS = '0x0000000000000000000000000000000000000806';
-    const CONS_ADDR = '0x020a0f48a2f4ce0f0cA6debF71DB83474dD717D0' // address derived from ed25519 pubkey which is placed in ~/.evmd/config/priv_validator_key.json
+    const CONS_ADDR = '0x020a0f48a2f4ce0f0cA6debF71DB83474dD717D0' // address derived from ed25519 pubkey which is placed in ~/.ogd/config/priv_validator_key.json
     let slashing;
 
     before(async function () {
