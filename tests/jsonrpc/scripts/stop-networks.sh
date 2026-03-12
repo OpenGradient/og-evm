@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Stop both evmd and geth nodes
+# Stop both ogd and geth nodes
 
 set -e
 
@@ -12,11 +12,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Stopping both evmd and geth...${NC}"
+echo -e "${GREEN}Stopping both ogd and geth...${NC}"
 
-# Stop evmd
-echo -e "${YELLOW}Stopping evmd...${NC}"
-"$SCRIPT_DIR/evmd/stop-evmd.sh"
+# Stop ogd
+echo -e "${YELLOW}Stopping ogd...${NC}"
+"$SCRIPT_DIR/ogd/stop-ogd.sh"
 
 echo
 echo -e "${YELLOW}Stopping geth...${NC}"

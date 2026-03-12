@@ -70,7 +70,7 @@ apply_genesis_customizations() {
   jq '.app_state["evm"]["params"]["evm_denom"]="ogwei"' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
   jq '.app_state["mint"]["params"]["mint_denom"]="ogwei"' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
-  jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for evmd.","denom_units":[{"denom":"ogwei","exponent":0,"aliases":[]},{"denom":"OGETH","exponent":18,"aliases":[]}],"base":"ogwei","display":"OGETH","name":"ETH Token","symbol":"OGETH","uri":"","uri_hash":""}]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
+  jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for ogd.","denom_units":[{"denom":"ogwei","exponent":0,"aliases":[]},{"denom":"OGETH","exponent":18,"aliases":[]}],"base":"ogwei","display":"OGETH","name":"ETH Token","symbol":"OGETH","uri":"","uri_hash":""}]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
   jq '.app_state["evm"]["params"]["active_static_precompiles"]=["0x0000000000000000000000000000000000000100","0x0000000000000000000000000000000000000400","0x0000000000000000000000000000000000000800","0x0000000000000000000000000000000000000801","0x0000000000000000000000000000000000000802","0x0000000000000000000000000000000000000803","0x0000000000000000000000000000000000000804","0x0000000000000000000000000000000000000805","0x0000000000000000000000000000000000000806","0x0000000000000000000000000000000000000807"]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
@@ -167,13 +167,13 @@ generate_dev_accounts() {
     rm -rf "$DEV_HOME"
     mkdir -p "$DEV_HOME"
 
-    local FULL_OUTPUT=$(evmd keys add "$KEYNAME" --keyring-backend test --algo "$KEYALGO" --home "$DEV_HOME" 2>&1)
+    local FULL_OUTPUT=$(ogd keys add "$KEYNAME" --keyring-backend test --algo "$KEYALGO" --home "$DEV_HOME" 2>&1)
     local MNEMONIC=$(echo "$FULL_OUTPUT" | tail -1)
 
-    local ADDRESS=$(evmd keys show "$KEYNAME" -a --keyring-backend test --home "$DEV_HOME")
-    local PRIVKEY=$(evmd keys unsafe-export-eth-key "$KEYNAME" --keyring-backend test --home "$DEV_HOME" 2>&1)
+    local ADDRESS=$(ogd keys show "$KEYNAME" -a --keyring-backend test --home "$DEV_HOME")
+    local PRIVKEY=$(ogd keys unsafe-export-eth-key "$KEYNAME" --keyring-backend test --home "$DEV_HOME" 2>&1)
 
-    evmd genesis add-genesis-account "$ADDRESS" 1000000000000000000000000ogwei --home "$GENESIS_HOME"
+    ogd genesis add-genesis-account "$ADDRESS" 1000000000000000000000000ogwei --home "$GENESIS_HOME"
 
     echo "" >> "$OUTPUT_FILE"
     echo "dev${i}:" >> "$OUTPUT_FILE"
@@ -220,14 +220,14 @@ generate_genesis() {
 
     echo "--- Initializing validator $i at $HOME_DIR ---"
 
-    evmd config set client chain-id "$CHAINID" --home "$HOME_DIR"
-    evmd config set client keyring-backend "$KEYRING" --home "$HOME_DIR"
+    ogd config set client chain-id "$CHAINID" --home "$HOME_DIR"
+    ogd config set client keyring-backend "$KEYRING" --home "$HOME_DIR"
 
-    echo "$MNEMONIC" | evmd keys add "$VALKEY" --recover --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$HOME_DIR"
+    echo "$MNEMONIC" | ogd keys add "$VALKEY" --recover --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$HOME_DIR"
 
-    echo "$MNEMONIC" | evmd init "${MONIKER}-val${i}" -o --chain-id "$CHAINID" --home "$HOME_DIR" --recover
+    echo "$MNEMONIC" | ogd init "${MONIKER}-val${i}" -o --chain-id "$CHAINID" --home "$HOME_DIR" --recover
 
-    NODE_ID=$(evmd comet show-node-id --home "$HOME_DIR")
+    NODE_ID=$(ogd comet show-node-id --home "$HOME_DIR")
     NODE_IDS+=("$NODE_ID")
     echo "Validator $i Node ID: $NODE_ID"
   done
@@ -243,10 +243,10 @@ generate_genesis() {
     VALKEY="val${i}"
     VAL_HOME=$(get_home_dir $i)
 
-    VAL_ADDR=$(evmd keys show "$VALKEY" -a --keyring-backend "$KEYRING" --home "$VAL_HOME")
+    VAL_ADDR=$(ogd keys show "$VALKEY" -a --keyring-backend "$KEYRING" --home "$VAL_HOME")
 
     echo "Adding $VALKEY ($VAL_ADDR) with 100000000000000000000000000ogwei"
-    evmd genesis add-genesis-account "$VAL_ADDR" 100000000000000000000000000ogwei --home "$(get_home_dir 0)"
+    ogd genesis add-genesis-account "$VAL_ADDR" 100000000000000000000000000ogwei --home "$(get_home_dir 0)"
   done
 
   echo ""
@@ -268,7 +268,7 @@ generate_genesis() {
     P2P_PORT=$(get_p2p_port $i)
 
     echo "Creating gentx for $VALKEY (P2P port: $P2P_PORT)..."
-    evmd genesis gentx "$VALKEY" 10000000000000000000000ogwei \
+    ogd genesis gentx "$VALKEY" 10000000000000000000000ogwei \
       --gas-prices ${BASEFEE}ogwei \
       --keyring-backend "$KEYRING" \
       --chain-id "$CHAINID" \
@@ -285,8 +285,8 @@ generate_genesis() {
     echo "Copied gentx from val$i"
   done
 
-  evmd genesis collect-gentxs --home "$(get_home_dir 0)"
-  evmd genesis validate-genesis --home "$(get_home_dir 0)"
+  ogd genesis collect-gentxs --home "$(get_home_dir 0)"
+  ogd genesis validate-genesis --home "$(get_home_dir 0)"
   echo "Genesis validated successfully!"
 
   echo ""
@@ -364,7 +364,7 @@ start_validator() {
   echo "JSON-RPC:  $JSONRPC_PORT"
   echo "=========================================="
 
-  evmd start \
+  ogd start \
     --pruning nothing \
     --log_level "$LOGLEVEL" \
     --minimum-gas-prices=0ogwei \

@@ -170,7 +170,7 @@ or a similar setup where each node has a manually configurable IP address.
 Note, strict routability for addresses is turned off in the config file.
 
 Example:
-	evmd testnet init-files --v 4 --output-dir ./.testnets --starting-ip-address 192.168.10.2
+	ogd testnet init-files --v 4 --output-dir ./.testnets --starting-ip-address 192.168.10.2
 	`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -215,7 +215,7 @@ Example:
 	cmd.Flags().Duration(flagCommitTimeout, 5*time.Second, "Time to wait after a block commit before starting on the new height")
 	cmd.Flags().Bool(flagSingleHost, false, "Cluster runs on a single host machine with different ports")
 	cmd.Flags().String(flagNodeDirPrefix, "node", "Prefix the directory name for each node with (node results in node0, node1, ...)")
-	cmd.Flags().String(flagNodeDaemonHome, "evmd", "Home directory of the node's daemon configuration")
+	cmd.Flags().String(flagNodeDaemonHome, "ogd", "Home directory of the node's daemon configuration")
 	cmd.Flags().String(flagStartingIPAddress, "192.168.0.1", "Starting IP address (192.168.0.1 results in persistent peers list ID0@192.168.0.1:46656, ID1@192.168.0.2:46656, ...)")
 	cmd.Flags().String(flags.FlagKeyringBackend, flags.DefaultKeyringBackend, "Select keyring's backend (os|file|test)")
 	cmd.Flags().Bool(flagsUseDocker, false, "test network via docker")
@@ -234,7 +234,7 @@ and generate "v" directories, populated with necessary validator configuration f
 (private validator, genesis, config, etc.).
 
 Example:
-	evmd testnet --v 4 --output-dir ./.testnets
+	ogd testnet --v 4 --output-dir ./.testnets
 	`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			args := startArgs{}
@@ -748,7 +748,7 @@ func startTestnet(cmd *cobra.Command, args startArgs) error {
 	return nil
 }
 
-// NewTestNetworkFixture returns a new evmd AppConstructor for network simulation tests
+// NewTestNetworkFixture returns a new ogd AppConstructor for network simulation tests
 func NewTestNetworkFixture() sdknetwork.TestFixture {
 	dir, err := os.MkdirTemp("", "evm")
 	if err != nil {

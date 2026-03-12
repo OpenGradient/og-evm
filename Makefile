@@ -14,7 +14,7 @@ COMMIT := $(shell git log -1 --format='%H')
 
 BINDIR ?= $(GOPATH)/bin
 BUILDDIR ?= $(CURDIR)/build
-EXAMPLE_BINARY := evmd
+EXAMPLE_BINARY := ogd
 
 ###############################################################################
 ###                              Repo Info                                  ###
@@ -31,10 +31,10 @@ export GO111MODULE = on
 
 # evmd is a separate module under ./evmd
 EVMD_DIR      := evmd
-EVMD_MAIN_PKG := ./cmd/evmd
+EVMD_MAIN_PKG := ./cmd/ogd
 
 ###############################################################################
-###                        Build & Install evmd                             ###
+###                        Build & Install ogd                             ###
 ###############################################################################
 
 # process build tags
@@ -96,7 +96,7 @@ endif
 
 # Build into $(BUILDDIR)
 build: go.sum $(BUILDDIR)/
-	@echo "🏗️  Building evmd to $(BUILDDIR)/$(EXAMPLE_BINARY) ..."
+	@echo "🏗️  Building ogd to $(BUILDDIR)/$(EXAMPLE_BINARY) ..."
 	@echo "BUILD_FLAGS: $(BUILD_FLAGS)"
 	@cd $(EVMD_DIR) && CGO_ENABLED="1" \
 	  go build $(BUILD_FLAGS) -o $(BUILDDIR)/$(EXAMPLE_BINARY) $(EVMD_MAIN_PKG)
@@ -107,7 +107,7 @@ build-linux:
 
 # Install into $(BINDIR)
 install: go.sum
-	@echo "🚚  Installing evmd to $(BINDIR) ..."
+	@echo "🚚  Installing ogd to $(BINDIR) ..."
 	@echo "BUILD_FLAGS: $(BUILD_FLAGS)"
 	@cd $(EVMD_DIR) && CGO_ENABLED="1" \
 	  go install $(BUILD_FLAGS) $(EVMD_MAIN_PKG)
@@ -387,7 +387,7 @@ test-rpc-compat-stop:
 
 test-system: build-v05 build
 	mkdir -p ./tests/systemtests/binaries/
-	cp $(BUILDDIR)/evmd ./tests/systemtests/binaries/
+	cp $(BUILDDIR)/$(EXAMPLE_BINARY) ./tests/systemtests/binaries/
 	cd tests/systemtests/Counter && forge build
 	$(MAKE) -C tests/systemtests test
 
@@ -395,7 +395,7 @@ build-v05:
 	mkdir -p ./tests/systemtests/binaries/v0.5
 	git checkout v0.5.0
 	make build
-	cp $(BUILDDIR)/evmd ./tests/systemtests/binaries/v0.5
+	cp $(BUILDDIR)/$(EXAMPLE_BINARY) ./tests/systemtests/binaries/v0.5
 	git checkout -
 
 mocks:

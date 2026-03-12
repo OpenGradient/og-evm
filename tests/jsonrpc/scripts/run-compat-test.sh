@@ -11,12 +11,12 @@ JSONRPC_DIR="$PROJECT_ROOT/tests/jsonrpc"
 
 echo "🔍 Checking Docker image requirements..."
 
-# Check evmd image and build if needed
-if ! docker image inspect cosmos/evmd >/dev/null 2>&1; then
-    echo "📦 Building cosmos/evmd image..."
+# Check ogd image and build if needed
+if ! docker image inspect cosmos/ogd >/dev/null 2>&1; then
+    echo "📦 Building cosmos/ogd image..."
     make -C "$PROJECT_ROOT" localnet-build-env
 else
-    echo "✓ cosmos/evmd image already exists, skipping build"
+    echo "✓ cosmos/ogd image already exists, skipping build"
 fi
 
 # Check if simulator image already exists
@@ -26,20 +26,20 @@ else
     echo "📦 Will build simulator image..."
 fi
 
-# Initialize evmd data directory
-echo "🔧 Preparing evmd data directory..."
+# Initialize ogd data directory
+echo "🔧 Preparing ogd data directory..."
 
 # Clear existing directory to avoid key conflicts
-if [ -d "$JSONRPC_DIR/.evmd" ]; then
-    echo "🧹 Removing existing .evmd directory..."
-    rm -rf "$JSONRPC_DIR/.evmd"
+if [ -d "$JSONRPC_DIR/.ogd" ]; then
+    echo "🧹 Removing existing .ogd directory..."
+    rm -rf "$JSONRPC_DIR/.ogd"
 fi
 
 # Create fresh directory with correct permissions  
-mkdir -p "$JSONRPC_DIR/.evmd"
-chmod 777 "$JSONRPC_DIR/.evmd"
+mkdir -p "$JSONRPC_DIR/.ogd"
+chmod 777 "$JSONRPC_DIR/.ogd"
 
-echo "🔧 evmd will auto-initialize when container starts..."
+echo "🔧 ogd will auto-initialize when container starts..."
 
 # Run the compatibility tests
 echo "🚀 Running JSON-RPC compatibility tests..."

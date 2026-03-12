@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Start single evmd node for JSON-RPC compatibility testing
+# Start single ogd node for JSON-RPC compatibility testing
 
 set -e
 
@@ -8,8 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 # Configuration
-CONTAINER_NAME="evmd-jsonrpc-test"
-DATA_DIR="$PROJECT_ROOT/tests/jsonrpc/.evmd"
+CONTAINER_NAME="ogd-jsonrpc-test"
+DATA_DIR="$PROJECT_ROOT/tests/jsonrpc/.ogd"
 VALIDATOR_COUNT=1
 CHAIN_ID="local-4221"
 
@@ -19,11 +19,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Starting evmd for JSON-RPC testing...${NC}"
+echo -e "${GREEN}Starting ogd for JSON-RPC testing...${NC}"
 
 # Check if Docker image exists
-if ! docker image inspect cosmos/evmd >/dev/null 2>&1; then
-    echo -e "${RED}Error: cosmos/evmd Docker image not found${NC}"
+if ! docker image inspect cosmos/ogd >/dev/null 2>&1; then
+    echo -e "${RED}Error: cosmos/ogd Docker image not found${NC}"
     echo -e "${YELLOW}Please run: make localnet-build-env${NC}"
     exit 1
 fi
@@ -73,20 +73,20 @@ USER4_MNEMONIC="doll midnight silk carpet brush boring pluck office gown inquiry
 # Initialize using single Docker container with initialization script
 echo -e "${GREEN}Initializing chain with single Docker container...${NC}"
 
-docker run --rm --privileged -v "$DATA_DIR:/data" --user root --entrypoint="" cosmos/evmd bash -c "
+docker run --rm --privileged -v "$DATA_DIR:/data" --user root --entrypoint="" cosmos/ogd bash -c "
     # Initialize chain
-    echo '$VAL_MNEMONIC' | evmd init localtestnet -o --chain-id '$CHAIN_ID' --recover --home /data
+    echo '$VAL_MNEMONIC' | ogd init localtestnet -o --chain-id '$CHAIN_ID' --recover --home /data
     
     # Set client config
-    evmd config set client chain-id '$CHAIN_ID' --home /data
-    evmd config set client keyring-backend '$KEYRING' --home /data
+    ogd config set client chain-id '$CHAIN_ID' --home /data
+    ogd config set client keyring-backend '$KEYRING' --home /data
     
     # Import keys from mnemonics
-    echo '$VAL_MNEMONIC' | evmd keys add '$VAL_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
-    echo '$USER1_MNEMONIC' | evmd keys add '$USER1_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data  
-    echo '$USER2_MNEMONIC' | evmd keys add '$USER2_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
-    echo '$USER3_MNEMONIC' | evmd keys add '$USER3_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
-    echo '$USER4_MNEMONIC' | evmd keys add '$USER4_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
+    echo '$VAL_MNEMONIC' | ogd keys add '$VAL_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
+    echo '$USER1_MNEMONIC' | ogd keys add '$USER1_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data  
+    echo '$USER2_MNEMONIC' | ogd keys add '$USER2_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
+    echo '$USER3_MNEMONIC' | ogd keys add '$USER3_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
+    echo '$USER4_MNEMONIC' | ogd keys add '$USER4_KEY' --recover --keyring-backend '$KEYRING' --algo '$KEYALGO' --home /data
 "
 
 # Configure genesis file using jq directly on host
@@ -100,7 +100,7 @@ jq '.app_state["evm"]["params"]["evm_denom"]="atest"' "$DATA_DIR/config/genesis.
 jq '.app_state["mint"]["params"]["mint_denom"]="atest"' "$DATA_DIR/config/genesis.json" > "$DATA_DIR/config/tmp_genesis.json" && mv "$DATA_DIR/config/tmp_genesis.json" "$DATA_DIR/config/genesis.json"
 
 # Add default token metadata to genesis
-jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for evmd.","denom_units":[{"denom":"atest","exponent":0,"aliases":["attotest"]},{"denom":"test","exponent":18,"aliases":[]}],"base":"atest","display":"test","name":"Test Token","symbol":"TEST","uri":"","uri_hash":""}]' "$DATA_DIR/config/genesis.json" > "$DATA_DIR/config/tmp_genesis.json" && mv "$DATA_DIR/config/tmp_genesis.json" "$DATA_DIR/config/genesis.json"
+jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for ogd.","denom_units":[{"denom":"atest","exponent":0,"aliases":["attotest"]},{"denom":"test","exponent":18,"aliases":[]}],"base":"atest","display":"test","name":"Test Token","symbol":"TEST","uri":"","uri_hash":""}]' "$DATA_DIR/config/genesis.json" > "$DATA_DIR/config/tmp_genesis.json" && mv "$DATA_DIR/config/tmp_genesis.json" "$DATA_DIR/config/genesis.json"
 
 # Enable precompiles in EVM params
 jq '.app_state["evm"]["params"]["active_static_precompiles"]=["0x0000000000000000000000000000000000000100","0x0000000000000000000000000000000000000400","0x0000000000000000000000000000000000000800","0x0000000000000000000000000000000000000801","0x0000000000000000000000000000000000000802","0x0000000000000000000000000000000000000803","0x0000000000000000000000000000000000000804","0x0000000000000000000000000000000000000805", "0x0000000000000000000000000000000000000806", "0x0000000000000000000000000000000000000807"]' "$DATA_DIR/config/genesis.json" > "$DATA_DIR/config/tmp_genesis.json" && mv "$DATA_DIR/config/tmp_genesis.json" "$DATA_DIR/config/genesis.json"
@@ -118,24 +118,24 @@ jq '.consensus.params.block.max_gas="10000000"' "$DATA_DIR/config/genesis.json" 
 # Add genesis accounts and generate validator transaction
 echo -e "${GREEN}Setting up genesis accounts and validator...${NC}"
 
-docker run --rm --privileged -v "$DATA_DIR:/data" --user root --entrypoint="" cosmos/evmd bash -c "
+docker run --rm --privileged -v "$DATA_DIR:/data" --user root --entrypoint="" cosmos/ogd bash -c "
     # Allocate genesis accounts
-    evmd genesis add-genesis-account '$VAL_KEY' 100000000000000000000000000atest --keyring-backend '$KEYRING' --home /data
-    evmd genesis add-genesis-account '$USER1_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
-    evmd genesis add-genesis-account '$USER2_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
-    evmd genesis add-genesis-account '$USER3_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
-    evmd genesis add-genesis-account '$USER4_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
+    ogd genesis add-genesis-account '$VAL_KEY' 100000000000000000000000000atest --keyring-backend '$KEYRING' --home /data
+    ogd genesis add-genesis-account '$USER1_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
+    ogd genesis add-genesis-account '$USER2_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
+    ogd genesis add-genesis-account '$USER3_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
+    ogd genesis add-genesis-account '$USER4_KEY' 1000000000000000000000atest --keyring-backend '$KEYRING' --home /data
     
     # Generate and collect validator transaction
-    evmd genesis gentx '$VAL_KEY' 1000000000000000000000atest --gas-prices '${BASEFEE}atest' --keyring-backend '$KEYRING' --chain-id '$CHAIN_ID' --home /data
-    evmd genesis collect-gentxs --home /data
-    evmd genesis validate-genesis --home /data
+    ogd genesis gentx '$VAL_KEY' 1000000000000000000000atest --gas-prices '${BASEFEE}atest' --keyring-backend '$KEYRING' --chain-id '$CHAIN_ID' --home /data
+    ogd genesis collect-gentxs --home /data
+    ogd genesis validate-genesis --home /data
 "
 
 # Configure node settings using Docker
 echo -e "${GREEN}Configuring node settings...${NC}"
 
-docker run --rm --privileged -v "$DATA_DIR:/data" --user root --entrypoint="" cosmos/evmd bash -c "
+docker run --rm --privileged -v "$DATA_DIR:/data" --user root --entrypoint="" cosmos/ogd bash -c "
     # Configure consensus timeouts for faster block times (500ms block time)
     sed -i 's/timeout_propose = \"3s\"/timeout_propose = \"1s\"/g' /data/config/config.toml
     sed -i 's/timeout_propose_delta = \"500ms\"/timeout_propose_delta = \"100ms\"/g' /data/config/config.toml
@@ -170,8 +170,8 @@ docker run --rm --privileged -v "$DATA_DIR:/data" --user root --entrypoint="" co
 
 echo -e "${GREEN}Configuration completed${NC}"
 
-# Start the evmd container
-echo -e "${GREEN}Starting evmd container...${NC}"
+# Start the ogd container
+echo -e "${GREEN}Starting ogd container...${NC}"
 CONTAINER_ID=$(docker run -d \
     --name "$CONTAINER_NAME" \
     --rm \
@@ -183,7 +183,7 @@ CONTAINER_ID=$(docker run -d \
     -p 9090:9090 \
     -e ID=0 \
     -v "$DATA_DIR:/data" \
-    cosmos/evmd \
+    cosmos/ogd \
     start \
     --home /data \
     --minimum-gas-prices=0.0001atest \
@@ -253,7 +253,7 @@ if [ "$FINAL_STATUS" != "running" ]; then
     exit 1
 fi
 
-echo -e "${GREEN}evmd started successfully!${NC}"
+echo -e "${GREEN}ogd started successfully!${NC}"
 echo -e "${YELLOW}Endpoints:${NC}"
 echo -e "  JSON-RPC: http://localhost:8545"
 echo -e "  WebSocket: ws://localhost:8546"
@@ -262,4 +262,4 @@ echo -e "  Tendermint RPC: http://localhost:26657"
 echo -e "  gRPC: localhost:9090"
 echo
 echo -e "${YELLOW}To view logs: docker logs -f $CONTAINER_NAME${NC}"
-echo -e "${YELLOW}To stop: $SCRIPT_DIR/stop-evmd.sh${NC}"
+echo -e "${YELLOW}To stop: $SCRIPT_DIR/stop-ogd.sh${NC}"
