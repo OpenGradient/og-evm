@@ -174,13 +174,3 @@ TEE_REGISTRY_ADDRESS=0x... TEE_ENCLAVE_HOST=127.0.0.1 go run local_tee_workflow.
 
 > Integration tests are excluded from CI via `//go:build integration` tag and skip automatically if `TEE_ENCLAVE_HOST` is not set.
 
-## TODO
-
-### Planned Features
-- [ ] TEE health monitoring hooks
-- [ ] Batch TEE registration
-
-### Integration Tasks
-- [ ] Facilitator (x402): Call `verifySignature()` via FacilitatorSettlementRelay before payment
-- [ ] Frontend/dashboard: Download and pin TLS certificates
-- [ ] Monitoring: Track TEE active status
