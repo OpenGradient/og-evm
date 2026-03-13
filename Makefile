@@ -395,7 +395,7 @@ build-v05:
 	mkdir -p ./tests/systemtests/binaries/v0.5
 	git checkout v0.5.0
 	make build
-	cp $(BUILDDIR)/$(EXAMPLE_BINARY) ./tests/systemtests/binaries/v0.5
+	cp $(BUILDDIR)/evmd ./tests/systemtests/binaries/v0.5
 	git checkout -
 
 mocks:

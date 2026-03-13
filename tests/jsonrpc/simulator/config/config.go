@@ -60,7 +60,7 @@ func (c *Config) Validate() error {
 
 func MustLoadConfig() *Config {
 	// Use environment variable if set, otherwise default to localhost
-	evmdURL := os.Getenv("EVMD_URL")
+	evmdURL := os.Getenv("OGD_URL")
 	if evmdURL == "" {
 		evmdURL = EvmdHttpEndpoint
 	}
@@ -71,7 +71,7 @@ func MustLoadConfig() *Config {
 	}
 
 	// Handle WebSocket URLs - derive from HTTP URLs or use environment variables
-	evmdWsURL := os.Getenv("EVMD_WS_URL")
+	evmdWsURL := os.Getenv("OGD_WS_URL")
 	if evmdWsURL == "" {
 		evmdWsURL = EvmdWsEndpoint
 	}

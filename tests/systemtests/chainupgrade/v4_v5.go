@@ -37,7 +37,7 @@ func RunChainUpgrade(t *testing.T, base *suite.BaseTestSuite) {
 	currentBranchBinary := sut.ExecBinary()
 	currentInitializer := sut.TestnetInitializer()
 
-	legacyBinary := systest.WorkDir + "/binaries/v0.5/ogd"
+	legacyBinary := systest.WorkDir + "/binaries/v0.5/evmd"
 	sut.SetExecBinary(legacyBinary)
 	sut.SetTestnetInitializer(systest.InitializerWithBinary(legacyBinary, sut))
 	sut.SetupChain()

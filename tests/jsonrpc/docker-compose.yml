@@ -80,8 +80,8 @@ services:
     networks:
       - jsonrpc-test
     environment:
-      - ogd_URL=http://ogd:8545
-      - ogd_WS_URL=ws://ogd:8546
+      - OGD_URL=http://ogd:8545
+      - OGD_WS_URL=ws://ogd:8546
       - GETH_URL=http://geth:8545
       - GETH_WS_URL=ws://geth:8546
     volumes:
