@@ -2,8 +2,8 @@
   "messages": [
     {
       "@type": "/poa.MsgAddValidator",
-      "authority": "og10d07y265gmmuvt4z0w9aw880jnsr700jrdya3k",
-      "validator_address": "og1warvjhukk7th2xprz7mhfa48h32cfm9jw5dl0c",
+      "authority": "<GOV_AUTHORITY from Step 1>",
+      "validator_address": "<VALIDATOR_ADDRESS from Step 2a>",
       "description": {
         "moniker": "newvalidator",
         "identity": "",
@@ -13,7 +13,7 @@
       },
       "pubkey": {
         "@type": "/cosmos.crypto.ed25519.PubKey",
-        "key": "aHlSZw+054g3XnuDblDq6TafZrXVK7xGuk9081g1FAk="
+        "key": "<CONSENSUS_KEY from Step 2b>"
       }
     }
   ],
