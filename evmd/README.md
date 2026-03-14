@@ -14,11 +14,11 @@ By default, this chain has the following configuration:
 
 | Option              | Value                  |
 |---------------------|------------------------|
-| Binary              | `ogd`                 |
-| Chain ID            | `cosmos_262144-1`      |
+| Binary              | `ogd`                  |
+| Chain ID            | `10740`                |
 | Custom Opcodes      | -                      |
 | Default Token Pairs | 1 for the native token |
-| Denomination        | `atest`                |
+| Denomination        | `ogwei`                |
 | EVM permissioning   | permissionless         |
 | Enabled Precompiles | all                    |
 
@@ -55,6 +55,12 @@ unhappy lunar seat`
 ![RPC URL Settings](guide/rpc_url.png "RPC URL")
 ![Overview of required settings](guide/settings.png "Settings Overview")
 
+## Proof of Authority (PoA)
+
+Currently this is a PoA chain. The validator set is managed through governance, not open staking. Regular staking transactions like delegate and undelegate are blocked at the ante handler level. Validators can only be added or removed via governance proposals. The PoA module is built by the [xrplevm/node](https://github.com/xrplevm/node) team.
+
+See [evmd/docs/POA_ADD_VALIDATOR_VIA_GOV.md](docs/POA_ADD_VALIDATOR_VIA_GOV.md) for a step-by-step guide on adding a validator.
+
 ## Available Cosmos SDK Modules
 
 As mentioned above, this exemplary chain implementation is a reduced version of `simapp`.
@@ -72,6 +78,7 @@ Specifically, instead of offering access to all Cosmos SDK modules, it just incl
 - `gov`
 - `mint`
 - `params`
+- `poa`
 - `slashing`
 - `staking`
 - `upgrade`
