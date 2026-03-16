@@ -365,7 +365,7 @@ localnet-build-env:
 	$(MAKE) -C contrib/images evmd-env
 
 localnet-build-nodes:
-	$(DOCKER) run --rm --entrypoint evmd -v $(CURDIR)/.testnets:/data cosmos/ogd \
+	$(DOCKER) run --rm --entrypoint evmd -v $(CURDIR)/.testnets:/data cosmos/evmd \
 			  testnet init-files --validator-count 4 -o /data --starting-ip-address 192.168.10.2 --keyring-backend=test --chain-id=local-4221 --use-docker=true
 	docker compose up -d
 

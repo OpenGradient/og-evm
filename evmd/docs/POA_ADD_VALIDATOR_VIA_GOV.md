@@ -33,12 +33,12 @@ This means nobody can delegate, undelegate, or redelegate through regular transa
 Before going through the full flow, you can verify that PoA is actually blocking delegation. Try sending a delegate transaction (it should fail):
 
 ```bash
-VALIDATOR=$(ogd query staking validators \
+VALIDATOR=$(evmd query staking validators \
   --home ~/.og-evm-devnet -o json 2>/dev/null \
   | sed -n '/^{/,$ p' \
   | jq -r '.validators[0].operator_address')
 
-ogd tx staking delegate "$VALIDATOR" 1000000ogwei \
+evmd tx staking delegate "$VALIDATOR" 1000000ogwei \
   --from dev0 \
   --keyring-backend test \
   --home ~/.og-evm-devnet \
@@ -57,7 +57,7 @@ You should see an error with `tx type not allowed`. That confirms the PoA ante d
 Every governance proposal needs an `authority`, which is the address of the gov module. Query it like this:
 
 ```bash
-ogd query auth module-account gov \
+evmd query auth module-account gov \
   --home ~/.og-evm-devnet -o json 2>/dev/null \
   | sed -n '/^{/,$ p' \
   | jq -r '.account.value.address'
@@ -65,7 +65,7 @@ ogd query auth module-account gov \
 
 You should get something like `og10d07y265gmmuvt4z0w9aw880jnsr700jrdya3k`. Save this value, you will need it as the `authority` field in the proposal JSON.
 
-> **Note:** `ogd` sometimes prints extra lines like `=== REGISTERING TEE PRECOMPILE ===` before the JSON. The `sed` command above filters those out. If you're not using jq, just look for the JSON block in the output and copy the address from `account.value.address`.
+> **Note:** `evmd` sometimes prints extra lines like `=== REGISTERING TEE PRECOMPILE ===` before the JSON. The `sed` command above filters those out. If you're not using jq, just look for the JSON block in the output and copy the address from `account.value.address`.
 
 ---
 
@@ -81,7 +81,7 @@ A validator in the Cosmos ecosystem needs two separate keys:
 Create a new key for the validator. The PoA module expects a fresh account, so do not fund this address. If the address already has funds or an existing validator record, the proposal will fail.
 
 ```bash
-ogd keys add newvalidator \
+evmd keys add newvalidator \
   --keyring-backend test \
   --home ~/.og-evm-devnet \
   --no-backup
@@ -160,7 +160,7 @@ Save this as `proposal.json` (or whatever name you prefer).
 Submit the proposal with enough gas. The chain uses EIP-1559 style fee pricing, so the base fee can rise over time. A gas price of `300000ogwei` works on devnet. For mainnet values, see the "Notes for mainnet" section below.
 
 ```bash
-ogd tx gov submit-proposal proposal.json \
+evmd tx gov submit-proposal proposal.json \
   --from dev0 \
   --gas-prices 300000ogwei \
   --gas 500000 \
@@ -173,7 +173,7 @@ ogd tx gov submit-proposal proposal.json \
 Note the proposal ID from the output. You can also list all proposals to find it:
 
 ```bash
-ogd query gov proposals \
+evmd query gov proposals \
   --home ~/.og-evm-devnet -o json 2>/dev/null \
   | sed -n '/^{/,$ p' \
   | jq '.proposals[-1].id'
@@ -188,7 +188,7 @@ Vote yes as soon as possible. With `local_node.sh`, the voting period is only 30
 Use the key that has staking power (on the devnet, that's `mykey`, not `dev0`):
 
 ```bash
-ogd tx gov vote <PROPOSAL_ID> yes \
+evmd tx gov vote <PROPOSAL_ID> yes \
   --from mykey \
   --gas-prices 300000ogwei \
   --gas 300000 \
@@ -209,7 +209,7 @@ Replace `<PROPOSAL_ID>` with the ID from Step 4.
 Wait about 35 seconds for the voting period to end, then check the proposal status:
 
 ```bash
-ogd query gov proposal <PROPOSAL_ID> --home ~/.og-evm-devnet
+evmd query gov proposal <PROPOSAL_ID> --home ~/.og-evm-devnet
 ```
 
 You should see `status: PROPOSAL_STATUS_PASSED`.
@@ -217,7 +217,7 @@ You should see `status: PROPOSAL_STATUS_PASSED`.
 Now list the validators:
 
 ```bash
-ogd query staking validators --home ~/.og-evm-devnet -o json 2>/dev/null \
+evmd query staking validators --home ~/.og-evm-devnet -o json 2>/dev/null \
   | sed -n '/^{/,$ p' \
   | jq '[.validators[] | {moniker: .description.moniker, status: .status}]'
 ```
@@ -232,12 +232,12 @@ You should see two validators: the original one and the new one (with moniker `n
 
 | Issue | What to check |
 |-------|---------------|
-| jq parse error | `ogd` sometimes prints TEE/precompile log lines before the JSON. Use `sed -n '/^{/,$ p'` to filter them out, or just copy the JSON block manually. |
+| jq parse error | `evmd` sometimes prints TEE/precompile log lines before the JSON. Use `sed -n '/^{/,$ p'` to filter them out, or just copy the JSON block manually. |
 | Submit fails with out of gas | Increase `--gas` (try 500000 or higher). |
 | Submit fails with gas price too low | The EIP-1559 base fee rises over time. Increase `--gas-prices` (try 300000ogwei or higher). |
 | Vote says "inactive proposal" | The 30s voting period ended before your vote landed. Submit a new proposal and vote right away. |
 | Proposal execution fails | Make sure the new validator account has no balance, no existing validator record, and no delegations. |
-| Key already exists | You already created a key with that name. Use `ogd keys delete newvalidator --keyring-backend test --home ~/.og-evm-devnet` or pick a different name. |
+| Key already exists | You already created a key with that name. Use `evmd keys delete newvalidator --keyring-backend test --home ~/.og-evm-devnet` or pick a different name. |
 
 ---
 
@@ -248,8 +248,8 @@ This guide is written for a local devnet. If you are doing this on mainnet, a fe
 - **Keyring backend.** You would not use `--keyring-backend test` on mainnet. Use `os` or `file` instead, and make sure you have the passphrase ready. The test backend stores keys unencrypted and is not safe for real funds.
 - **Chain ID and home directory.** Replace `--chain-id 10740` and `--home ~/.og-evm-devnet` with your actual mainnet chain ID and node home directory.
 - **Voting period.** On mainnet the voting period is much longer (days, not 30 seconds). You don't need to rush the vote. Coordinate with other validators to make sure the proposal reaches quorum.
-- **Gas prices.** The base fee on mainnet will be different from devnet. Check current gas prices before submitting. You can use `ogd query feemarket base-fee` to see the current base fee.
+- **Gas prices.** The base fee on mainnet will be different from devnet. Check current gas prices before submitting. You can use `evmd query feemarket base-fee` to see the current base fee.
 - **Consensus key security.** On devnet we only care about the public key for the proposal. On mainnet, the private key must live on the validator machine in a secure location (typically `config/priv_validator_key.json`). Treat it like a password. If someone gets your consensus private key, they can double-sign on your behalf and get your validator slashed.
 - **Validator account.** On mainnet, back up the mnemonic when creating the validator key. Do not use `--no-backup`.
-- **Deposit amount.** The minimum deposit for a proposal may differ on mainnet. Check your chain's gov params with `ogd query gov params`.
+- **Deposit amount.** The minimum deposit for a proposal may differ on mainnet. Check your chain's gov params with `evmd query gov params`.
 - **Who submits and who votes.** On devnet we use `dev0` to submit and `mykey` to vote because that is how the local setup is configured. On mainnet, any funded account can submit a proposal, and all validators (or their delegators) with staking power can vote.
