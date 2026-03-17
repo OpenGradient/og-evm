@@ -6,7 +6,7 @@
 
 ## What is OpenGradient?
 
-[OpenGradient](https://docs.opengradient.ai/about/) is the world's first EVM-compatible network that extends standard blockchain capabilities with native AI inference. It enables developers to execute machine learning and large language models atomically as part of blockchain transactions, bridging the gap between artificial intelligence and decentralized applications.
+[OpenGradient](https://opengradient.ai/) is the world's first EVM-compatible network that extends standard blockchain capabilities with native AI inference. It enables developers to execute machine learning and large language models atomically as part of blockchain transactions, bridging the gap between artificial intelligence and decentralized applications.
 
 ### Key Features
 
