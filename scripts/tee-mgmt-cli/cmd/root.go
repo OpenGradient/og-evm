@@ -42,7 +42,7 @@ func init() {
 	loadEnvFile(".env")
 
 	rootCmd.PersistentFlags().String("rpc-url", getEnvOrDefault("RPC_URL", "https://ogevmdevnet.opengradient.ai"), "OpenGradient network RPC endpoint URL")
-	rootCmd.PersistentFlags().String("registry", getEnvOrDefault("TEE_REGISTRY_ADDRESS", "0x3d641a2791533b4a0000345ea8d509d01e1ec301"), "TEE Registry contract address (hex)")
+	rootCmd.PersistentFlags().String("registry", getEnvOrDefault("TEE_REGISTRY_ADDRESS", "0x4e72238852f3c918f4E4e57AeC9280dDB0c80248"), "TEE Registry contract address (hex)")
 	rootCmd.PersistentFlags().String("private-key", os.Getenv("TEE_PRIVATE_KEY"), "Private key for signing transactions (hex, omit 0x prefix)")
 }
 

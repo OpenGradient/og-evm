@@ -6,7 +6,6 @@ KEYRING="test"
 KEYALGO="eth_secp256k1"
 LOGLEVEL="info"
 BASEFEE=10000000
-
 BASEDIR="${BASEDIR:-"$HOME/.og-evm-devnet"}"
 
 NODE_NUMBER="${NODE_NUMBER:-}"
@@ -372,6 +371,8 @@ start_validator() {
     --home "$HOME_DIR" \
     --json-rpc.api eth,txpool,personal,net,debug,web3 \
     --chain-id "$CHAINID"
+
+  exec evmd start "${START_ARGS[@]}"
 }
 
 if [[ "$GENERATE_GENESIS" == "true" ]]; then

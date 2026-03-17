@@ -40,7 +40,8 @@ var certSetAWSCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "AWS cert set")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "AWS cert set")
 		return nil
 	},
 }

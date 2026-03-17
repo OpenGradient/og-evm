@@ -35,8 +35,8 @@ Flags take precedence over env vars, which take precedence over `.env` defaults.
 tee-cli tee list                          # List all active TEEs
 tee-cli tee show <tee_id>                 # Show TEE details (owner, endpoint, PCR, keys)
 tee-cli tee register --enclave-host HOST  # Register a new TEE from an enclave
-tee-cli tee activate <tee_id>             # Re-activate a deactivated TEE
-tee-cli tee deactivate <tee_id>           # Deactivate a TEE
+tee-cli tee enable <tee_id>               # Re-enable a disabled TEE
+tee-cli tee disable <tee_id>              # Disable a TEE
 ```
 
 Registration flags:
@@ -68,7 +68,6 @@ Approve flags:
 | `-m`, `--measurements-file` | | Path to measurements JSON |
 | `--pcr0`, `--pcr1`, `--pcr2` | | Individual PCR hex values |
 | `-v`, `--version` | `v1.0.0` | Version label |
-| `--grace-period` | `0` | Seconds before previous PCR is revoked |
 | `--previous-pcr` | | PCR hash being rotated out (bytes32 hex) |
 
 ### `type` — TEE Type Definitions
@@ -76,7 +75,6 @@ Approve flags:
 ```bash
 tee-cli type list                         # List registered TEE types
 tee-cli type add <type_id> <name>         # Add a new TEE type
-tee-cli type deactivate <type_id>         # Deactivate a TEE type
 ```
 
 ### `role` — Access Control

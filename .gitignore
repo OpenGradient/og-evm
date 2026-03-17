@@ -37,3 +37,12 @@ build/
 tests/systemtests/binaries
 tests/systemtests/testnet
 .testnets
+
+local_tee_workflow
+
+# Secrets & credentials
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

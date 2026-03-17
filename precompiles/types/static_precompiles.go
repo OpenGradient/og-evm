@@ -189,12 +189,10 @@ func (s StaticPrecompiles) WithSlashingPrecompile(
 }
 
 func (s StaticPrecompiles) WithTEEPrecompile() StaticPrecompiles {
-	fmt.Println("=== REGISTERING TEE PRECOMPILE ===")
 	teePrecompile, err := teeprecompile.NewPrecompile()
 	if err != nil {
 		panic(fmt.Errorf("failed to instantiate TEE precompile: %w", err))
 	}
-	fmt.Printf("TEE Address: %s\n", teePrecompile.Address().Hex())
 	s[teePrecompile.Address()] = teePrecompile
 	return s
 }

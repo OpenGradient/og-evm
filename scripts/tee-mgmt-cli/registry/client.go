@@ -36,21 +36,21 @@ var (
 	selRevokeRole       = crypto.Keccak256([]byte("revokeRole(bytes32,address)"))[:4]
 	selHasRole          = crypto.Keccak256([]byte("hasRole(bytes32,address)"))[:4]
 	selAddTEEType       = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
-	selDeactivateTEETyp = crypto.Keccak256([]byte("deactivateTEEType(uint8)"))[:4]
 	selIsValidType      = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
 	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
-	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint8,uint256)"))[:4]
+	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
 	selIsPCRApproved    = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
 	selComputePCRHash   = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
-	selGetActivePCRs    = crypto.Keccak256([]byte("getActivePCRs()"))[:4]
+	selGetApprovedPCRs  = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
 	selSetAWSRootCert   = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 	selRegisterTEE      = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
-	selDeactivateTEE    = crypto.Keccak256([]byte("deactivateTEE(bytes32)"))[:4]
-	selActivateTEE      = crypto.Keccak256([]byte("activateTEE(bytes32)"))[:4]
-	selRemoveTEE        = crypto.Keccak256([]byte("removeTEE(bytes32)"))[:4]
-	selGetActivatedTEEs = crypto.Keccak256([]byte("getActivatedTEEs(uint8)"))[:4]
+	selDisableTEE       = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
+	selEnableTEE        = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
+	selGetEnabledTEEs   = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
 	selGetTEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	selIsLive           = crypto.Keccak256([]byte("isLive(bytes32)"))[:4]
+	selIsTEEActive          = crypto.Keccak256([]byte("isTEEActive(bytes32)"))[:4]
+	selSetHeartbeatMaxAge   = crypto.Keccak256([]byte("setHeartbeatMaxAge(uint256)"))[:4]
+	selHeartbeatMaxAge      = crypto.Keccak256([]byte("heartbeatMaxAge()"))[:4]
 )
 
 // Structs
@@ -63,9 +63,9 @@ type TEEInfo struct {
 	TLSCertificate []byte
 	PCRHash        [32]byte
 	TEEType        uint8
-	IsActive       bool
+	IsEnabled      bool
 	RegisteredAt   time.Time
-	LastUpdatedAt  time.Time
+	LastHeartbeatAt time.Time
 }
 
 type AttestationResponse struct {
@@ -132,10 +132,10 @@ func (c *Client) getFirstAccount() (string, error) {
 
 // TEE Calls
 
-func (c *Client) GetActivatedTEEs(teeType uint8) ([]string, error) {
+func (c *Client) GetEnabledTEEs(teeType uint8) ([]string, error) {
 	u8T, _ := abi.NewType("uint8", "", nil)
 	encoded, _ := abi.Arguments{{Type: u8T}}.Pack(teeType)
-	result, err := c.ethCall(append(selGetActivatedTEEs, encoded...))
+	result, err := c.ethCall(append(selGetEnabledTEEs, encoded...))
 	if err != nil {
 		return nil, err
 	}
@@ -149,17 +149,6 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		return nil, err
 	}
 
-	type TEEData struct {
-		Owner          common.Address
-		PaymentAddress common.Address
-		Endpoint       string
-		PCRHash        [32]byte
-		TEEType        uint8
-		IsActive       bool
-		RegisteredAt   *big.Int
-		LastUpdatedAt  *big.Int
-	}
-
 	tupleType, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "owner", Type: "address"},
 		{Name: "paymentAddress", Type: "address"},
@@ -168,9 +157,9 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "tlsCertificate", Type: "bytes"},
 		{Name: "pcrHash", Type: "bytes32"},
 		{Name: "teeType", Type: "uint8"},
-		{Name: "isActive", Type: "bool"},
+		{Name: "enabled", Type: "bool"},
 		{Name: "registeredAt", Type: "uint256"},
-		{Name: "lastUpdatedAt", Type: "uint256"},
+		{Name: "lastHeartbeatAt", Type: "uint256"},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ABI type: %v", err)
@@ -196,9 +185,9 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		TlsCertificate []byte         `json:"tlsCertificate"`
 		PcrHash        [32]byte       `json:"pcrHash"`
 		TeeType        uint8          `json:"teeType"`
-		IsActive       bool           `json:"isActive"`
+		Enabled        bool           `json:"enabled"`
 		RegisteredAt   *big.Int       `json:"registeredAt"`
-		LastUpdatedAt  *big.Int       `json:"lastUpdatedAt"`
+		LastHeartbeatAt *big.Int      `json:"lastHeartbeatAt"`
 	})
 
 	return &TEEInfo{
@@ -209,9 +198,9 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		TLSCertificate: s.TlsCertificate,
 		PCRHash:        s.PcrHash,
 		TEEType:        s.TeeType,
-		IsActive:       s.IsActive,
+		IsEnabled:      s.Enabled,
 		RegisteredAt:   time.Unix(s.RegisteredAt.Int64(), 0),
-		LastUpdatedAt:  time.Unix(s.LastUpdatedAt.Int64(), 0),
+		LastHeartbeatAt: time.Unix(s.LastHeartbeatAt.Int64(), 0),
 	}, nil
 }
 
@@ -226,31 +215,57 @@ func (c *Client) RegisterTEE(from string, attestation, signingKey, tlsCert []byt
 	return c.sendTx(from, append(selRegisterTEE, encoded...))
 }
 
-func (c *Client) DeactivateTEE(from string, teeId [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selDeactivateTEE, teeId))
+func (c *Client) DisableTEE(from string, teeId [32]byte) (string, error) {
+	return c.sendTx(from, encodeBytes32(selDisableTEE, teeId))
 }
 
-func (c *Client) ActivateTEE(from string, teeId [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selActivateTEE, teeId))
+func (c *Client) EnableTEE(from string, teeId [32]byte) (string, error) {
+	return c.sendTx(from, encodeBytes32(selEnableTEE, teeId))
 }
 
-func (c *Client) RemoveTEE(from string, teeId [32]byte) (string, error) {
-	return c.sendTx(from, encodeBytes32(selRemoveTEE, teeId))
-}
 
-func (c *Client) IsLive(teeId [32]byte) (bool, error) {
-	result, err := c.ethCall(encodeBytes32(selIsLive, teeId))
+func (c *Client) IsTEEActive(teeId [32]byte) (bool, error) {
+	result, err := c.ethCall(encodeBytes32(selIsTEEActive, teeId))
 	return len(result) >= 32 && result[31] == 1, err
 }
 
 // PCR Calls
 
-func (c *Client) GetActivePCRs() ([]string, error) {
-	result, err := c.ethCall(selGetActivePCRs)
+type PCRKey struct {
+	PCRHash [32]byte
+	TEEType uint8
+}
+
+func (c *Client) GetApprovedPCRs() ([]PCRKey, error) {
+	result, err := c.ethCall(selGetApprovedPCRs)
 	if err != nil {
 		return nil, err
 	}
-	return decodeBytes32Array(result)
+
+	tupleT, _ := abi.NewType("tuple[]", "", []abi.ArgumentMarshaling{
+		{Name: "pcrHash", Type: "bytes32"},
+		{Name: "teeType", Type: "uint8"},
+	})
+	args := abi.Arguments{{Type: tupleT}}
+	values, err := args.Unpack(result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode approved PCRs: %v", err)
+	}
+
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	items := values[0].([]struct {
+		PcrHash [32]byte `json:"pcrHash"`
+		TeeType uint8    `json:"teeType"`
+	})
+
+	keys := make([]PCRKey, len(items))
+	for i, item := range items {
+		keys[i] = PCRKey{PCRHash: item.PcrHash, TEEType: item.TeeType}
+	}
+	return keys, nil
 }
 
 func (c *Client) ComputePCRHash(pcr0, pcr1, pcr2 []byte) ([32]byte, error) {
@@ -279,12 +294,11 @@ func (c *Client) ApprovePCR(from string, pcr0, pcr1, pcr2 []byte, version string
 	return c.sendTx(from, append(selApprovePCR, encoded...))
 }
 
-func (c *Client) RevokePCR(from string, pcrHash [32]byte, teeType uint8, gracePeriod *big.Int) (string, error) {
+func (c *Client) RevokePCR(from string, pcrHash [32]byte, teeType uint8) (string, error) {
 	b32T, _ := abi.NewType("bytes32", "", nil)
 	u8T, _ := abi.NewType("uint8", "", nil)
-	u256T, _ := abi.NewType("uint256", "", nil)
-	args := abi.Arguments{{Type: b32T}, {Type: u8T}, {Type: u256T}}
-	encoded, _ := args.Pack(pcrHash, teeType, gracePeriod)
+	args := abi.Arguments{{Type: b32T}, {Type: u8T}}
+	encoded, _ := args.Pack(pcrHash, teeType)
 	return c.sendTx(from, append(selRevokePCR, encoded...))
 }
 
@@ -312,18 +326,31 @@ func (c *Client) AddTEEType(from string, typeId uint8, name string) (string, err
 	return c.sendTx(from, append(selAddTEEType, encoded...))
 }
 
-func (c *Client) DeactivateTEEType(from string, typeId uint8) (string, error) {
-	u8T, _ := abi.NewType("uint8", "", nil)
-	encoded, _ := abi.Arguments{{Type: u8T}}.Pack(typeId)
-	return c.sendTx(from, append(selDeactivateTEETyp, encoded...))
-}
-
 // Certificate Calls
 
 func (c *Client) SetAWSRootCertificate(from string, cert []byte) (string, error) {
 	bytesT, _ := abi.NewType("bytes", "", nil)
 	encoded, _ := abi.Arguments{{Type: bytesT}}.Pack(cert)
 	return c.sendTx(from, append(selSetAWSRootCert, encoded...))
+}
+
+// Heartbeat Config Calls
+
+func (c *Client) SetHeartbeatMaxAge(from string, maxAge *big.Int) (string, error) {
+	u256T, _ := abi.NewType("uint256", "", nil)
+	encoded, _ := abi.Arguments{{Type: u256T}}.Pack(maxAge)
+	return c.sendTx(from, append(selSetHeartbeatMaxAge, encoded...))
+}
+
+func (c *Client) GetHeartbeatMaxAge() (*big.Int, error) {
+	result, err := c.ethCall(selHeartbeatMaxAge)
+	if err != nil {
+		return nil, err
+	}
+	if len(result) >= 32 {
+		return new(big.Int).SetBytes(result[:32]), nil
+	}
+	return nil, fmt.Errorf("empty result")
 }
 
 // Role Calls
@@ -426,18 +453,131 @@ func (c *Client) sendTxSigned(data []byte) (string, error) {
 	return signed.Hash().Hex(), nil
 }
 
-func (c *Client) WaitForTx(txHash string) bool {
+func (c *Client) WaitForTx(txHash string) (bool, string) {
 	Log("Waiting for confirmation...")
+	var lastErr error
 	for i := 0; i < 30; i++ {
-		resp, _ := c.rpcCall("eth_getTransactionReceipt", []string{txHash})
-		var result struct{ Result *struct{ Status string } }
-		json.Unmarshal(resp, &result)
+		resp, err := c.rpcCall("eth_getTransactionReceipt", []string{txHash})
+		if err != nil {
+			lastErr = err
+			time.Sleep(time.Second)
+			continue
+		}
+		var result struct {
+			Result *struct {
+				Status      string `json:"status"`
+				BlockNumber string `json:"blockNumber"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(resp, &result); err != nil {
+			lastErr = fmt.Errorf("failed to parse receipt response: %w", err)
+			time.Sleep(time.Second)
+			continue
+		}
 		if result.Result != nil {
-			return result.Result.Status == "0x1"
+			if result.Result.Status == "0x1" {
+				return true, ""
+			}
+			reason := c.getRevertReason(txHash, result.Result.BlockNumber)
+			return false, reason
 		}
 		time.Sleep(time.Second)
 	}
-	return false
+	if lastErr != nil {
+		return false, fmt.Sprintf("RPC error: %v", lastErr)
+	}
+	return false, "timed out waiting for receipt"
+}
+
+func (c *Client) getRevertReason(txHash, blockNumber string) string {
+	// Fetch the original transaction to replay it
+	resp, err := c.rpcCall("eth_getTransactionByHash", []string{txHash})
+	if err != nil {
+		return ""
+	}
+	var txResult struct {
+		Result *struct {
+			From  string `json:"from"`
+			To    string `json:"to"`
+			Data  string `json:"input"`
+			Value string `json:"value"`
+			Gas   string `json:"gas"`
+		} `json:"result"`
+	}
+	json.Unmarshal(resp, &txResult)
+	if txResult.Result == nil {
+		return ""
+	}
+
+	// Replay the call at the block it was mined to get the revert data
+	callParams := map[string]string{
+		"from": txResult.Result.From,
+		"to":   txResult.Result.To,
+		"data": txResult.Result.Data,
+	}
+	if txResult.Result.Value != "" {
+		callParams["value"] = txResult.Result.Value
+	}
+	if txResult.Result.Gas != "" {
+		callParams["gas"] = txResult.Result.Gas
+	}
+
+	resp, err = c.rpcCall("eth_call", []interface{}{callParams, blockNumber})
+	if err != nil {
+		return ""
+	}
+
+	var callResult struct {
+		Error *struct {
+			Message string `json:"message"`
+			Data    string `json:"data"`
+		} `json:"error"`
+		Result string `json:"result"`
+	}
+	json.Unmarshal(resp, &callResult)
+
+	if callResult.Error != nil {
+		// Try to decode revert reason from error data
+		if callResult.Error.Data != "" {
+			if reason := decodeRevertReason(callResult.Error.Data); reason != "" {
+				return reason
+			}
+		}
+		return callResult.Error.Message
+	}
+
+	// Some nodes return revert data in the result field
+	if len(callResult.Result) > 2 {
+		if reason := decodeRevertReason(callResult.Result); reason != "" {
+			return reason
+		}
+	}
+
+	return "transaction reverted"
+}
+
+func decodeRevertReason(hexData string) string {
+	hexData = strings.TrimPrefix(hexData, "0x")
+	if len(hexData) < 8 {
+		return ""
+	}
+
+	data, err := hex.DecodeString(hexData)
+	if err != nil {
+		return ""
+	}
+
+	// Check for Error(string) selector: 0x08c379a0
+	if len(data) >= 68 && hex.EncodeToString(data[:4]) == "08c379a0" {
+		strT, _ := abi.NewType("string", "", nil)
+		args := abi.Arguments{{Type: strT}}
+		values, err := args.UnpackValues(data[4:])
+		if err == nil && len(values) > 0 {
+			return fmt.Sprintf("%v", values[0])
+		}
+	}
+
+	return ""
 }
 
 func (c *Client) rpcCall(method string, params interface{}) ([]byte, error) {
@@ -621,11 +761,15 @@ func Log(format string, args ...interface{}) {
 	fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
 }
 
-func PrintTxResult(success bool, msg string) {
+func PrintTxResult(success bool, revertReason string, msg string) {
 	if success {
 		fmt.Printf("%s\n", msg)
 	} else {
-		fmt.Println("Transaction failed")
+		if revertReason != "" {
+			fmt.Printf("Transaction failed: %s\n", revertReason)
+		} else {
+			fmt.Println("Transaction failed")
+		}
 	}
 }
 

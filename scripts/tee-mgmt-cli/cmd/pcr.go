@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/hex"
 	"fmt"
-	"math/big"
 
 	"tee-mgmt-cli/registry"
 
@@ -19,14 +18,14 @@ var pcrListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all currently approved PCR hashes",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("=== Active PCRs ===")
-		pcrs, err := client.GetActivePCRs()
+		fmt.Println("=== Approved PCRs ===")
+		pcrs, err := client.GetApprovedPCRs()
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
-		fmt.Printf("Found %d active PCR(s)\n\n", len(pcrs))
-		for i, h := range pcrs {
-			fmt.Printf("  [%d] 0x%s\n", i+1, h)
+		fmt.Printf("Found %d approved PCR(s)\n\n", len(pcrs))
+		for i, k := range pcrs {
+			fmt.Printf("  [%d] 0x%s (type: %d)\n", i+1, hex.EncodeToString(k.PCRHash[:]), k.TEEType)
 		}
 		return nil
 	},
@@ -58,14 +57,15 @@ var pcrApproveCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "PCR approved")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "PCR approved")
 		return nil
 	},
 }
 
 var pcrRevokeCmd = &cobra.Command{
 	Use:   "revoke <pcr_hash>",
-	Short: "Revoke a previously approved PCR hash (immediately or with grace period)",
+	Short: "Revoke a previously approved PCR hash and disable all TEEs using it",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pcrHash, err := registry.ParseBytes32(args[0])
@@ -73,19 +73,17 @@ var pcrRevokeCmd = &cobra.Command{
 			return fmt.Errorf("invalid pcrHash: %w", err)
 		}
 		teeType, _ := cmd.Flags().GetUint8("tee-type")
-		gracePeriodStr, _ := cmd.Flags().GetString("grace-period")
-		gracePeriod := new(big.Int)
-		gracePeriod.SetString(gracePeriodStr, 10)
 
 		account, _ := client.GetAccountAddress()
 
-		registry.Log("Revoking PCR: 0x%s (type: %d, grace period: %s seconds)", hex.EncodeToString(pcrHash[:]), teeType, gracePeriod.String())
-		txHash, err := client.RevokePCR(account, pcrHash, teeType, gracePeriod)
+		registry.Log("Revoking PCR: 0x%s (type: %d)", hex.EncodeToString(pcrHash[:]), teeType)
+		txHash, err := client.RevokePCR(account, pcrHash, teeType)
 		if err != nil {
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "PCR revoked")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "PCR revoked")
 		return nil
 	},
 }
@@ -143,7 +141,6 @@ func init() {
 	pcrApproveCmd.Flags().Uint8("tee-type", 0, "TEE type ID this PCR is valid for")
 
 	pcrRevokeCmd.Flags().Uint8("tee-type", 0, "TEE type ID the PCR is approved for")
-	pcrRevokeCmd.Flags().String("grace-period", "0", "Grace period in seconds before revocation takes effect (0 = immediate)")
 
 	pcrCheckCmd.Flags().Uint8("tee-type", 0, "TEE type ID to check against")
 

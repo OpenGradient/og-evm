@@ -43,31 +43,13 @@ var typeAddCmd = &cobra.Command{
 			return fmt.Errorf("failed: %w", err)
 		}
 		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "Type added")
-		return nil
-	},
-}
-
-var typeDeactivateCmd = &cobra.Command{
-	Use:   "deactivate <type_id>",
-	Short: "Deactivate a TEE type so it can no longer be used for new registrations",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		typeId := uint8(registry.ParseUint(args[0]))
-		account, _ := client.GetAccountAddress()
-
-		registry.Log("Deactivating type %d", typeId)
-		txHash, err := client.DeactivateTEEType(account, typeId)
-		if err != nil {
-			return fmt.Errorf("failed: %w", err)
-		}
-		fmt.Printf("TX: %s\n", txHash)
-		registry.PrintTxResult(client.WaitForTx(txHash), "Type deactivated")
+		success, reason := client.WaitForTx(txHash)
+		registry.PrintTxResult(success, reason, "Type added")
 		return nil
 	},
 }
 
 func init() {
-	typeCmd.AddCommand(typeListCmd, typeAddCmd, typeDeactivateCmd)
+	typeCmd.AddCommand(typeListCmd, typeAddCmd)
 	rootCmd.AddCommand(typeCmd)
 }
