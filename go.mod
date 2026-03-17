@@ -311,6 +311,8 @@ require (
 )
 
 replace (
+	// pin core to v0.11.3 — xrplevm/node pulls in v0.12.0 which breaks cosmos-sdk v0.54
+	cosmossdk.io/core => cosmossdk.io/core v0.11.3
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
 	github.com/cosmos/ibc-go/v10 => github.com/cosmos/ibc-go/v10 v10.0.0-beta.0.0.20251216200936-98a683ee20a3
