@@ -1,4 +1,4 @@
-# Contributing to Cosmos EVM
+# Contributing to OpenGradient Node
 
 We appreciate community contributions! To ensure a smooth process, please follow these guidelines.
 
