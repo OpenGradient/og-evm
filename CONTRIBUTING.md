@@ -7,7 +7,7 @@ We appreciate community contributions! To ensure a smooth process, please follow
 ## Requirements for Pull Requests
 
 1. **Issue Link Required**
-   - All pull requests must be linked to an existing [GitHub Issue](https://github.com/cosmos/evm/issues).
+   - All pull requests must be linked to an existing [GitHub Issue](https://github.com/OpenGradient/og-evm/issues).
    - PRs without a corresponding issue **will not be reviewed**.
    - Issues should include:
       - **Reproducibility**: If the issue is a bug, describe steps to reproduce the problem clearly.
@@ -35,7 +35,3 @@ We appreciate community contributions! To ensure a smooth process, please follow
 - Fork the repo and create your branch from `main`.
 - Run tests and linters before submitting.
 - Make sure your code adheres to the project's style and conventions.
-
----
-
-Thank you for helping improve Cosmos EVM!
