@@ -38,6 +38,9 @@ import (
 	"github.com/cosmos/evm/x/ibc/transfer"
 	transferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
 	transferv2 "github.com/cosmos/evm/x/ibc/transfer/v2"
+	"github.com/cosmos/evm/x/poolrebalancer"
+	poolrebalancerkeeper "github.com/cosmos/evm/x/poolrebalancer/keeper"
+	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 	"github.com/cosmos/evm/x/precisebank"
 	precisebankkeeper "github.com/cosmos/evm/x/precisebank/keeper"
 	precisebanktypes "github.com/cosmos/evm/x/precisebank/types"
@@ -182,11 +185,12 @@ type EVMD struct {
 	CallbackKeeper ibccallbackskeeper.ContractKeeper
 
 	// Cosmos EVM keepers
-	FeeMarketKeeper   feemarketkeeper.Keeper
-	EVMKeeper         *evmkeeper.Keeper
-	Erc20Keeper       erc20keeper.Keeper
-	PreciseBankKeeper precisebankkeeper.Keeper
-	EVMMempool        *evmmempool.ExperimentalEVMMempool
+	FeeMarketKeeper      feemarketkeeper.Keeper
+	EVMKeeper            *evmkeeper.Keeper
+	Erc20Keeper          erc20keeper.Keeper
+	PreciseBankKeeper    precisebankkeeper.Keeper
+	PoolRebalancerKeeper poolrebalancerkeeper.Keeper
+	EVMMempool           *evmmempool.ExperimentalEVMMempool
 
 	// the module manager
 	ModuleManager      *module.Manager
@@ -238,6 +242,7 @@ func NewExampleApp(
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
 		// Cosmos EVM store keys
 		evmtypes.StoreKey, feemarkettypes.StoreKey, erc20types.StoreKey, precisebanktypes.StoreKey,
+		poolrebalancertypes.StoreKey,
 	)
 	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
 
@@ -362,6 +367,13 @@ func NewExampleApp(
 	// NOTE: stakingKeeper above is passed by reference, so that it will contain these hooks
 	app.StakingKeeper.SetHooks(
 		stakingtypes.NewMultiStakingHooks(app.DistrKeeper.Hooks(), app.SlashingKeeper.Hooks()),
+	)
+
+	app.PoolRebalancerKeeper = poolrebalancerkeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[poolrebalancertypes.StoreKey]),
+		app.StakingKeeper,
+		authtypes.NewModuleAddress(govtypes.ModuleName),
 	)
 
 	app.AuthzKeeper = authzkeeper.NewKeeper(
@@ -570,6 +582,7 @@ func NewExampleApp(
 		slashing.NewAppModule(appCodec, app.SlashingKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, nil, app.interfaceRegistry),
 		distr.NewAppModule(appCodec, app.DistrKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, nil),
 		staking.NewAppModule(appCodec, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, nil),
+		poolrebalancer.NewAppModule(app.PoolRebalancerKeeper),
 		upgrade.NewAppModule(app.UpgradeKeeper, app.AccountKeeper.AddressCodec()),
 		evidence.NewAppModule(app.EvidenceKeeper),
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
@@ -641,6 +654,7 @@ func NewExampleApp(
 		banktypes.ModuleName,
 		govtypes.ModuleName,
 		stakingtypes.ModuleName,
+		poolrebalancertypes.ModuleName, // after staking; rebalances pool delegator stake
 		authtypes.ModuleName,
 
 		// Cosmos EVM EndBlockers
@@ -673,6 +687,7 @@ func NewExampleApp(
 		feemarkettypes.ModuleName,
 		erc20types.ModuleName,
 		precisebanktypes.ModuleName,
+		poolrebalancertypes.ModuleName,
 
 		ibctransfertypes.ModuleName,
 		genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
