@@ -1,0 +1,11 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.evm.svip.v1.MsgReactivate",
+      "authority": "<GOV_AUTHORITY>"
+    }
+  ],
+  "deposit": "<MIN_DEPOSIT>",
+  "title": "Reactivate SVIP with refunded pool",
+  "summary": "Re-snapshot the SVIP pool balance and restart the exponential decay curve. Use after the pool has been exhausted and refunded."
+}

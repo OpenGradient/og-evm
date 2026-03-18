@@ -1,0 +1,12 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.evm.svip.v1.MsgPause",
+      "authority": "<GOV_AUTHORITY>",
+      "paused": true
+    }
+  ],
+  "deposit": "<MIN_DEPOSIT>",
+  "title": "Pause SVIP",
+  "summary": "Emergency pause of SVIP reward distribution."
+}

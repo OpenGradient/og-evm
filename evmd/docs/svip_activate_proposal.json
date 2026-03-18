@@ -1,0 +1,11 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.evm.svip.v1.MsgActivate",
+      "authority": "<GOV_AUTHORITY>"
+    }
+  ],
+  "deposit": "<MIN_DEPOSIT>",
+  "title": "Activate SVIP reward distribution",
+  "summary": "Activate the Sustained Validator Incentive Pool. Snapshots the current pool balance and starts the exponential decay reward curve."
+}

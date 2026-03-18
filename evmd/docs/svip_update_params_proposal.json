@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.evm.svip.v1.MsgUpdateParams",
+      "authority": "<GOV_AUTHORITY>",
+      "params": {
+        "activated": false,
+        "paused": false,
+        "half_life_seconds": "473364000"
+      }
+    }
+  ],
+  "deposit": "<MIN_DEPOSIT>",
+  "title": "Set SVIP half-life to 15 years",
+  "summary": "Configure the SVIP exponential decay half-life before activation."
+}
