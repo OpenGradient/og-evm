@@ -1,9 +1,9 @@
 
 syntax = "proto3";
-package cosmos.evm.svip.v1;
+package cosmos.svip.v1;
 
 import "amino/amino.proto";
-import "cosmos/evm/svip/v1/svip.proto";
+import "cosmos/svip/v1/svip.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -26,4 +26,8 @@ message GenesisState {
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable) = false
   ];
+  // last_block_time is the timestamp of the last processed block.
+  google.protobuf.Timestamp last_block_time = 5 [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+  // total_paused_seconds is the cumulative seconds spent in paused state.
+  int64 total_paused_seconds = 6;
 }

@@ -1,6 +1,6 @@
 
 syntax = "proto3";
-package cosmos.evm.svip.v1;
+package cosmos.svip.v1;
 
 import "amino/amino.proto";
 import "gogoproto/gogo.proto";
@@ -9,7 +9,7 @@ option go_package = "github.com/cosmos/evm/x/svip/types";
 
 // Params defines the x/svip module parameters.
 message Params {
-  option (amino.name) = "cosmos/evm/x/svip/Params";
+  option (amino.name) = "cosmos/x/svip/Params";
 
   // activated indicates whether SVIP reward distribution is active.
   bool activated = 1 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "activated"];

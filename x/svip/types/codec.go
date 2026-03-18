@@ -14,11 +14,11 @@ var (
 )
 
 const (
-	updateParamsName = "cosmos/evm/svip/MsgUpdateParams"
-	activateName     = "cosmos/evm/svip/MsgActivate"
-	reactivateName   = "cosmos/evm/svip/MsgReactivate"
-	pauseName        = "cosmos/evm/svip/MsgPause"
-	fundPoolName     = "cosmos/evm/svip/MsgFundPool"
+	updateParamsName = "cosmos/svip/MsgUpdateParams"
+	activateName     = "cosmos/svip/MsgActivate"
+	reactivateName   = "cosmos/svip/MsgReactivate"
+	pauseName        = "cosmos/svip/MsgPause"
+	fundPoolName     = "cosmos/svip/MsgFundPool"
 )
 
 func init() {

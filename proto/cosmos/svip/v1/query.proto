@@ -1,9 +1,9 @@
 
 syntax = "proto3";
-package cosmos.evm.svip.v1;
+package cosmos.svip.v1;
 
 import "amino/amino.proto";
-import "cosmos/evm/svip/v1/svip.proto";
+import "cosmos/svip/v1/svip.proto";
 import "gogoproto/gogo.proto";
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
@@ -15,13 +15,13 @@ option go_package = "github.com/cosmos/evm/x/svip/types";
 service Query {
   // Params queries the parameters of x/svip module.
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
-    option (google.api.http).get = "/cosmos/evm/svip/v1/params";
+    option (google.api.http).get = "/cosmos/svip/v1/params";
   }
 
   // PoolState queries the current SVIP pool balance, distribution stats, and
   // reward rate.
   rpc PoolState(QueryPoolStateRequest) returns (QueryPoolStateResponse) {
-    option (google.api.http).get = "/cosmos/evm/svip/v1/pool_state";
+    option (google.api.http).get = "/cosmos/svip/v1/pool_state";
   }
 }
 
