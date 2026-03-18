@@ -12,10 +12,13 @@ type AccountKeeper struct {
 }
 
 // NewAccountKeeper creates a new AccountKeeper mock and registers cleanup.
-func NewAccountKeeper(t interface{ Cleanup(func()) }) *AccountKeeper {
+func NewAccountKeeper(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *AccountKeeper {
 	m := &AccountKeeper{}
-	m.Mock.Test(nil)
-	t.Cleanup(func() { m.AssertExpectations(nil) })
+	m.Mock.Test(t)
+	t.Cleanup(func() { m.AssertExpectations(t) })
 	return m
 }
 

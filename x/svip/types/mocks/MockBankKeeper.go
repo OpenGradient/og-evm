@@ -14,10 +14,13 @@ type BankKeeper struct {
 }
 
 // NewBankKeeper creates a new BankKeeper mock and registers cleanup.
-func NewBankKeeper(t interface{ Cleanup(func()) }) *BankKeeper {
+func NewBankKeeper(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *BankKeeper {
 	m := &BankKeeper{}
-	m.Mock.Test(nil)
-	t.Cleanup(func() { m.AssertExpectations(nil) })
+	m.Mock.Test(t)
+	t.Cleanup(func() { m.AssertExpectations(t) })
 	return m
 }
 
