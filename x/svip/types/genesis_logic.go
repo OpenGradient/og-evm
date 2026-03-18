@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
 	sdkmath "cosmossdk.io/math"
@@ -13,6 +14,8 @@ func DefaultGenesisState() *GenesisState {
 		TotalDistributed:        sdkmath.ZeroInt(),
 		ActivationTime:          time.Time{},
 		PoolBalanceAtActivation: sdkmath.ZeroInt(),
+		LastBlockTime:           time.Time{},
+		TotalPausedSeconds:      0,
 	}
 }
 
@@ -23,6 +26,9 @@ func (gs GenesisState) Validate() error {
 	}
 	if gs.TotalDistributed.IsNegative() {
 		return ErrPoolExhausted.Wrap("total_distributed cannot be negative")
+	}
+	if gs.TotalPausedSeconds < 0 {
+		return fmt.Errorf("total_paused_seconds cannot be negative: %d", gs.TotalPausedSeconds)
 	}
 	return nil
 }

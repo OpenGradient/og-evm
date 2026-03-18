@@ -152,6 +152,31 @@ func (k Keeper) SetPoolBalanceAtActivation(ctx sdk.Context, val sdkmath.Int) {
 	store.Set(types.PoolBalanceAtActivationKey, bz)
 }
 
+// GetTotalPausedSeconds returns the cumulative seconds SVIP has been paused.
+func (k Keeper) GetTotalPausedSeconds(ctx sdk.Context) int64 {
+	store := ctx.KVStore(k.storeKey)
+	bz := store.Get(types.TotalPausedSecondsKey)
+	if bz == nil {
+		return 0
+	}
+	var val sdkmath.Int
+	if err := val.Unmarshal(bz); err != nil {
+		panic(err)
+	}
+	return val.Int64()
+}
+
+// SetTotalPausedSeconds stores the cumulative seconds SVIP has been paused.
+func (k Keeper) SetTotalPausedSeconds(ctx sdk.Context, secs int64) {
+	store := ctx.KVStore(k.storeKey)
+	val := sdkmath.NewInt(secs)
+	bz, err := val.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	store.Set(types.TotalPausedSecondsKey, bz)
+}
+
 // getPoolBalance reads the live pool balance from x/bank (not from custom state).
 func (k Keeper) getPoolBalance(ctx sdk.Context) sdkmath.Int {
 	moduleAddr := k.ak.GetModuleAddress(types.ModuleName)

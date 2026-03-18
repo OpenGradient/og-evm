@@ -37,7 +37,8 @@ func (s queryServer) PoolState(goCtx context.Context, _ *types.QueryPoolStateReq
 
 	var currentRate math.LegacyDec
 	if params.Activated && !params.Paused {
-		elapsed := ctx.BlockTime().Sub(s.GetActivationTime(ctx)).Seconds()
+		totalPausedSec := float64(s.GetTotalPausedSeconds(ctx))
+		elapsed := ctx.BlockTime().Sub(s.GetActivationTime(ctx)).Seconds() - totalPausedSec
 		poolAtAct := s.GetPoolBalanceAtActivation(ctx)
 		// Calculate tokens per second at current time
 		reward := CalculateBlockReward(params.HalfLifeSeconds, poolAtAct, elapsed, 1.0)

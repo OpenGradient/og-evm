@@ -117,8 +117,17 @@ func (s msgServer) Reactivate(goCtx context.Context, msg *types.MsgReactivate) (
 	s.SetActivationTime(ctx, ctx.BlockTime())
 	s.SetLastBlockTime(ctx, ctx.BlockTime())
 
-	// Reset cumulative counter for the new curve
+	// Reset cumulative counters for the new curve
 	s.SetTotalDistributed(ctx, sdkmath.ZeroInt())
+	s.SetTotalPausedSeconds(ctx, 0)
+
+	// Clear paused state if reactivating while paused
+	if params.Paused {
+		params.Paused = false
+		if err := s.SetParams(ctx, params); err != nil {
+			return nil, err
+		}
+	}
 
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		"svip_reactivated",
@@ -142,8 +151,13 @@ func (s msgServer) Pause(goCtx context.Context, msg *types.MsgPause) (*types.Msg
 		return nil, err
 	}
 
-	// On unpause: reset LastBlockTime to skip the paused gap
+	// On unpause: accumulate paused duration + reset LastBlockTime
 	if wasPaused && !msg.Paused {
+		lastBlock := s.GetLastBlockTime(ctx)
+		pausedGap := int64(ctx.BlockTime().Sub(lastBlock).Seconds())
+		if pausedGap > 0 {
+			s.SetTotalPausedSeconds(ctx, s.GetTotalPausedSeconds(ctx)+pausedGap)
+		}
 		s.SetLastBlockTime(ctx, ctx.BlockTime())
 	}
 

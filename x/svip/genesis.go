@@ -19,7 +19,14 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, data types.GenesisState) []ab
 	}
 	if !data.ActivationTime.IsZero() {
 		k.SetActivationTime(ctx, data.ActivationTime)
-		k.SetLastBlockTime(ctx, data.ActivationTime)
+		if !data.LastBlockTime.IsZero() {
+			k.SetLastBlockTime(ctx, data.LastBlockTime)
+		} else {
+			k.SetLastBlockTime(ctx, data.ActivationTime)
+		}
+	}
+	if data.TotalPausedSeconds > 0 {
+		k.SetTotalPausedSeconds(ctx, data.TotalPausedSeconds)
 	}
 	if data.PoolBalanceAtActivation.IsPositive() {
 		k.SetPoolBalanceAtActivation(ctx, data.PoolBalanceAtActivation)
@@ -34,5 +41,7 @@ func ExportGenesis(ctx sdk.Context, k keeper.Keeper) *types.GenesisState {
 		TotalDistributed:        k.GetTotalDistributed(ctx),
 		ActivationTime:          k.GetActivationTime(ctx),
 		PoolBalanceAtActivation: k.GetPoolBalanceAtActivation(ctx),
+		LastBlockTime:           k.GetLastBlockTime(ctx),
+		TotalPausedSeconds:      k.GetTotalPausedSeconds(ctx),
 	}
 }

@@ -21,7 +21,8 @@ func (k Keeper) BeginBlock(ctx sdk.Context) error {
 	activationTime := k.GetActivationTime(ctx)
 	lastBlockTime := k.GetLastBlockTime(ctx)
 
-	totalElapsed := now.Sub(activationTime).Seconds()
+	totalPausedSec := float64(k.GetTotalPausedSeconds(ctx))
+	totalElapsed := now.Sub(activationTime).Seconds() - totalPausedSec
 	blockDelta := now.Sub(lastBlockTime).Seconds()
 
 	if totalElapsed <= 0 || blockDelta <= 0 {

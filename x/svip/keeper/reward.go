@@ -44,8 +44,8 @@ func CalculateBlockReward(
 		return sdkmath.ZeroInt()
 	}
 
-	// Convert to integer (truncate — we never over-distribute)
-	rewardStr := fmt.Sprintf("%.0f", blockReward)
+	// Truncate to integer — we never over-distribute.
+	rewardStr := fmt.Sprintf("%.0f", math.Floor(blockReward))
 	reward, ok := sdkmath.NewIntFromString(rewardStr)
 	if !ok {
 		return sdkmath.ZeroInt()
