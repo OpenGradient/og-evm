@@ -13,6 +13,7 @@ import (
 	erc20types "github.com/cosmos/evm/x/erc20/types"
 	feemarkettypes "github.com/cosmos/evm/x/feemarket/types"
 	precisebanktypes "github.com/cosmos/evm/x/precisebank/types"
+	sviptypes "github.com/cosmos/evm/x/svip/types"
 	vmtypes "github.com/cosmos/evm/x/vm/types"
 	transfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
 	corevm "github.com/ethereum/go-ethereum/core/vm"
@@ -65,6 +66,7 @@ var maccPerms = map[string][]string{
 	feemarkettypes.ModuleName:   nil,
 	erc20types.ModuleName:       {authtypes.Minter, authtypes.Burner},
 	precisebanktypes.ModuleName: {authtypes.Minter, authtypes.Burner},
+	sviptypes.ModuleName:        nil,
 }
 
 // GetMaccPerms returns a copy of the module account permissions
