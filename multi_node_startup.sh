@@ -12,9 +12,9 @@ NODE_NUMBER="${NODE_NUMBER:-}"
 START_VALIDATOR="${START_VALIDATOR:-false}"
 GENERATE_GENESIS="${GENERATE_GENESIS:-false}"
 
-VAL0_MNEMONIC=""
-VAL1_MNEMONIC=""
-VAL2_MNEMONIC=""
+VAL0_MNEMONIC="${VAL0_MNEMONIC:-}"
+VAL1_MNEMONIC="${VAL1_MNEMONIC:-}"
+VAL2_MNEMONIC="${VAL2_MNEMONIC:-}"
 
 get_p2p_port() { echo $((26656 + ($1 * 100))); }
 get_rpc_port() { echo $((26657 + ($1 * 100))); }
@@ -94,6 +94,11 @@ apply_config_customizations() {
   local RPC_PORT=$(get_rpc_port $NODE_NUM)
   local GRPC_PORT=$(get_grpc_port $NODE_NUM)
   local JSONRPC_PORT=$(get_jsonrpc_port $NODE_NUM)
+  local PROM_PORT=$((26660 + NODE_NUM))
+  local PPROF_PORT=$((6060 + NODE_NUM))
+  local WS_PORT=$((8546 + NODE_NUM))
+  local GETH_METRICS_PORT=$((8100 + NODE_NUM))
+  local EVM_METRICS_PORT=$((6065 + NODE_NUM))
 
   sed -i.bak 's/timeout_propose = "3s"/timeout_propose = "2s"/g' "$CONFIG_TOML"
   sed -i.bak 's/timeout_propose_delta = "500ms"/timeout_propose_delta = "200ms"/g' "$CONFIG_TOML"
@@ -108,6 +113,10 @@ apply_config_customizations() {
   sed -i.bak "s|laddr = \"tcp://0.0.0.0:26656\"|laddr = \"tcp://0.0.0.0:${P2P_PORT}\"|g" "$CONFIG_TOML"
 
   sed -i.bak 's/prometheus = false/prometheus = true/' "$CONFIG_TOML"
+  sed -i.bak 's/addr_book_strict = true/addr_book_strict = false/' "$CONFIG_TOML"
+  sed -i.bak 's/allow_duplicate_ip = false/allow_duplicate_ip = true/' "$CONFIG_TOML"
+  sed -i.bak "s|prometheus_listen_addr = \":26660\"|prometheus_listen_addr = \":${PROM_PORT}\"|g" "$CONFIG_TOML"
+  sed -i.bak "s|pprof_laddr = \"localhost:6060\"|pprof_laddr = \"localhost:${PPROF_PORT}\"|g" "$CONFIG_TOML"
   sed -i.bak 's/prometheus-retention-time  = "0"/prometheus-retention-time  = "1000000000000"/g' "$APP_TOML"
   sed -i.bak 's/enabled = false/enabled = true/g' "$APP_TOML"
   sed -i.bak 's/enable = false/enable = true/g' "$APP_TOML"
@@ -118,6 +127,10 @@ apply_config_customizations() {
 
   sed -i.bak "s|address = \"127.0.0.1:8545\"|address = \"0.0.0.0:${JSONRPC_PORT}\"|g" "$APP_TOML"
   sed -i.bak "s|address = \"0.0.0.0:8545\"|address = \"0.0.0.0:${JSONRPC_PORT}\"|g" "$APP_TOML"
+
+  sed -i.bak "s|geth-metrics-address = \"127.0.0.1:8100\"|geth-metrics-address = \"127.0.0.1:${GETH_METRICS_PORT}\"|g" "$APP_TOML"
+  sed -i.bak "s|ws-address = \"127.0.0.1:8546\"|ws-address = \"127.0.0.1:${WS_PORT}\"|g" "$APP_TOML"
+  sed -i.bak "s|metrics-address = \"127.0.0.1:6065\"|metrics-address = \"127.0.0.1:${EVM_METRICS_PORT}\"|g" "$APP_TOML"
 
   rm -f "$CONFIG_TOML.bak" "$APP_TOML.bak"
 }
