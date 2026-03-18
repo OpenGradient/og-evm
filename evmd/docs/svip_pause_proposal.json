@@ -1,7 +1,7 @@
 {
   "messages": [
     {
-      "@type": "/cosmos.evm.svip.v1.MsgPause",
+      "@type": "/cosmos.svip.v1.MsgPause",
       "authority": "<GOV_AUTHORITY>",
       "paused": true
     }
