@@ -1,0 +1,75 @@
+syntax = "proto3";
+package cosmos.evm.poolrebalancer.v1;
+
+import "cosmos/base/v1beta1/coin.proto";
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/cosmos/evm/x/poolrebalancer/types";
+option (gogoproto.goproto_getters_all) = false;
+
+// Params defines the parameters for the poolrebalancer module.
+message Params {
+  // pool_delegator_address is the account whose stake is rebalanced.
+  string pool_delegator_address = 1;
+
+  // max_target_validators caps the bonded validator set size (top N by power).
+  uint32 max_target_validators = 2;
+
+  // rebalance_threshold_bp is the drift threshold in basis points.
+  uint32 rebalance_threshold_bp = 3;
+
+  // max_ops_per_block caps redelegate/undelegate operations per block.
+  uint32 max_ops_per_block = 4;
+
+  // max_move_per_op caps the amount moved per operation (0 = no cap).
+  string max_move_per_op = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // use_undelegate_fallback enables undelegation when no safe redelegation move exists.
+  bool use_undelegate_fallback = 6;
+}
+
+// PendingRedelegation is an in-flight redelegation tracked for transitive redelegation safety.
+message PendingRedelegation {
+  string delegator_address = 1;
+  string src_validator_address = 2;
+  string dst_validator_address = 3;
+  cosmos.base.v1beta1.Coin amount = 4 [ (gogoproto.nullable) = false ];
+  google.protobuf.Timestamp completion_time = 5
+      [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
+}
+
+// QueuedRedelegation groups redelegations that share the same completion time.
+message QueuedRedelegation {
+  repeated PendingRedelegation entries = 1 [ (gogoproto.nullable) = false ];
+}
+
+// PendingUndelegation is an in-flight undelegation tracked for later cleanup and (optional) slash handling.
+message PendingUndelegation {
+  string delegator_address = 1;
+  string validator_address = 2;
+  cosmos.base.v1beta1.Coin balance = 3 [ (gogoproto.nullable) = false ];
+  google.protobuf.Timestamp completion_time = 4
+      [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
+}
+
+// QueuedUndelegation groups undelegations that share the same (completion time, delegator) queue key.
+message QueuedUndelegation {
+  repeated PendingUndelegation entries = 1 [ (gogoproto.nullable) = false ];
+}
+
+// GenesisState defines the poolrebalancer module's genesis state.
+message GenesisState {
+  Params params = 1 [ (gogoproto.nullable) = false ];
+
+  // pending_redelegations and pending_undelegations allow restoring in-flight state on restart.
+  // They are optional for initial deployments.
+  repeated PendingRedelegation pending_redelegations = 2
+      [ (gogoproto.nullable) = false ];
+  repeated PendingUndelegation pending_undelegations = 3
+      [ (gogoproto.nullable) = false ];
+}
+

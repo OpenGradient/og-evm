@@ -1,0 +1,69 @@
+syntax = "proto3";
+package cosmos.evm.poolrebalancer.v1;
+
+import "amino/amino.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "cosmos/evm/poolrebalancer/v1/poolrebalancer.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/cosmos/evm/x/poolrebalancer/types";
+option (gogoproto.goproto_getters_all) = false;
+
+// Query defines the gRPC querier service.
+service Query {
+  // Params returns the poolrebalancer module params.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/cosmos/evm/poolrebalancer/v1/params";
+  }
+
+  // PendingRedelegations returns tracked in-flight redelegations.
+  rpc PendingRedelegations(QueryPendingRedelegationsRequest)
+      returns (QueryPendingRedelegationsResponse) {
+    option (google.api.http).get =
+        "/cosmos/evm/poolrebalancer/v1/pending_redelegations";
+  }
+
+  // PendingUndelegations returns tracked in-flight undelegations.
+  rpc PendingUndelegations(QueryPendingUndelegationsRequest)
+      returns (QueryPendingUndelegationsResponse) {
+    option (google.api.http).get =
+        "/cosmos/evm/poolrebalancer/v1/pending_undelegations";
+  }
+}
+
+// QueryParamsRequest is the request type for the Query/Params RPC method.
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response type for the Query/Params RPC method.
+message QueryParamsResponse {
+  Params params = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+}
+
+// QueryPendingRedelegationsRequest is the request type for the Query/PendingRedelegations RPC method.
+message QueryPendingRedelegationsRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryPendingRedelegationsResponse is the response type for the Query/PendingRedelegations RPC method.
+message QueryPendingRedelegationsResponse {
+  repeated PendingRedelegation redelegations = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryPendingUndelegationsRequest is the request type for the Query/PendingUndelegations RPC method.
+message QueryPendingUndelegationsRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryPendingUndelegationsResponse is the response type for the Query/PendingUndelegations RPC method.
+message QueryPendingUndelegationsResponse {
+  repeated PendingUndelegation undelegations = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
