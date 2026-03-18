@@ -45,8 +45,7 @@ func (k Keeper) GetTargetBondedValidators(ctx context.Context) ([]sdk.ValAddress
 // GetDelegatorStakeByValidator returns the delegator's bonded stake per validator (in tokens, truncated).
 // The returned map is keyed by validator operator address (bech32), plus the total across all validators.
 func (k Keeper) GetDelegatorStakeByValidator(ctx context.Context, del sdk.AccAddress) (map[string]math.Int, math.Int, error) {
-	// 0 = no limit (retrieve all)
-	delegations, err := k.stakingKeeper.GetDelegatorDelegations(ctx, del, 0)
+	delegations, err := k.stakingKeeper.GetDelegatorDelegations(ctx, del, ^uint16(0))
 	if err != nil {
 		return nil, math.ZeroInt(), err
 	}
