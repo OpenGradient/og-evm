@@ -1,0 +1,61 @@
+
+syntax = "proto3";
+package cosmos.evm.svip.v1;
+
+import "amino/amino.proto";
+import "cosmos/evm/svip/v1/svip.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "cosmos/base/v1beta1/coin.proto";
+
+option go_package = "github.com/cosmos/evm/x/svip/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // Params queries the parameters of x/svip module.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/cosmos/evm/svip/v1/params";
+  }
+
+  // PoolState queries the current SVIP pool balance, distribution stats, and
+  // reward rate.
+  rpc PoolState(QueryPoolStateRequest) returns (QueryPoolStateResponse) {
+    option (google.api.http).get = "/cosmos/evm/svip/v1/pool_state";
+  }
+}
+
+// QueryParamsRequest defines the request type for querying x/svip parameters.
+message QueryParamsRequest {}
+
+// QueryParamsResponse defines the response type for querying x/svip parameters.
+message QueryParamsResponse {
+  // params define the svip module parameters.
+  Params params = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+}
+
+// QueryPoolStateRequest defines the request type for querying pool state.
+message QueryPoolStateRequest {}
+
+// QueryPoolStateResponse returns the current SVIP pool state.
+message QueryPoolStateResponse {
+  // pool_balance is the current balance in the SVIP module account.
+  cosmos.base.v1beta1.Coin pool_balance = 1 [ (gogoproto.nullable) = false ];
+  // total_distributed is cumulative tokens sent to FeeCollector.
+  string total_distributed = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // current_rate_per_second is the current reward rate after decay.
+  string current_rate_per_second = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  // activated indicates whether SVIP is active.
+  bool activated = 4;
+  // paused indicates whether SVIP is paused.
+  bool paused = 5;
+  // activation_time is when SVIP was activated.
+  google.protobuf.Timestamp activation_time = 6 [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+}

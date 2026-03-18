@@ -1,0 +1,93 @@
+
+syntax = "proto3";
+package cosmos.evm.svip.v1;
+
+import "amino/amino.proto";
+import "cosmos/evm/svip/v1/svip.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+
+option go_package = "github.com/cosmos/evm/x/svip/types";
+
+// Msg defines the svip Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+  // UpdateParams updates the x/svip module parameters. Governance-only.
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+  // Activate turns on reward distribution. Snapshots pool balance.
+  rpc Activate(MsgActivate) returns (MsgActivateResponse);
+  // Reactivate restarts the decay curve with a fresh pool snapshot.
+  rpc Reactivate(MsgReactivate) returns (MsgReactivateResponse);
+  // Pause toggles the emergency pause flag. Governance-only.
+  rpc Pause(MsgPause) returns (MsgPauseResponse);
+  // FundPool transfers native tokens into the SVIP pool. Permissionless.
+  rpc FundPool(MsgFundPool) returns (MsgFundPoolResponse);
+}
+
+// MsgUpdateParams defines a Msg for updating the x/svip module parameters.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "cosmos/evm/x/svip/MsgUpdateParams";
+
+  // authority is the address of the governance account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // params defines the x/svip parameters to update.
+  // NOTE: All parameters must be supplied.
+  Params params = 2
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+}
+
+// MsgUpdateParamsResponse defines the response for MsgUpdateParams.
+message MsgUpdateParamsResponse {}
+
+// MsgActivate activates SVIP reward distribution. Governance-only.
+message MsgActivate {
+  option (cosmos.msg.v1.signer) = "authority";
+
+  // authority is the address of the governance account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+}
+
+// MsgActivateResponse defines the response for MsgActivate.
+message MsgActivateResponse {}
+
+// MsgReactivate restarts the decay curve with a fresh pool snapshot.
+// Governance-only. Used after pool exhaustion and refund.
+message MsgReactivate {
+  option (cosmos.msg.v1.signer) = "authority";
+
+  // authority is the address of the governance account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+}
+
+// MsgReactivateResponse defines the response for MsgReactivate.
+message MsgReactivateResponse {}
+
+// MsgPause toggles the SVIP emergency pause flag. Governance-only.
+message MsgPause {
+  option (cosmos.msg.v1.signer) = "authority";
+
+  // authority is the address of the governance account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // paused is the desired pause state.
+  bool paused = 2;
+}
+
+// MsgPauseResponse defines the response for MsgPause.
+message MsgPauseResponse {}
+
+// MsgFundPool sends native tokens to the SVIP reward pool. Permissionless.
+message MsgFundPool {
+  option (cosmos.msg.v1.signer) = "depositor";
+
+  // depositor is the address funding the pool.
+  string depositor = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // amount is the coins to transfer. Only the native denom is accepted.
+  repeated cosmos.base.v1beta1.Coin amount = 2
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+}
+
+// MsgFundPoolResponse defines the response for MsgFundPool.
+message MsgFundPoolResponse {}

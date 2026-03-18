@@ -1,0 +1,29 @@
+
+syntax = "proto3";
+package cosmos.evm.svip.v1;
+
+import "amino/amino.proto";
+import "cosmos/evm/svip/v1/svip.proto";
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/cosmos/evm/x/svip/types";
+
+// GenesisState defines the svip module's genesis state.
+message GenesisState {
+  // params defines all the parameters of the svip module.
+  Params params = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+  // total_distributed is the cumulative tokens sent to FeeCollector.
+  string total_distributed = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // activation_time is when SVIP was activated. Zero if not yet activated.
+  google.protobuf.Timestamp activation_time = 3 [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+  // pool_balance_at_activation is the pool snapshot used to derive R₀.
+  string pool_balance_at_activation = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}

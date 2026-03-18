@@ -1,0 +1,20 @@
+
+syntax = "proto3";
+package cosmos.evm.svip.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/cosmos/evm/x/svip/types";
+
+// Params defines the x/svip module parameters.
+message Params {
+  option (amino.name) = "cosmos/evm/x/svip/Params";
+
+  // activated indicates whether SVIP reward distribution is active.
+  bool activated = 1 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "activated"];
+  // paused is an emergency pause flag.
+  bool paused = 2 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "paused"];
+  // half_life_seconds is the half-life for exponential decay, in seconds.
+  int64 half_life_seconds = 3 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "half_life_seconds"];
+}
