@@ -15,13 +15,13 @@ POOLREBALANCER_MAX_OPS_PER_BLOCK="${POOLREBALANCER_MAX_OPS_PER_BLOCK:-1}"
 POOLREBALANCER_MAX_MOVE_PER_OP="${POOLREBALANCER_MAX_MOVE_PER_OP:-1000000000000000000}" # 1e18
 POOLREBALANCER_USE_UNDELEGATE_FALLBACK="${POOLREBALANCER_USE_UNDELEGATE_FALLBACK:-true}"
 
-# staking params for making undelegation fallback observable
+# Staking params tuned so maturity/fallback behavior is visible quickly in local runs.
 STAKING_UNBONDING_TIME="${STAKING_UNBONDING_TIME:-30s}"
 STAKING_MAX_ENTRIES="${STAKING_MAX_ENTRIES:-100}"
 
 TX_FEES="${TX_FEES:-200000000000000ogwei}" # denom will be rewritten after chain start
 
-# Delegation imbalance amounts (safe under default funding of 1e24 ogwei).
+# Delegation amounts used to create a clear imbalance (safe with default dev funding).
 IMBALANCE_MAIN_DELEGATION="${IMBALANCE_MAIN_DELEGATION:-200000000000000000000000ogwei}" # denom rewritten after chain start
 IMBALANCE_MINOR_DELEGATION="${IMBALANCE_MINOR_DELEGATION:-100ogwei}"
 
@@ -68,10 +68,10 @@ require_bin() {
 }
 
 stop_nodes() {
-  # Be aggressive: localnet nodes are started via `evmd start ...` by multi_node_startup.sh.
+  # Aggressive cleanup: multi_node_startup.sh launches `evmd start` processes directly.
   pkill -f "evmd start" >/dev/null 2>&1 || true
   pkill -f "multi_node_startup.sh" >/dev/null 2>&1 || true
-  # give the OS a moment to release ports
+  # Give the OS a moment to release RPC/P2P ports.
   sleep 1
 }
 
@@ -149,15 +149,14 @@ import_dev0_key() {
 
 wait_tx_included() {
   local txhash="$1"
-  # Prefer CometBFT RPC /tx?hash=0x... which becomes available on commit.
+  # First try CometBFT /tx; it becomes available as soon as tx is committed.
   local rpc_http="http://127.0.0.1:26657"
   for _ in $(seq 1 40); do
     local resp
     resp="$(curl -sS --max-time 1 "${rpc_http}/tx?hash=0x${txhash}" 2>/dev/null || true)"
-    # When not found yet, CometBFT returns an error JSON (still non-empty). Only treat it as committed
-    # once it has a .result.tx_result object.
+    # Not-found still returns JSON. Treat as committed only when .result.tx_result exists.
     if echo "$resp" | jq -e '.result.tx_result' >/dev/null 2>&1; then
-      # Ensure the tx succeeded (code=0). A failed tx can still be committed and show up in /tx.
+      # Committed does not mean successful; require code=0.
       local code
       code="$(echo "$resp" | jq -r '.result.tx_result.code' 2>/dev/null || echo 1)"
       if [[ "$code" == "0" ]]; then
@@ -167,7 +166,7 @@ wait_tx_included() {
       echo "$resp" | jq -r '.result.tx_result.log' >&2 || true
       return 1
     fi
-    # Fallback to the app query path (may require indexing to be enabled).
+    # Fallback query path (depends on tx indexing config).
     if evmd query tx "$txhash" --node "$NODE_RPC" -o json >/dev/null 2>&1; then
       return 0
     fi
@@ -181,7 +180,7 @@ wait_tx_included() {
 delegate_with_wait() {
   local valoper="$1"
   local amount="$2"
-  # Some CLI versions return txhash even when CheckTx fails. Always check `.code`.
+  # Some CLI builds return txhash even on CheckTx failure, so always inspect `.code`.
   for attempt in 1 2 3; do
     local out
     out="$(evmd tx staking delegate "$valoper" "$amount" \
@@ -204,7 +203,7 @@ delegate_with_wait() {
       log="$(echo "$out" | jq -r '.raw_log // .log // empty')"
       echo "delegate failed (attempt=$attempt code=$code): $log" >&2
 
-      # Common transient: sequence mismatch if previous tx hasn't fully propagated.
+      # Common transient: sequence mismatch while previous tx is still propagating.
       if echo "$log" | grep -qi "account sequence mismatch"; then
         sleep 2
         continue
@@ -232,7 +231,7 @@ assert_pending_invariants() {
     return 1
   fi
 
-  # Transitive safety: no src is also a dst among in-flight entries.
+  # Transitive safety: no source validator should also appear as destination in-flight.
   local badTrans
   badTrans="$(echo "$json" | jq -r '([.redelegations[].src_validator_address] | unique) as $srcs | ([.redelegations[].dst_validator_address] | unique) as $dsts | ([ $srcs[] | . as $s | (($dsts | index($s)) != null) ] | any)')"
   if [[ "$badTrans" != "false" ]]; then
@@ -259,7 +258,7 @@ main() {
   stop_nodes
 
   echo "==> Generating genesis (3 validators) at $BASEDIR"
-  # multi_node_startup.sh prints a lot of init output; silence both stdout/stderr
+  # multi_node_startup.sh is verbose during init; silence setup noise here.
   (cd "$ROOT_DIR" && GENERATE_GENESIS=true ./multi_node_startup.sh -y >/dev/null 2>&1)
 
   local del_addr
@@ -284,7 +283,7 @@ main() {
   h="$(wait_for_height 60)"
   echo "height=$h"
 
-  # Discover bond denom for this chain and rewrite denom-bearing knobs to match.
+  # Resolve chain bond denom and rewrite amount knobs to match this network.
   local bond_denom
   bond_denom="$(evmd query staking params --node "$NODE_RPC" -o json | jq -r '.params.bond_denom // .bond_denom')"
   if [[ -z "$bond_denom" || "$bond_denom" == "null" ]]; then
