@@ -251,6 +251,26 @@ func TestPickBestRedelegation_TieBreak(t *testing.T) {
 	require.True(t, amt.Equal(math.NewInt(10)))
 }
 
+// TestPickBestRedelegation_CappedTiePrefersLargerDstDeficit verifies that when capped move
+// amounts tie, destination with larger deficit is selected.
+func TestPickBestRedelegation_CappedTiePrefersLargerDstDeficit(t *testing.T) {
+	k := keeper.Keeper{}
+	deltas := map[string]math.Int{
+		"src":  math.NewInt(-100),
+		"dstA": math.NewInt(1000),
+		"dstB": math.NewInt(500),
+	}
+	keys := sortedKeys(deltas)
+	blocked := make(map[string]map[string]struct{})
+	maxMove := math.NewInt(10) // both candidates cap to move=10
+
+	src, dst, amt, ok := k.PickBestRedelegation(deltas, keys, blocked, maxMove)
+	require.True(t, ok)
+	require.Equal(t, "src", src)
+	require.Equal(t, "dstA", dst, "larger deficit destination should win tie under cap")
+	require.True(t, amt.Equal(math.NewInt(10)))
+}
+
 // TestPickBestRedelegation_NoSourceOrDest tests cases where no move is possible.
 func TestPickBestRedelegation_NoSourceOrDest(t *testing.T) {
 	k := keeper.Keeper{}

@@ -161,6 +161,7 @@ func (k Keeper) PickBestRedelegation(
 	maxMove math.Int,
 ) (src string, dst string, amt math.Int, ok bool) {
 	bestAmt := math.ZeroInt()
+	bestDstNeed := math.ZeroInt()
 	bestSrc := ""
 	bestDst := ""
 
@@ -187,9 +188,14 @@ func (k Keeper) PickBestRedelegation(
 			if move.IsZero() {
 				continue
 			}
-			// Prefer larger moves; tie-break deterministically.
-			if move.GT(bestAmt) || (move.Equal(bestAmt) && (s < bestSrc || (s == bestSrc && d < bestDst))) {
+			// Prefer larger moves.
+			// If move ties (common when capped), prefer destination with larger deficit.
+			// Final tie-break stays deterministic on (src,dst).
+			if move.GT(bestAmt) ||
+				(move.Equal(bestAmt) && (dd.GT(bestDstNeed) ||
+					(dd.Equal(bestDstNeed) && (s < bestSrc || (s == bestSrc && d < bestDst))))) {
 				bestAmt = move
+				bestDstNeed = dd
 				bestSrc = s
 				bestDst = d
 			}

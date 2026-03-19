@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# -----------------------------------------------------------------------------
+# poolrebalancer_rebalance_e2e.sh
+#
+# Purpose:
+#   Manual local E2E test for x/poolrebalancer behavior on a 3-validator devnet.
+#
+# Scope:
+#   - Local engineer workflow / debugging aid.
+#   - Not intended as a deterministic CI test harness.
+#
+# Prerequisites:
+#   - jq, curl, evmd installed and on PATH.
+#   - VAL0_MNEMONIC / VAL1_MNEMONIC / VAL2_MNEMONIC exported.
+#
+# Quick start:
+#   bash scripts/poolrebalancer/poolrebalancer_rebalance_e2e.sh
+#
+# Live monitor only:
+#   bash scripts/poolrebalancer/poolrebalancer_rebalance_e2e.sh watch
+# -----------------------------------------------------------------------------
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASEDIR="${BASEDIR:-"$HOME/.og-evm-devnet"}"
 NODE_RPC="${NODE_RPC:-"tcp://127.0.0.1:26657"}"
@@ -10,10 +31,15 @@ HOME0="$BASEDIR/val0"
 
 # ---- Test knobs (override via env) ----
 POOLREBALANCER_MAX_TARGET_VALIDATORS="${POOLREBALANCER_MAX_TARGET_VALIDATORS:-3}"
-POOLREBALANCER_THRESHOLD_BP="${POOLREBALANCER_THRESHOLD_BP:-1}"
-POOLREBALANCER_MAX_OPS_PER_BLOCK="${POOLREBALANCER_MAX_OPS_PER_BLOCK:-1}"
-POOLREBALANCER_MAX_MOVE_PER_OP="${POOLREBALANCER_MAX_MOVE_PER_OP:-1000000000000000000}" # 1e18
-POOLREBALANCER_USE_UNDELEGATE_FALLBACK="${POOLREBALANCER_USE_UNDELEGATE_FALLBACK:-true}"
+# Demo profile controls default speed so users can observe behavior.
+# slow   = very gradual progress (good for watching)
+# medium = balanced default for demo
+# fast   = converges quickly
+DEMO_PROFILE="${DEMO_PROFILE:-medium}"
+POOLREBALANCER_THRESHOLD_BP="${POOLREBALANCER_THRESHOLD_BP:-0}"
+POOLREBALANCER_MAX_OPS_PER_BLOCK="${POOLREBALANCER_MAX_OPS_PER_BLOCK:-2}"
+POOLREBALANCER_MAX_MOVE_PER_OP="${POOLREBALANCER_MAX_MOVE_PER_OP:-100000000000000000000}" # 1e20
+POOLREBALANCER_USE_UNDELEGATE_FALLBACK="${POOLREBALANCER_USE_UNDELEGATE_FALLBACK:-false}"
 
 # Staking params tuned so maturity/fallback behavior is visible quickly in local runs.
 STAKING_UNBONDING_TIME="${STAKING_UNBONDING_TIME:-30s}"
@@ -27,10 +53,14 @@ IMBALANCE_MINOR_DELEGATION="${IMBALANCE_MINOR_DELEGATION:-100ogwei}"
 
 POLL_SAMPLES="${POLL_SAMPLES:-25}"
 POLL_SLEEP_SECS="${POLL_SLEEP_SECS:-2}"
+STREAM_VALIDATOR_LOGS="${STREAM_VALIDATOR_LOGS:-true}"
+KEEP_RUNNING="${KEEP_RUNNING:-true}"
+
+LOG_STREAM_PIDS=()
 
 usage() {
   cat <<EOF
-Usage: $0
+Usage: $0 [watch]
 
 Runs a local E2E sanity test for x/poolrebalancer:
 - Generates a 3-validator localnet using multi_node_startup.sh
@@ -38,6 +68,9 @@ Runs a local E2E sanity test for x/poolrebalancer:
 - Starts val0/val1/val2
 - Delegates an imbalanced stake distribution from dev0
 - Verifies poolrebalancer schedules pending redelegations capped by max_move_per_op
+
+Subcommands:
+  watch                             Live monitor (height/params/pending/delegations) without restarting localnet
 
 Environment variables:
   BASEDIR                           Localnet base dir (default: $HOME/.og-evm-devnet)
@@ -49,6 +82,7 @@ Environment variables:
                                    Required for genesis generation. Provide 24-word BIP39 mnemonics.
 
   POOLREBALANCER_MAX_TARGET_VALIDATORS
+  DEMO_PROFILE                      slow|medium|fast tuning for rebalance visibility (default: medium)
   POOLREBALANCER_THRESHOLD_BP
   POOLREBALANCER_MAX_OPS_PER_BLOCK
   POOLREBALANCER_MAX_MOVE_PER_OP
@@ -59,6 +93,8 @@ Environment variables:
 
   IMBALANCE_MAIN_DELEGATION         Large delegation to validator[0]
   IMBALANCE_MINOR_DELEGATION        Small delegations to validator[1], validator[2]
+  STREAM_VALIDATOR_LOGS             Stream val0/val1/val2 logs to stdout (default: false)
+  KEEP_RUNNING                      Keep monitoring after PASS (default: false)
 
 EOF
 }
@@ -73,6 +109,26 @@ stop_nodes() {
   pkill -f "multi_node_startup.sh" >/dev/null 2>&1 || true
   # Give the OS a moment to release RPC/P2P ports.
   sleep 1
+}
+
+cleanup_log_streams() {
+  if (( ${#LOG_STREAM_PIDS[@]} == 0 )); then
+    return 0
+  fi
+  for pid in "${LOG_STREAM_PIDS[@]}"; do
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+  LOG_STREAM_PIDS=()
+}
+
+start_validator_log_streams() {
+  mkdir -p "$BASEDIR/logs"
+  for v in 0 1 2; do
+    local f="$BASEDIR/logs/val${v}.log"
+    touch "$f"
+    tail -n 0 -F "$f" | sed -u "s/^/[val${v}] /" &
+    LOG_STREAM_PIDS+=("$!")
+  done
 }
 
 wait_for_height() {
@@ -223,12 +279,22 @@ delegate_with_wait() {
 assert_pending_invariants() {
   local json="$1"
   local cap="$2"
+  local max_ops="$3"
 
-  local badAmt
-  badAmt="$(echo "$json" | jq -r --argjson cap "$cap" '[.redelegations[] | (.amount.amount|tonumber) > $cap] | any')"
-  if [[ "$badAmt" != "false" ]]; then
-    echo "FAIL: found pending amount > max_move_per_op" >&2
-    return 1
+  # Important nuance:
+  # pending-redelegations query returns primary records that can merge multiple ops
+  # sharing (delegator, denom, dst, completionTime). With max_ops_per_block > 1,
+  # a merged record amount can exceed max_move_per_op even if each individual op respected the cap.
+  # So strict cap assertion is only sound when max_ops_per_block == 1.
+  if [[ "$cap" != "0" && "$max_ops" == "1" ]]; then
+    local badAmt
+    badAmt="$(echo "$json" | jq -r --argjson cap "$cap" '[.redelegations[] | (.amount.amount|tonumber) > $cap] | any')"
+    if [[ "$badAmt" != "false" ]]; then
+      echo "FAIL: found pending amount > max_move_per_op" >&2
+      return 1
+    fi
+  elif [[ "$cap" != "0" && "$max_ops" != "1" ]]; then
+    echo "note: skipping strict max_move_per_op check on merged primary entries (max_ops_per_block=$max_ops)"
   fi
 
   # Transitive safety: no source validator should also appear as destination in-flight.
@@ -240,7 +306,39 @@ assert_pending_invariants() {
   fi
 }
 
+watch_rebalance_status() {
+  local node="${NODE_RPC:-tcp://127.0.0.1:26657}"
+  local interval="${POLL_SLEEP_SECS:-2}"
+
+  while true; do
+    local h params del pr pu
+    h="$(curl -sS http://127.0.0.1:26657/status | jq -r '.result.sync_info.latest_block_height // "n/a"')"
+    params="$(evmd query poolrebalancer params --node "$node" -o json 2>/dev/null || echo '{}')"
+    del="$(echo "$params" | jq -r '.params.pool_delegator_address // empty')"
+    pr="$(evmd query poolrebalancer pending-redelegations --node "$node" -o json 2>/dev/null | jq -r '.redelegations | length // 0')"
+    pu="$(evmd query poolrebalancer pending-undelegations --node "$node" -o json 2>/dev/null | jq -r '.undelegations | length // 0')"
+
+    echo "----- rebalance watch -----"
+    echo "height=$h pending_red=$pr pending_und=$pu"
+    echo "$params" | jq -r '.params | {pool_delegator_address,max_target_validators,rebalance_threshold_bp,max_ops_per_block,max_move_per_op,use_undelegate_fallback}'
+
+    if [[ -n "$del" ]]; then
+      evmd query staking delegations "$del" --node "$node" -o json 2>/dev/null | \
+        jq -r '.delegation_responses[]? | {validator: .delegation.validator_address, amount: .balance.amount, denom: .balance.denom}'
+    else
+      echo "pool delegator not configured"
+    fi
+    echo
+    sleep "$interval"
+  done
+}
+
 main() {
+  if [[ "${1:-}" == "watch" ]]; then
+    watch_rebalance_status
+    exit 0
+  fi
+
   if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     usage; exit 0
   fi
@@ -249,6 +347,24 @@ main() {
   require_bin curl
   require_bin evmd
 
+  case "$DEMO_PROFILE" in
+    slow)
+      POOLREBALANCER_MAX_OPS_PER_BLOCK="${POOLREBALANCER_MAX_OPS_PER_BLOCK:-1}"
+      POOLREBALANCER_MAX_MOVE_PER_OP="${POOLREBALANCER_MAX_MOVE_PER_OP:-10000000000000000000}" # 1e19
+      ;;
+    medium)
+      # Defaults already set above.
+      ;;
+    fast)
+      POOLREBALANCER_MAX_OPS_PER_BLOCK="${POOLREBALANCER_MAX_OPS_PER_BLOCK:-10}"
+      POOLREBALANCER_MAX_MOVE_PER_OP="${POOLREBALANCER_MAX_MOVE_PER_OP:-0}" # no cap
+      ;;
+    *)
+      echo "invalid DEMO_PROFILE: $DEMO_PROFILE (expected: slow|medium|fast)" >&2
+      exit 1
+      ;;
+  esac
+
   if [[ -z "${VAL0_MNEMONIC:-}" || -z "${VAL1_MNEMONIC:-}" || -z "${VAL2_MNEMONIC:-}" ]]; then
     echo "VAL0_MNEMONIC/VAL1_MNEMONIC/VAL2_MNEMONIC must be set" >&2
     exit 1
@@ -256,6 +372,7 @@ main() {
 
   echo "==> Stopping any existing localnet"
   stop_nodes
+  trap cleanup_log_streams EXIT
 
   echo "==> Generating genesis (3 validators) at $BASEDIR"
   # multi_node_startup.sh is verbose during init; silence setup noise here.
@@ -267,6 +384,7 @@ main() {
   del_mnemonic="$(dev0_mnemonic_from_file)"
 
   echo "==> Pool delegator (dev0) = $del_addr"
+  echo "==> DEMO_PROFILE=$DEMO_PROFILE threshold_bp=$POOLREBALANCER_THRESHOLD_BP max_ops_per_block=$POOLREBALANCER_MAX_OPS_PER_BLOCK max_move_per_op=$POOLREBALANCER_MAX_MOVE_PER_OP fallback=$POOLREBALANCER_USE_UNDELEGATE_FALLBACK"
   echo "==> Patching genesis staking params (unbonding_time + max_entries)"
   patch_genesis_staking_params
   echo "==> Patching genesis poolrebalancer params"
@@ -277,6 +395,10 @@ main() {
   (cd "$ROOT_DIR" && START_VALIDATOR=true NODE_NUMBER=0 ./multi_node_startup.sh >"$BASEDIR/logs/val0.log" 2>&1 &)
   (cd "$ROOT_DIR" && START_VALIDATOR=true NODE_NUMBER=1 ./multi_node_startup.sh >"$BASEDIR/logs/val1.log" 2>&1 &)
   (cd "$ROOT_DIR" && START_VALIDATOR=true NODE_NUMBER=2 ./multi_node_startup.sh >"$BASEDIR/logs/val2.log" 2>&1 &)
+  if [[ "$STREAM_VALIDATOR_LOGS" == "true" ]]; then
+    echo "==> Streaming validator logs (val0/val1/val2)"
+    start_validator_log_streams
+  fi
 
   echo "==> Waiting for block production"
   local h
@@ -341,12 +463,23 @@ main() {
     echo "sample=$i height=$height pending_redelegations=$pending"
 
     if (( pending > 0 )); then
-      assert_pending_invariants "$j" "$POOLREBALANCER_MAX_MOVE_PER_OP"
+      assert_pending_invariants "$j" "$POOLREBALANCER_MAX_MOVE_PER_OP" "$POOLREBALANCER_MAX_OPS_PER_BLOCK"
       local pendingUndel
       pendingUndel="$(evmd query poolrebalancer pending-undelegations --node "$NODE_RPC" -o json | jq -r '.undelegations | length')"
       echo "pending_undelegations=$pendingUndel"
       echo "PASS: pending redelegations observed and invariants hold"
-      exit 0
+      if [[ "$KEEP_RUNNING" != "true" ]]; then
+        exit 0
+      fi
+      echo "==> KEEP_RUNNING=true, continuing in monitor mode (Ctrl+C to stop)"
+      while true; do
+        local monitorHeight monitorRed monitorUnd
+        monitorHeight="$(curl -sS http://127.0.0.1:26657/status | jq -r '.result.sync_info.latest_block_height')"
+        monitorRed="$(evmd query poolrebalancer pending-redelegations --node "$NODE_RPC" -o json | jq -r '.redelegations | length')"
+        monitorUnd="$(evmd query poolrebalancer pending-undelegations --node "$NODE_RPC" -o json | jq -r '.undelegations | length')"
+        echo "monitor height=$monitorHeight pending_red=$monitorRed pending_und=$monitorUnd"
+        sleep "$POLL_SLEEP_SECS"
+      done
     fi
     sleep "$POLL_SLEEP_SECS"
   done
