@@ -76,7 +76,10 @@ func (s *KeeperIntegrationTestSuite) ComputeCurrentDeltas() map[string]sdkmath.I
 	target, err := s.poolKeeper.EqualWeightTarget(total, targetVals)
 	s.Require().NoError(err)
 
-	deltas, err := s.poolKeeper.ComputeDeltas(s.ctx, target, current, total)
+	params, err := s.poolKeeper.GetParams(s.ctx)
+	s.Require().NoError(err)
+
+	deltas, err := s.poolKeeper.ComputeDeltas(target, current, total, params.RebalanceThresholdBp)
 	s.Require().NoError(err)
 	return deltas
 }

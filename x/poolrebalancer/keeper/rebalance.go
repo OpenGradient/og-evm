@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
+
+	"github.com/cosmos/evm/x/poolrebalancer/types"
 
 	"cosmossdk.io/math"
 
@@ -112,11 +115,7 @@ func (k Keeper) EqualWeightTarget(totalStake math.Int, targetValidators []sdk.Va
 
 // ComputeDeltas returns target-current per validator and applies the rebalance threshold.
 // Deltas within the threshold are treated as zero.
-func (k Keeper) ComputeDeltas(ctx context.Context, target, current map[string]math.Int, totalStake math.Int) (map[string]math.Int, error) {
-	bp, err := k.GetRebalanceThresholdBP(ctx)
-	if err != nil {
-		return nil, err
-	}
+func (k Keeper) ComputeDeltas(target, current map[string]math.Int, totalStake math.Int, bp uint32) (map[string]math.Int, error) {
 	threshold := totalStake.Mul(math.NewInt(int64(bp))).Quo(math.NewInt(10_000))
 
 	allKeys := make(map[string]struct{})
@@ -273,12 +272,18 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 		return nil
 	}
 
+	// Load params once for this rebalance pass.
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Compute equal-weight targets and deltas (threshold applied inside ComputeDeltas).
 	target, err := k.EqualWeightTarget(total, targetVals)
 	if err != nil {
 		return err
 	}
-	deltas, err := k.ComputeDeltas(ctx, target, stakeByValidator, total)
+	deltas, err := k.ComputeDeltas(target, stakeByValidator, total, params.RebalanceThresholdBp)
 	if err != nil {
 		return err
 	}
@@ -295,15 +300,9 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 		return nil
 	}
 
-	// Load params for the apply loop.
-	maxOps, err := k.GetMaxOpsPerBlock(ctx)
-	if err != nil {
-		return err
-	}
-	useUndel, err := k.GetUseUndelegateFallback(ctx)
-	if err != nil {
-		return err
-	}
+	// Apply params to the operation loop.
+	maxOps := params.MaxOpsPerBlock
+	useUndel := params.UseUndelegateFallback
 	bondDenom, err := k.stakingKeeper.BondDenom(ctx)
 	if err != nil {
 		return err
@@ -317,9 +316,9 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 	}
 	sort.Strings(keys)
 
-	maxMove, err := k.GetMaxMovePerOp(ctx)
-	if err != nil {
-		return err
+	maxMove := params.MaxMovePerOp
+	if maxMove.IsNil() {
+		maxMove = math.ZeroInt()
 	}
 
 	var opsDone uint32
@@ -375,6 +374,18 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 		}
 		deltas[valKey] = deltas[valKey].Add(undelAmt)
 		opsDone++
+	}
+
+	if opsDone > 0 {
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeRebalanceSummary,
+				sdk.NewAttribute(types.AttributeKeyDelegator, del.String()),
+				sdk.NewAttribute(types.AttributeKeyOpsDone, strconv.FormatUint(uint64(opsDone), 10)),
+				sdk.NewAttribute(types.AttributeKeyUseFallback, strconv.FormatBool(useUndel)),
+			),
+		)
 	}
 
 	return nil

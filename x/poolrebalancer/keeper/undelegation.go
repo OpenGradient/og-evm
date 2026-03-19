@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/cosmos/evm/x/poolrebalancer/types"
@@ -89,6 +90,18 @@ func (k Keeper) BeginTrackedUndelegation(ctx context.Context, del sdk.AccAddress
 		return time.Time{}, math.ZeroInt(), fmt.Errorf("add pending undelegation: %w", err)
 	}
 
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeUndelegationStarted,
+			sdk.NewAttribute(types.AttributeKeyDelegator, del.String()),
+			sdk.NewAttribute(types.AttributeKeyValidator, valAddr.String()),
+			sdk.NewAttribute(types.AttributeKeyAmount, amountUnbonded.String()),
+			sdk.NewAttribute(types.AttributeKeyDenom, bondDenom),
+			sdk.NewAttribute(types.AttributeKeyCompletionTime, completionTime.UTC().Format(time.RFC3339Nano)),
+		),
+	)
+
 	return completionTime, amountUnbonded, nil
 }
 
@@ -97,6 +110,7 @@ func (k Keeper) BeginTrackedUndelegation(ctx context.Context, del sdk.AccAddress
 func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
+	completed := 0
 
 	coreStore := k.storeService.OpenKVStore(ctx)
 	iterStore := runtime.KVStoreAdapter(coreStore)
@@ -135,10 +149,21 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 			if err := coreStore.Delete(indexKey); err != nil {
 				return err
 			}
+			completed++
 		}
 
 		// Delete the queue key itself.
 		iterStore.Delete(key)
+	}
+
+	if completed > 0 {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeUndelegationsCompleted,
+				sdk.NewAttribute(types.AttributeKeyCount, strconv.Itoa(completed)),
+				sdk.NewAttribute(types.AttributeKeyCompletionTime, blockTime.UTC().Format(time.RFC3339Nano)),
+			),
+		)
 	}
 
 	return nil

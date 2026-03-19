@@ -41,7 +41,9 @@ var (
 // GetPendingRedelegationKey returns the primary key for a pending redelegation.
 // Key format: prefix | lengthPrefixed(delegator) | lengthPrefixed(denom) | lengthPrefixed(dstValidator) | completionTime.
 func GetPendingRedelegationKey(del sdk.AccAddress, denom string, dstVal sdk.ValAddress, completion time.Time) []byte {
-	key := append(PendingRedelegationKey, address.MustLengthPrefix(del)...)
+	key := make([]byte, 0)
+	key = append(key, PendingRedelegationKey...)
+	key = append(key, address.MustLengthPrefix(del)...)
 	key = append(key, address.MustLengthPrefix([]byte(denom))...)
 	key = append(key, address.MustLengthPrefix(dstVal)...)
 	key = append(key, sdk.FormatTimeBytes(completion)...)
@@ -51,7 +53,9 @@ func GetPendingRedelegationKey(del sdk.AccAddress, denom string, dstVal sdk.ValA
 // GetPendingRedelegationBySrcIndexKey returns the index key for lookup by source validator.
 // Key format: prefix | lengthPrefixed(srcValidator) | lengthPrefixed(completionTime) | lengthPrefixed(denom) | lengthPrefixed(dstVal) | lengthPrefixed(delegator).
 func GetPendingRedelegationBySrcIndexKey(srcVal sdk.ValAddress, completion time.Time, denom string, dstVal sdk.ValAddress, del sdk.AccAddress) []byte {
-	key := append(PendingRedelegationBySrcIndexKey, address.MustLengthPrefix(srcVal)...)
+	key := make([]byte, 0)
+	key = append(key, PendingRedelegationBySrcIndexKey...)
+	key = append(key, address.MustLengthPrefix(srcVal)...)
 	key = append(key, address.MustLengthPrefix(sdk.FormatTimeBytes(completion))...)
 	key = append(key, address.MustLengthPrefix([]byte(denom))...)
 	key = append(key, address.MustLengthPrefix(dstVal)...)
@@ -62,7 +66,10 @@ func GetPendingRedelegationBySrcIndexKey(srcVal sdk.ValAddress, completion time.
 // GetPendingRedelegationQueueKey returns the queue key for a given completion time.
 // Used to iterate pending redelegations that mature at or before a given time.
 func GetPendingRedelegationQueueKey(completion time.Time) []byte {
-	return append(PendingRedelegationQueueKey, sdk.FormatTimeBytes(completion)...)
+	key := make([]byte, 0)
+	key = append(key, PendingRedelegationQueueKey...)
+	key = append(key, sdk.FormatTimeBytes(completion)...)
+	return key
 }
 
 // ParsePendingRedelegationQueueKey parses the completion time from a pending redelegation queue key.
@@ -77,7 +84,9 @@ func ParsePendingRedelegationQueueKey(key []byte) (time.Time, error) {
 // GetPendingRedelegationPrefix returns the key prefix for (delegator, denom, dstValidator).
 // Used by HasImmatureRedelegationTo to prefix-scan all completion times for this triple.
 func GetPendingRedelegationPrefix(del sdk.AccAddress, denom string, dstVal sdk.ValAddress) []byte {
-	key := append(PendingRedelegationKey, address.MustLengthPrefix(del)...)
+	key := make([]byte, 0)
+	key = append(key, PendingRedelegationKey...)
+	key = append(key, address.MustLengthPrefix(del)...)
 	key = append(key, address.MustLengthPrefix([]byte(denom))...)
 	key = append(key, address.MustLengthPrefix(dstVal)...)
 	return key
@@ -86,7 +95,9 @@ func GetPendingRedelegationPrefix(del sdk.AccAddress, denom string, dstVal sdk.V
 // GetPendingUndelegationQueueKey returns the queue key for (completionTime, delegator).
 // Key format: prefix | lengthPrefixed(completionTime) | lengthPrefixed(delegator).
 func GetPendingUndelegationQueueKey(completion time.Time, del sdk.AccAddress) []byte {
-	key := append(PendingUndelegationQueueKey, address.MustLengthPrefix(sdk.FormatTimeBytes(completion))...)
+	key := make([]byte, 0)
+	key = append(key, PendingUndelegationQueueKey...)
+	key = append(key, address.MustLengthPrefix(sdk.FormatTimeBytes(completion))...)
 	key = append(key, address.MustLengthPrefix(del)...)
 	return key
 }
@@ -95,7 +106,10 @@ func GetPendingUndelegationQueueKey(completion time.Time, del sdk.AccAddress) []
 // Key format: PendingUndelegationQueueKey (0x21) + lengthPrefixed(FormatTimeBytes(completion)).
 // This is used as an end key when iterating all queued undelegations up to a given time.
 func GetPendingUndelegationQueueKeyByTime(completion time.Time) []byte {
-	return append(PendingUndelegationQueueKey, address.MustLengthPrefix(sdk.FormatTimeBytes(completion))...)
+	key := make([]byte, 0)
+	key = append(key, PendingUndelegationQueueKey...)
+	key = append(key, address.MustLengthPrefix(sdk.FormatTimeBytes(completion))...)
+	return key
 }
 
 // ParsePendingUndelegationQueueKeyForCompletionTime parses the completion time from a pending undelegation queue key.
@@ -117,7 +131,9 @@ func ParsePendingUndelegationQueueKeyForCompletionTime(key []byte) (time.Time, e
 // GetPendingUndelegationByValIndexKey returns the index key for lookup by validator.
 // Key format: prefix | lengthPrefixed(validator) | lengthPrefixed(completionTime) | lengthPrefixed(denom) | lengthPrefixed(delegator).
 func GetPendingUndelegationByValIndexKey(val sdk.ValAddress, completion time.Time, denom string, del sdk.AccAddress) []byte {
-	key := append(PendingUndelegationByValIndexKey, address.MustLengthPrefix(val)...)
+	key := make([]byte, 0)
+	key = append(key, PendingUndelegationByValIndexKey...)
+	key = append(key, address.MustLengthPrefix(val)...)
 	key = append(key, address.MustLengthPrefix(sdk.FormatTimeBytes(completion))...)
 	key = append(key, address.MustLengthPrefix([]byte(denom))...)
 	key = append(key, address.MustLengthPrefix(del)...)

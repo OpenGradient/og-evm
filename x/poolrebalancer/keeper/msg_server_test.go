@@ -28,6 +28,14 @@ func TestUpdateParams_RejectsWrongAuthority(t *testing.T) {
 	require.Contains(t, err.Error(), "invalid authority")
 }
 
+func TestUpdateParams_RejectsNilRequest(t *testing.T) {
+	ctx, k := newTestKeeper(t)
+
+	_, err := k.UpdateParams(ctx, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty update params request")
+}
+
 func TestUpdateParams_AcceptsAuthorityAndUpdatesParams(t *testing.T) {
 	ctx, k := newTestKeeper(t)
 
@@ -49,6 +57,23 @@ func TestUpdateParams_AcceptsAuthorityAndUpdatesParams(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint32(9), got.MaxOpsPerBlock)
 	require.True(t, got.MaxMovePerOp.Equal(math.NewInt(77)))
+}
+
+func TestUpdateParams_RejectsInvalidParamsWithValidAuthority(t *testing.T) {
+	ctx, k := newTestKeeper(t)
+
+	authority := k.authority.String()
+	invalid := types.DefaultParams()
+	invalid.MaxTargetValidators = 0
+
+	msg := &types.MsgUpdateParams{
+		Authority: authority,
+		Params:    invalid,
+	}
+
+	_, err := k.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "max_target_validators must be positive")
 }
 
 func TestMsgUpdateParams_ValidateBasic_RejectsInvalidParams(t *testing.T) {

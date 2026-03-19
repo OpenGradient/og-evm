@@ -2,6 +2,9 @@ package poolrebalancer
 
 import (
 	sdkmath "cosmossdk.io/math"
+
+	"github.com/cosmos/evm/testutil/integration/evm/utils"
+	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 )
 
 // TestSchedulingA_DriftCreatesPendingRedelegations verifies that measurable drift
@@ -23,6 +26,10 @@ func (s *KeeperIntegrationTestSuite) TestSchedulingA_DriftCreatesPendingRedelega
 	s.Require().NoError(s.RunEndBlock())
 	pending := s.PendingRedelegations()
 	s.T().Logf("scheduling-case: pending redelegations=%d", len(pending))
+
+	events := s.ctx.EventManager().Events().ToABCIEvents()
+	s.Require().True(utils.ContainsEventType(events, poolrebalancertypes.EventTypeRedelegationStarted))
+	s.Require().True(utils.ContainsEventType(events, poolrebalancertypes.EventTypeRebalanceSummary))
 
 	s.Require().NotEmpty(pending, "expected at least one pending redelegation")
 

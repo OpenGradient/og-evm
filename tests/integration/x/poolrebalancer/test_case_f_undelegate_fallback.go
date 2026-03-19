@@ -4,6 +4,7 @@ import (
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/cosmos/evm/testutil/integration/evm/utils"
 	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 )
 
@@ -51,6 +52,9 @@ func (s *KeeperIntegrationTestSuite) TestUndelegateFallback_FillsPendingUndelega
 
 	undelegations := s.PendingUndelegations()
 	s.Require().NotEmpty(undelegations, "expected pending undelegations to be scheduled by fallback")
+	events := s.ctx.EventManager().Events().ToABCIEvents()
+	s.Require().True(utils.ContainsEventType(events, poolrebalancertypes.EventTypeUndelegationStarted))
+	s.Require().True(utils.ContainsEventType(events, poolrebalancertypes.EventTypeRebalanceSummary))
 
 	// Fallback undelegations should come from currently overweight validators.
 	for _, u := range undelegations {

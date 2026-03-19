@@ -312,12 +312,12 @@ func TestPickBestRedelegation_MultipleValidators(t *testing.T) {
 
 // TestComputeDeltas_Basic: target A=100 B=100, current A=120 B=80, totalStake=200; 50 bp threshold = 1.
 func TestComputeDeltas_Basic(t *testing.T) {
-	ctx, k := testKeeperWithParams(t, "50", "0")
+	_, k := testKeeperWithParams(t, "50", "0")
 	target := map[string]math.Int{"A": math.NewInt(100), "B": math.NewInt(100)}
 	current := map[string]math.Int{"A": math.NewInt(120), "B": math.NewInt(80)}
 	totalStake := math.NewInt(200)
 
-	deltas, err := k.ComputeDeltas(ctx, target, current, totalStake)
+	deltas, err := k.ComputeDeltas(target, current, totalStake, 50)
 	require.NoError(t, err)
 	require.Len(t, deltas, 2)
 	// delta = target - current: A = -20, B = +20. Threshold 200*50/10000 = 1; both |delta| >= 1.
@@ -327,12 +327,12 @@ func TestComputeDeltas_Basic(t *testing.T) {
 
 // TestComputeDeltas_BelowThreshold: same target/current, high RebalanceThresholdBP so threshold > 20.
 func TestComputeDeltas_BelowThreshold(t *testing.T) {
-	ctx, k := testKeeperWithParams(t, "1500", "0") // 15% -> threshold 200*1500/10000 = 30
+	_, k := testKeeperWithParams(t, "1500", "0") // 15% -> threshold 200*1500/10000 = 30
 	target := map[string]math.Int{"A": math.NewInt(100), "B": math.NewInt(100)}
 	current := map[string]math.Int{"A": math.NewInt(120), "B": math.NewInt(80)}
 	totalStake := math.NewInt(200)
 
-	deltas, err := k.ComputeDeltas(ctx, target, current, totalStake)
+	deltas, err := k.ComputeDeltas(target, current, totalStake, 1500)
 	require.NoError(t, err)
 	require.Len(t, deltas, 2)
 	// |delta| 20 < threshold 30 -> both zeroed.
@@ -342,12 +342,12 @@ func TestComputeDeltas_BelowThreshold(t *testing.T) {
 
 // TestComputeDeltas_UnionOfKeys: validator only in target or only in current; all keys present.
 func TestComputeDeltas_UnionOfKeys(t *testing.T) {
-	ctx, k := testKeeperWithParams(t, "50", "0")
+	_, k := testKeeperWithParams(t, "50", "0")
 	target := map[string]math.Int{"A": math.NewInt(100), "B": math.NewInt(100)}
 	current := map[string]math.Int{"A": math.NewInt(50), "C": math.NewInt(50)}
 	totalStake := math.NewInt(200)
 
-	deltas, err := k.ComputeDeltas(ctx, target, current, totalStake)
+	deltas, err := k.ComputeDeltas(target, current, totalStake, 50)
 	require.NoError(t, err)
 	require.Len(t, deltas, 3)
 	// A: 100-50=50; B: 100-0=100; C: 0-50=-50. Threshold 1; all non-zero.
@@ -358,12 +358,12 @@ func TestComputeDeltas_UnionOfKeys(t *testing.T) {
 
 // TestComputeDeltas_TotalStakeZero: threshold = 0; deltas are not zeroed by threshold.
 func TestComputeDeltas_TotalStakeZero(t *testing.T) {
-	ctx, k := testKeeperWithParams(t, "50", "0")
+	_, k := testKeeperWithParams(t, "50", "0")
 	target := map[string]math.Int{"A": math.NewInt(0), "B": math.NewInt(0)}
 	current := map[string]math.Int{"A": math.NewInt(0), "B": math.NewInt(0)}
 	totalStake := math.ZeroInt()
 
-	deltas, err := k.ComputeDeltas(ctx, target, current, totalStake)
+	deltas, err := k.ComputeDeltas(target, current, totalStake, 50)
 	require.NoError(t, err)
 	require.Len(t, deltas, 2)
 	// threshold = 0; delta A = 0, B = 0 (and 0 is not < 0, so they stay 0).

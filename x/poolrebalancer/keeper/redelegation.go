@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/cosmos/evm/x/poolrebalancer/types"
@@ -121,6 +122,19 @@ func (k Keeper) BeginTrackedRedelegation(ctx context.Context, del sdk.AccAddress
 	if err := k.addPendingRedelegation(ctx, del, srcVal, dstVal, coin, completionTime); err != nil {
 		return time.Time{}, fmt.Errorf("add pending redelegation: %w", err)
 	}
+
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeRedelegationStarted,
+			sdk.NewAttribute(types.AttributeKeyDelegator, del.String()),
+			sdk.NewAttribute(types.AttributeKeySrcValidator, srcVal.String()),
+			sdk.NewAttribute(types.AttributeKeyDstValidator, dstVal.String()),
+			sdk.NewAttribute(types.AttributeKeyAmount, coin.Amount.String()),
+			sdk.NewAttribute(types.AttributeKeyDenom, coin.Denom),
+			sdk.NewAttribute(types.AttributeKeyCompletionTime, completionTime.UTC().Format(time.RFC3339Nano)),
+		),
+	)
+
 	return completionTime, nil
 }
 
@@ -154,6 +168,7 @@ func (k Keeper) deletePendingRedelegation(ctx context.Context, entry types.Pendi
 func (k Keeper) CompletePendingRedelegations(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
+	completed := 0
 
 	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
 	start := types.PendingRedelegationQueueKey
@@ -178,8 +193,19 @@ func (k Keeper) CompletePendingRedelegations(ctx context.Context) error {
 			if err := k.deletePendingRedelegation(ctx, entry, completion); err != nil {
 				return err
 			}
+			completed++
 		}
 		store.Delete(key)
+	}
+
+	if completed > 0 {
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeRedelegationsCompleted,
+				sdk.NewAttribute(types.AttributeKeyCount, strconv.Itoa(completed)),
+				sdk.NewAttribute(types.AttributeKeyCompletionTime, blockTime.UTC().Format(time.RFC3339Nano)),
+			),
+		)
 	}
 
 	return nil
