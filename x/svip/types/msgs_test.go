@@ -36,7 +36,7 @@ func (suite *MsgsTestSuite) TestMsgUpdateParamsValidateBasic() {
 		},
 		{
 			"fail - valid authority but invalid params",
-			&types.MsgUpdateParams{Authority: govAddr, Params: types.Params{Activated: true, HalfLifeSeconds: 0}},
+			&types.MsgUpdateParams{Authority: govAddr, Params: types.Params{HalfLifeSeconds: -1}},
 			false,
 		},
 		{

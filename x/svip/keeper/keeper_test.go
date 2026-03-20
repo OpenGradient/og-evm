@@ -70,13 +70,41 @@ func TestGetSetParams(t *testing.T) {
 
 	// Set custom params and read back
 	custom := types.Params{
-		Activated:       true,
-		Paused:          false,
 		HalfLifeSeconds: 31536000,
 	}
 	require.NoError(t, td.keeper.SetParams(td.ctx, custom))
 	got := td.keeper.GetParams(td.ctx)
 	require.Equal(t, custom, got)
+}
+
+func TestGetSetActivated(t *testing.T) {
+	td := newMockedTestData(t)
+
+	// Default is false
+	require.False(t, td.keeper.GetActivated(td.ctx))
+
+	// Set true and read back
+	td.keeper.SetActivated(td.ctx, true)
+	require.True(t, td.keeper.GetActivated(td.ctx))
+
+	// Set false and read back
+	td.keeper.SetActivated(td.ctx, false)
+	require.False(t, td.keeper.GetActivated(td.ctx))
+}
+
+func TestGetSetPaused(t *testing.T) {
+	td := newMockedTestData(t)
+
+	// Default is false
+	require.False(t, td.keeper.GetPaused(td.ctx))
+
+	// Set true and read back
+	td.keeper.SetPaused(td.ctx, true)
+	require.True(t, td.keeper.GetPaused(td.ctx))
+
+	// Set false and read back
+	td.keeper.SetPaused(td.ctx, false)
+	require.False(t, td.keeper.GetPaused(td.ctx))
 }
 
 func TestGetSetTotalDistributed(t *testing.T) {
@@ -144,8 +172,9 @@ func TestBeginBlock_NotActivated(t *testing.T) {
 func TestBeginBlock_Paused(t *testing.T) {
 	td := newMockedTestData(t)
 
-	params := types.Params{Activated: true, Paused: true, HalfLifeSeconds: 31536000}
-	require.NoError(t, td.keeper.SetParams(td.ctx, params))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
+	td.keeper.SetActivated(td.ctx, true)
+	td.keeper.SetPaused(td.ctx, true)
 
 	err := td.keeper.BeginBlock(td.ctx)
 	require.NoError(t, err)
@@ -160,9 +189,9 @@ func TestBeginBlock_Distributes(t *testing.T) {
 	halfLife := int64(31536000)
 	poolBalance := sdkmath.NewInt(1_000_000_000_000)
 
-	// Set params as activated
-	params := types.Params{Activated: true, Paused: false, HalfLifeSeconds: halfLife}
-	require.NoError(t, td.keeper.SetParams(td.ctx, params))
+	// Set params and activate
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: halfLife}))
+	td.keeper.SetActivated(td.ctx, true)
 
 	// Set activation state
 	activationTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -216,8 +245,8 @@ func TestBeginBlock_CapsAtPoolBalance(t *testing.T) {
 	// Remaining pool balance is tiny — smaller than calculated reward
 	tinyBalance := sdkmath.NewInt(1)
 
-	params := types.Params{Activated: true, Paused: false, HalfLifeSeconds: halfLife}
-	require.NoError(t, td.keeper.SetParams(td.ctx, params))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: halfLife}))
+	td.keeper.SetActivated(td.ctx, true)
 
 	activationTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	td.keeper.SetActivationTime(td.ctx, activationTime)

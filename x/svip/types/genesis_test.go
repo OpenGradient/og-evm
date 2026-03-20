@@ -55,11 +55,22 @@ func (suite *GenesisTestSuite) TestGenesisStateValidate() {
 		{
 			"invalid - activated with half_life=0",
 			types.GenesisState{
-				Params:                  types.Params{Activated: true, HalfLifeSeconds: 0},
+				Params:                  types.Params{HalfLifeSeconds: 0},
+				Activated:               true,
 				TotalDistributed:        sdkmath.ZeroInt(),
 				PoolBalanceAtActivation: sdkmath.ZeroInt(),
 			},
 			true,
+		},
+		{
+			"valid - activated with half_life set",
+			types.GenesisState{
+				Params:                  types.Params{HalfLifeSeconds: 31536000},
+				Activated:               true,
+				TotalDistributed:        sdkmath.ZeroInt(),
+				PoolBalanceAtActivation: sdkmath.ZeroInt(),
+			},
+			false,
 		},
 	}
 

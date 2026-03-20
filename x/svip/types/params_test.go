@@ -32,23 +32,13 @@ func (suite *ParamsTestSuite) TestParamsValidate() {
 			true,
 		},
 		{
-			"activated but half_life=0",
-			types.Params{Activated: true, HalfLifeSeconds: 0},
-			true,
-		},
-		{
-			"not activated, half_life=0",
-			types.Params{Activated: false, HalfLifeSeconds: 0},
+			"half_life=0 valid",
+			types.Params{HalfLifeSeconds: 0},
 			false,
 		},
 		{
-			"valid activated params",
-			types.Params{Activated: true, HalfLifeSeconds: 31536000},
-			false,
-		},
-		{
-			"valid activated with paused",
-			types.Params{Activated: true, Paused: true, HalfLifeSeconds: 31536000},
+			"valid half_life",
+			types.Params{HalfLifeSeconds: 31536000},
 			false,
 		},
 	}

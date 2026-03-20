@@ -32,72 +32,51 @@ func TestUpdateParams_InvalidAuthority(t *testing.T) {
 	require.ErrorContains(t, err, "invalid authority")
 }
 
-func TestUpdateParams_CannotDeactivate(t *testing.T) {
-	td := newMockedTestData(t)
-	srv := keeper.NewMsgServerImpl(td.keeper)
-
-	// Set as activated
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, HalfLifeSeconds: 31536000,
-	}))
-
-	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
-		Authority: govAuthority(),
-		Params:    types.Params{Activated: false, HalfLifeSeconds: 31536000},
-	})
-	require.ErrorContains(t, err, "cannot deactivate")
-}
-
 func TestUpdateParams_HalfLifeChangeCap(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, HalfLifeSeconds: 100_000_000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 100_000_000}))
+	td.keeper.SetActivated(td.ctx, true)
 
 	// >50% increase (1.6x) should fail
 	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
 		Authority: govAuthority(),
-		Params:    types.Params{Activated: true, HalfLifeSeconds: 160_000_000},
+		Params:    types.Params{HalfLifeSeconds: 160_000_000},
 	})
 	require.ErrorIs(t, err, types.ErrHalfLifeChange)
 
 	// >50% decrease (0.4x) should fail
 	_, err = srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
 		Authority: govAuthority(),
-		Params:    types.Params{Activated: true, HalfLifeSeconds: 40_000_000},
+		Params:    types.Params{HalfLifeSeconds: 40_000_000},
 	})
 	require.ErrorIs(t, err, types.ErrHalfLifeChange)
 
 	// Exact 0.5x boundary (ratio == 0.5) should pass
 	_, err = srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
 		Authority: govAuthority(),
-		Params:    types.Params{Activated: true, HalfLifeSeconds: 50_000_000},
+		Params:    types.Params{HalfLifeSeconds: 50_000_000},
 	})
 	require.NoError(t, err)
 
 	// Reset to 100M for next boundary test
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, HalfLifeSeconds: 100_000_000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 100_000_000}))
 
 	// Exact 1.5x boundary (ratio == 1.5) should pass
 	_, err = srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
 		Authority: govAuthority(),
-		Params:    types.Params{Activated: true, HalfLifeSeconds: 150_000_000},
+		Params:    types.Params{HalfLifeSeconds: 150_000_000},
 	})
 	require.NoError(t, err)
 
 	// Reset to 100M for next test
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, HalfLifeSeconds: 100_000_000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 100_000_000}))
 
 	// Within 50% (1.3x) should pass
 	_, err = srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
 		Authority: govAuthority(),
-		Params:    types.Params{Activated: true, HalfLifeSeconds: 130_000_000},
+		Params:    types.Params{HalfLifeSeconds: 130_000_000},
 	})
 	require.NoError(t, err)
 }
@@ -108,7 +87,7 @@ func TestUpdateParams_HalfLifeMinimum(t *testing.T) {
 
 	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
 		Authority: govAuthority(),
-		Params:    types.Params{Activated: false, HalfLifeSeconds: 1000}, // < 1 year
+		Params:    types.Params{HalfLifeSeconds: 1000}, // < 1 year
 	})
 	require.ErrorContains(t, err, "half_life_seconds must be >= 1 year")
 }
@@ -117,7 +96,7 @@ func TestUpdateParams_HappyPath(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	newParams := types.Params{Activated: false, HalfLifeSeconds: 63072000} // 2 years
+	newParams := types.Params{HalfLifeSeconds: 63072000} // 2 years
 	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
 		Authority: govAuthority(),
 		Params:    newParams,
@@ -138,9 +117,8 @@ func TestActivate_AlreadyActivated(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, HalfLifeSeconds: 31536000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
+	td.keeper.SetActivated(td.ctx, true)
 
 	_, err := srv.Activate(td.ctx, &types.MsgActivate{Authority: govAuthority()})
 	require.ErrorIs(t, err, types.ErrAlreadyActivated)
@@ -159,9 +137,7 @@ func TestActivate_PoolNotFunded(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: false, HalfLifeSeconds: 31536000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
 
 	denom := vmtypes.GetEVMCoinDenom()
 	moduleAddr := authtypes.NewModuleAddress(types.ModuleName)
@@ -179,9 +155,7 @@ func TestActivate_HappyPath(t *testing.T) {
 	halfLife := int64(31536000)
 	poolBalance := sdkmath.NewInt(1_000_000_000_000)
 
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: false, HalfLifeSeconds: halfLife,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: halfLife}))
 
 	denom := vmtypes.GetEVMCoinDenom()
 	moduleAddr := authtypes.NewModuleAddress(types.ModuleName)
@@ -194,8 +168,7 @@ func TestActivate_HappyPath(t *testing.T) {
 	_, err := srv.Activate(ctx, &types.MsgActivate{Authority: govAuthority()})
 	require.NoError(t, err)
 
-	params := td.keeper.GetParams(ctx)
-	require.True(t, params.Activated)
+	require.True(t, td.keeper.GetActivated(ctx))
 	require.Equal(t, poolBalance, td.keeper.GetPoolBalanceAtActivation(ctx))
 	require.Equal(t, blockTime, td.keeper.GetActivationTime(ctx).UTC())
 	require.Equal(t, blockTime, td.keeper.GetLastBlockTime(ctx).UTC())
@@ -213,9 +186,8 @@ func TestReactivate_PoolNotFunded(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, HalfLifeSeconds: 31536000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
+	td.keeper.SetActivated(td.ctx, true)
 
 	denom := vmtypes.GetEVMCoinDenom()
 	moduleAddr := authtypes.NewModuleAddress(types.ModuleName)
@@ -230,9 +202,9 @@ func TestReactivate_ClearsPaused(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, Paused: true, HalfLifeSeconds: 31536000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
+	td.keeper.SetActivated(td.ctx, true)
+	td.keeper.SetPaused(td.ctx, true)
 	td.keeper.SetTotalPausedSeconds(td.ctx, 500)
 
 	poolBalance := sdkmath.NewInt(1_000_000_000_000)
@@ -247,8 +219,7 @@ func TestReactivate_ClearsPaused(t *testing.T) {
 	_, err := srv.Reactivate(ctx, &types.MsgReactivate{Authority: govAuthority()})
 	require.NoError(t, err)
 
-	params := td.keeper.GetParams(ctx)
-	require.False(t, params.Paused, "reactivate should clear paused flag")
+	require.False(t, td.keeper.GetPaused(ctx), "reactivate should clear paused flag")
 	require.Equal(t, int64(0), td.keeper.GetTotalPausedSeconds(ctx))
 	require.True(t, td.keeper.GetTotalDistributed(ctx).IsZero())
 }
@@ -257,9 +228,8 @@ func TestReactivate_HappyPath(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, HalfLifeSeconds: 31536000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
+	td.keeper.SetActivated(td.ctx, true)
 	td.keeper.SetTotalDistributed(td.ctx, sdkmath.NewInt(5000))
 
 	newPoolBalance := sdkmath.NewInt(500_000_000_000)
@@ -293,9 +263,9 @@ func TestPause_AccumulatesPausedDuration(t *testing.T) {
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
 	// Start with activated + paused
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: true, Paused: true, HalfLifeSeconds: 31536000,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
+	td.keeper.SetActivated(td.ctx, true)
+	td.keeper.SetPaused(td.ctx, true)
 
 	pauseStart := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	td.keeper.SetLastBlockTime(td.ctx, pauseStart)
@@ -310,9 +280,8 @@ func TestPause_AccumulatesPausedDuration(t *testing.T) {
 	require.Equal(t, int64(100), td.keeper.GetTotalPausedSeconds(ctx))
 	require.Equal(t, unpauseTime, td.keeper.GetLastBlockTime(ctx).UTC())
 
-	// Verify params updated
-	params := td.keeper.GetParams(ctx)
-	require.False(t, params.Paused)
+	// Verify paused flag cleared
+	require.False(t, td.keeper.GetPaused(ctx))
 }
 
 func TestPause_HappyPath(t *testing.T) {
@@ -325,12 +294,12 @@ func TestPause_HappyPath(t *testing.T) {
 	// Pause
 	_, err := srv.Pause(td.ctx, &types.MsgPause{Authority: govAuthority(), Paused: true})
 	require.NoError(t, err)
-	require.True(t, td.keeper.GetParams(td.ctx).Paused)
+	require.True(t, td.keeper.GetPaused(td.ctx))
 
 	// Unpause
 	_, err = srv.Pause(td.ctx, &types.MsgPause{Authority: govAuthority(), Paused: false})
 	require.NoError(t, err)
-	require.False(t, td.keeper.GetParams(td.ctx).Paused)
+	require.False(t, td.keeper.GetPaused(td.ctx))
 }
 
 func TestFundPool_InvalidDepositor(t *testing.T) {
@@ -392,9 +361,7 @@ func TestBeginBlock_AfterPauseUnpause(t *testing.T) {
 	).Return(nil)
 
 	// 1. Activate at T=0
-	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{
-		Activated: false, HalfLifeSeconds: halfLife,
-	}))
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: halfLife}))
 	activationTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	ctx := td.ctx.WithBlockTime(activationTime)
 	_, err := srv.Activate(ctx, &types.MsgActivate{Authority: govAuthority()})

@@ -4,8 +4,6 @@
       "@type": "/cosmos.svip.v1.MsgUpdateParams",
       "authority": "<GOV_AUTHORITY>",
       "params": {
-        "activated": false,
-        "paused": false,
         "half_life_seconds": "473364000"
       }
     }

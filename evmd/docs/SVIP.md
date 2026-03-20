@@ -148,8 +148,6 @@ Open `/tmp/svip_set_params.json` and replace `<GOV_AUTHORITY>` with the address 
       "@type": "/cosmos.svip.v1.MsgUpdateParams",
       "authority": "og10d07y265gmmuvt4z0w9aw880jnsr700jrdya3k",
       "params": {
-        "activated": false,
-        "paused": false,
         "half_life_seconds": "473364000"
       }
     }
@@ -202,12 +200,11 @@ Status should be `PROPOSAL_STATUS_PASSED`.
 evmd q svip params
 ```
 
-> **Heads up:** Don't be alarmed if this shows `params: {}`. Before activation, both `activated` and `paused` are `false`, and `half_life_seconds` is an integer. Proto3 serialization drops fields that equal their default values (`false`, `0`), so the whole thing looks empty even though the values are stored correctly. If you want proof, just move on to step 3. `MsgActivate` will reject with "half_life_seconds must be set before activation" if the value didn't stick.
+> **Heads up:** Don't be alarmed if this shows `params: {}`. `half_life_seconds` is an integer, and proto3 serialization drops fields that equal their default value (`0`), so the whole thing looks empty even though the value is stored correctly. If you want proof, just move on to step 3. `MsgActivate` will reject with "half_life_seconds must be set before activation" if the value didn't stick.
 
 > **Devnet:** Use `--from mykey --home ~/.og-evm-devnet --chain-id 10740 --keyring-backend test --gas 300000 --gas-prices 10000000ogwei` for both submit and vote. Deposit is `10000000ogwei`. Wait ~35 seconds after voting.
 
 **Guardrails:**
-- You can't set `activated` back to `false` once it's been turned on. Activation is permanent.
 - `half_life_seconds` must be at least 1 year.
 - After activation, `half_life_seconds` can't change by more than 50% in a single proposal.
 
@@ -391,14 +388,14 @@ evmd q svip pool-state
 ## Queries
 
 ```bash
-# Module parameters (activated, paused, half_life_seconds)
+# Module parameters (half_life_seconds)
 evmd q svip params
 
 # Pool state (balance, total distributed, current rate, activation time)
 evmd q svip pool-state
 ```
 
-> **About `params: {}`:** The params query uses proto3 serialization, which drops fields that equal their default value (`false` for bools, `0` for integers). Before activation, this means you'll see `params: {}` even when `half_life_seconds` is set. After activation, `activated: true` shows up but `paused` still hides when it's false. Don't worry, the values are stored correctly. Use `q svip pool-state` for the full picture.
+> **About `params: {}`:** The params query uses proto3 serialization, which drops fields that equal their default value (`0` for integers). This means you'll see `params: {}` even when `half_life_seconds` is set to 0. Don't worry, the value is stored correctly. Use `q svip pool-state` for the full picture including activated/paused status.
 
 ---
 
