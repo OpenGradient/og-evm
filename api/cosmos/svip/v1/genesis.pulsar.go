@@ -23,6 +23,8 @@ var (
 	fd_GenesisState_pool_balance_at_activation protoreflect.FieldDescriptor
 	fd_GenesisState_last_block_time            protoreflect.FieldDescriptor
 	fd_GenesisState_total_paused_seconds       protoreflect.FieldDescriptor
+	fd_GenesisState_activated                  protoreflect.FieldDescriptor
+	fd_GenesisState_paused                     protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -34,6 +36,8 @@ func init() {
 	fd_GenesisState_pool_balance_at_activation = md_GenesisState.Fields().ByName("pool_balance_at_activation")
 	fd_GenesisState_last_block_time = md_GenesisState.Fields().ByName("last_block_time")
 	fd_GenesisState_total_paused_seconds = md_GenesisState.Fields().ByName("total_paused_seconds")
+	fd_GenesisState_activated = md_GenesisState.Fields().ByName("activated")
+	fd_GenesisState_paused = md_GenesisState.Fields().ByName("paused")
 }
 
 var _ protoreflect.Message = (*fastReflection_GenesisState)(nil)
@@ -137,6 +141,18 @@ func (x *fastReflection_GenesisState) Range(f func(protoreflect.FieldDescriptor,
 			return
 		}
 	}
+	if x.Activated != false {
+		value := protoreflect.ValueOfBool(x.Activated)
+		if !f(fd_GenesisState_activated, value) {
+			return
+		}
+	}
+	if x.Paused != false {
+		value := protoreflect.ValueOfBool(x.Paused)
+		if !f(fd_GenesisState_paused, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -164,6 +180,10 @@ func (x *fastReflection_GenesisState) Has(fd protoreflect.FieldDescriptor) bool 
 		return x.LastBlockTime != nil
 	case "cosmos.svip.v1.GenesisState.total_paused_seconds":
 		return x.TotalPausedSeconds != int64(0)
+	case "cosmos.svip.v1.GenesisState.activated":
+		return x.Activated != false
+	case "cosmos.svip.v1.GenesisState.paused":
+		return x.Paused != false
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.svip.v1.GenesisState"))
@@ -192,6 +212,10 @@ func (x *fastReflection_GenesisState) Clear(fd protoreflect.FieldDescriptor) {
 		x.LastBlockTime = nil
 	case "cosmos.svip.v1.GenesisState.total_paused_seconds":
 		x.TotalPausedSeconds = int64(0)
+	case "cosmos.svip.v1.GenesisState.activated":
+		x.Activated = false
+	case "cosmos.svip.v1.GenesisState.paused":
+		x.Paused = false
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.svip.v1.GenesisState"))
@@ -226,6 +250,12 @@ func (x *fastReflection_GenesisState) Get(descriptor protoreflect.FieldDescripto
 	case "cosmos.svip.v1.GenesisState.total_paused_seconds":
 		value := x.TotalPausedSeconds
 		return protoreflect.ValueOfInt64(value)
+	case "cosmos.svip.v1.GenesisState.activated":
+		value := x.Activated
+		return protoreflect.ValueOfBool(value)
+	case "cosmos.svip.v1.GenesisState.paused":
+		value := x.Paused
+		return protoreflect.ValueOfBool(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.svip.v1.GenesisState"))
@@ -258,6 +288,10 @@ func (x *fastReflection_GenesisState) Set(fd protoreflect.FieldDescriptor, value
 		x.LastBlockTime = value.Message().Interface().(*timestamppb.Timestamp)
 	case "cosmos.svip.v1.GenesisState.total_paused_seconds":
 		x.TotalPausedSeconds = value.Int()
+	case "cosmos.svip.v1.GenesisState.activated":
+		x.Activated = value.Bool()
+	case "cosmos.svip.v1.GenesisState.paused":
+		x.Paused = value.Bool()
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.svip.v1.GenesisState"))
@@ -299,6 +333,10 @@ func (x *fastReflection_GenesisState) Mutable(fd protoreflect.FieldDescriptor) p
 		panic(fmt.Errorf("field pool_balance_at_activation of message cosmos.svip.v1.GenesisState is not mutable"))
 	case "cosmos.svip.v1.GenesisState.total_paused_seconds":
 		panic(fmt.Errorf("field total_paused_seconds of message cosmos.svip.v1.GenesisState is not mutable"))
+	case "cosmos.svip.v1.GenesisState.activated":
+		panic(fmt.Errorf("field activated of message cosmos.svip.v1.GenesisState is not mutable"))
+	case "cosmos.svip.v1.GenesisState.paused":
+		panic(fmt.Errorf("field paused of message cosmos.svip.v1.GenesisState is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.svip.v1.GenesisState"))
@@ -327,6 +365,10 @@ func (x *fastReflection_GenesisState) NewField(fd protoreflect.FieldDescriptor) 
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	case "cosmos.svip.v1.GenesisState.total_paused_seconds":
 		return protoreflect.ValueOfInt64(int64(0))
+	case "cosmos.svip.v1.GenesisState.activated":
+		return protoreflect.ValueOfBool(false)
+	case "cosmos.svip.v1.GenesisState.paused":
+		return protoreflect.ValueOfBool(false)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.svip.v1.GenesisState"))
@@ -419,6 +461,12 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 		if x.TotalPausedSeconds != 0 {
 			n += 1 + runtime.Sov(uint64(x.TotalPausedSeconds))
 		}
+		if x.Activated {
+			n += 2
+		}
+		if x.Paused {
+			n += 2
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -447,6 +495,26 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.Paused {
+			i--
+			if x.Paused {
+				dAtA[i] = 1
+			} else {
+				dAtA[i] = 0
+			}
+			i--
+			dAtA[i] = 0x40
+		}
+		if x.Activated {
+			i--
+			if x.Activated {
+				dAtA[i] = 1
+			} else {
+				dAtA[i] = 0
+			}
+			i--
+			dAtA[i] = 0x38
 		}
 		if x.TotalPausedSeconds != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.TotalPausedSeconds))
@@ -749,6 +817,46 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 						break
 					}
 				}
+			case 7:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Activated", wireType)
+				}
+				var v int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				x.Activated = bool(v != 0)
+			case 8:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Paused", wireType)
+				}
+				var v int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				x.Paused = bool(v != 0)
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -815,6 +923,10 @@ type GenesisState struct {
 	LastBlockTime *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_block_time,json=lastBlockTime,proto3" json:"last_block_time,omitempty"`
 	// total_paused_seconds is the cumulative seconds spent in paused state.
 	TotalPausedSeconds int64 `protobuf:"varint,6,opt,name=total_paused_seconds,json=totalPausedSeconds,proto3" json:"total_paused_seconds,omitempty"`
+	// activated indicates whether SVIP reward distribution is active.
+	Activated bool `protobuf:"varint,7,opt,name=activated,proto3" json:"activated,omitempty"`
+	// paused is an emergency pause flag.
+	Paused bool `protobuf:"varint,8,opt,name=paused,proto3" json:"paused,omitempty"`
 }
 
 func (x *GenesisState) Reset() {
@@ -879,6 +991,20 @@ func (x *GenesisState) GetTotalPausedSeconds() int64 {
 	return 0
 }
 
+func (x *GenesisState) GetActivated() bool {
+	if x != nil {
+		return x.Activated
+	}
+	return false
+}
+
+func (x *GenesisState) GetPaused() bool {
+	if x != nil {
+		return x.Paused
+	}
+	return false
+}
+
 var File_cosmos_svip_v1_genesis_proto protoreflect.FileDescriptor
 
 var file_cosmos_svip_v1_genesis_proto_rawDesc = []byte{
@@ -891,7 +1017,7 @@ var file_cosmos_svip_v1_genesis_proto_rawDesc = []byte{
 	0x67, 0x6f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70, 0x72, 0x6f,
 	0x74, 0x6f, 0x1a, 0x1f, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f,
 	0x62, 0x75, 0x66, 0x2f, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x2e, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x22, 0xc0, 0x03, 0x0a, 0x0c, 0x47, 0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x53,
+	0x6f, 0x74, 0x6f, 0x22, 0xf6, 0x03, 0x0a, 0x0c, 0x47, 0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x53,
 	0x74, 0x61, 0x74, 0x65, 0x12, 0x39, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x01,
 	0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x73, 0x76,
 	0x69, 0x70, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x09, 0xc8, 0xde,
@@ -919,18 +1045,21 @@ var file_cosmos_svip_v1_genesis_proto_rawDesc = []byte{
 	0x54, 0x69, 0x6d, 0x65, 0x12, 0x30, 0x0a, 0x14, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x70, 0x61,
 	0x75, 0x73, 0x65, 0x64, 0x5f, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x18, 0x06, 0x20, 0x01,
 	0x28, 0x03, 0x52, 0x12, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x50, 0x61, 0x75, 0x73, 0x65, 0x64, 0x53,
-	0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x42, 0xa4, 0x01, 0x0a, 0x12, 0x63, 0x6f, 0x6d, 0x2e, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x73, 0x76, 0x69, 0x70, 0x2e, 0x76, 0x31, 0x42, 0x0c, 0x47,
-	0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x26, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f,
-	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x73, 0x76, 0x69, 0x70, 0x2f, 0x76, 0x31, 0x3b, 0x73,
-	0x76, 0x69, 0x70, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x43, 0x53, 0x58, 0xaa, 0x02, 0x0e, 0x43, 0x6f,
-	0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x53, 0x76, 0x69, 0x70, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x0e, 0x43,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x53, 0x76, 0x69, 0x70, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x1a,
-	0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x53, 0x76, 0x69, 0x70, 0x5c, 0x56, 0x31, 0x5c, 0x47,
-	0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x10, 0x43, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x3a, 0x3a, 0x53, 0x76, 0x69, 0x70, 0x3a, 0x3a, 0x56, 0x31, 0x62, 0x06, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x12, 0x1c, 0x0a, 0x09, 0x61, 0x63, 0x74, 0x69, 0x76, 0x61,
+	0x74, 0x65, 0x64, 0x18, 0x07, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x61, 0x63, 0x74, 0x69, 0x76,
+	0x61, 0x74, 0x65, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x70, 0x61, 0x75, 0x73, 0x65, 0x64, 0x18, 0x08,
+	0x20, 0x01, 0x28, 0x08, 0x52, 0x06, 0x70, 0x61, 0x75, 0x73, 0x65, 0x64, 0x42, 0xa4, 0x01, 0x0a,
+	0x12, 0x63, 0x6f, 0x6d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x73, 0x76, 0x69, 0x70,
+	0x2e, 0x76, 0x31, 0x42, 0x0c, 0x47, 0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x50, 0x72, 0x6f, 0x74,
+	0x6f, 0x50, 0x01, 0x5a, 0x26, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69,
+	0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x73, 0x76, 0x69,
+	0x70, 0x2f, 0x76, 0x31, 0x3b, 0x73, 0x76, 0x69, 0x70, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x43, 0x53,
+	0x58, 0xaa, 0x02, 0x0e, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x53, 0x76, 0x69, 0x70, 0x2e,
+	0x56, 0x31, 0xca, 0x02, 0x0e, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x53, 0x76, 0x69, 0x70,
+	0x5c, 0x56, 0x31, 0xe2, 0x02, 0x1a, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x53, 0x76, 0x69,
+	0x70, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61,
+	0xea, 0x02, 0x10, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x3a, 0x3a, 0x53, 0x76, 0x69, 0x70, 0x3a,
+	0x3a, 0x56, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (

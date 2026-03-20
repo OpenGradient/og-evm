@@ -11,10 +11,6 @@ option go_package = "github.com/cosmos/evm/x/svip/types";
 message Params {
   option (amino.name) = "cosmos/x/svip/Params";
 
-  // activated indicates whether SVIP reward distribution is active.
-  bool activated = 1 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "activated"];
-  // paused is an emergency pause flag.
-  bool paused = 2 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "paused"];
   // half_life_seconds is the half-life for exponential decay, in seconds.
   int64 half_life_seconds = 3 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "half_life_seconds"];
 }

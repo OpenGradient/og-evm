@@ -30,4 +30,8 @@ message GenesisState {
   google.protobuf.Timestamp last_block_time = 5 [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
   // total_paused_seconds is the cumulative seconds spent in paused state.
   int64 total_paused_seconds = 6;
+  // activated indicates whether SVIP reward distribution is active.
+  bool activated = 7;
+  // paused is an emergency pause flag.
+  bool paused = 8;
 }
