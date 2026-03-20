@@ -1,8 +1,8 @@
 syntax = "proto3";
-package cosmos.evm.poolrebalancer.v1;
+package cosmos.poolrebalancer.v1;
 
 import "amino/amino.proto";
-import "cosmos/evm/poolrebalancer/v1/poolrebalancer.proto";
+import "cosmos/poolrebalancer/v1/poolrebalancer.proto";
 import "cosmos/msg/v1/msg.proto";
 import "cosmos_proto/cosmos.proto";
 import "gogoproto/gogo.proto";
@@ -21,7 +21,7 @@ service Msg {
 // MsgUpdateParams defines a Msg for updating the x/poolrebalancer module parameters.
 message MsgUpdateParams {
   option (cosmos.msg.v1.signer) = "authority";
-  option (amino.name) = "cosmos/evm/x/poolrebalancer/MsgUpdateParams";
+  option (amino.name) = "cosmos/poolrebalancer/v1/MsgUpdateParams";
 
   // authority is the address of the governance account.
   string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];

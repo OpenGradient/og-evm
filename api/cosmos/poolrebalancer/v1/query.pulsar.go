@@ -21,8 +21,8 @@ var (
 )
 
 func init() {
-	file_cosmos_evm_poolrebalancer_v1_query_proto_init()
-	md_QueryParamsRequest = File_cosmos_evm_poolrebalancer_v1_query_proto.Messages().ByName("QueryParamsRequest")
+	file_cosmos_poolrebalancer_v1_query_proto_init()
+	md_QueryParamsRequest = File_cosmos_poolrebalancer_v1_query_proto.Messages().ByName("QueryParamsRequest")
 }
 
 var _ protoreflect.Message = (*fastReflection_QueryParamsRequest)(nil)
@@ -34,7 +34,7 @@ func (x *QueryParamsRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryParamsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[0]
+	mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -107,9 +107,9 @@ func (x *fastReflection_QueryParamsRequest) Has(fd protoreflect.FieldDescriptor)
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -123,9 +123,9 @@ func (x *fastReflection_QueryParamsRequest) Clear(fd protoreflect.FieldDescripto
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -139,9 +139,9 @@ func (x *fastReflection_QueryParamsRequest) Get(descriptor protoreflect.FieldDes
 	switch descriptor.FullName() {
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsRequest does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsRequest does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -159,9 +159,9 @@ func (x *fastReflection_QueryParamsRequest) Set(fd protoreflect.FieldDescriptor,
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -179,9 +179,9 @@ func (x *fastReflection_QueryParamsRequest) Mutable(fd protoreflect.FieldDescrip
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -192,9 +192,9 @@ func (x *fastReflection_QueryParamsRequest) NewField(fd protoreflect.FieldDescri
 	switch fd.FullName() {
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -204,7 +204,7 @@ func (x *fastReflection_QueryParamsRequest) NewField(fd protoreflect.FieldDescri
 func (x *fastReflection_QueryParamsRequest) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.evm.poolrebalancer.v1.QueryParamsRequest", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.QueryParamsRequest", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -378,8 +378,8 @@ var (
 )
 
 func init() {
-	file_cosmos_evm_poolrebalancer_v1_query_proto_init()
-	md_QueryParamsResponse = File_cosmos_evm_poolrebalancer_v1_query_proto.Messages().ByName("QueryParamsResponse")
+	file_cosmos_poolrebalancer_v1_query_proto_init()
+	md_QueryParamsResponse = File_cosmos_poolrebalancer_v1_query_proto.Messages().ByName("QueryParamsResponse")
 	fd_QueryParamsResponse_params = md_QueryParamsResponse.Fields().ByName("params")
 }
 
@@ -392,7 +392,7 @@ func (x *QueryParamsResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryParamsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[1]
+	mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -469,13 +469,13 @@ func (x *fastReflection_QueryParamsResponse) Range(f func(protoreflect.FieldDesc
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_QueryParamsResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryParamsResponse.params":
+	case "cosmos.poolrebalancer.v1.QueryParamsResponse.params":
 		return x.Params != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -487,13 +487,13 @@ func (x *fastReflection_QueryParamsResponse) Has(fd protoreflect.FieldDescriptor
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryParamsResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryParamsResponse.params":
+	case "cosmos.poolrebalancer.v1.QueryParamsResponse.params":
 		x.Params = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -505,14 +505,14 @@ func (x *fastReflection_QueryParamsResponse) Clear(fd protoreflect.FieldDescript
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_QueryParamsResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryParamsResponse.params":
+	case "cosmos.poolrebalancer.v1.QueryParamsResponse.params":
 		value := x.Params
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -528,13 +528,13 @@ func (x *fastReflection_QueryParamsResponse) Get(descriptor protoreflect.FieldDe
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryParamsResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryParamsResponse.params":
+	case "cosmos.poolrebalancer.v1.QueryParamsResponse.params":
 		x.Params = value.Message().Interface().(*Params)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -550,16 +550,16 @@ func (x *fastReflection_QueryParamsResponse) Set(fd protoreflect.FieldDescriptor
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryParamsResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryParamsResponse.params":
+	case "cosmos.poolrebalancer.v1.QueryParamsResponse.params":
 		if x.Params == nil {
 			x.Params = new(Params)
 		}
 		return protoreflect.ValueOfMessage(x.Params.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -568,14 +568,14 @@ func (x *fastReflection_QueryParamsResponse) Mutable(fd protoreflect.FieldDescri
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_QueryParamsResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryParamsResponse.params":
+	case "cosmos.poolrebalancer.v1.QueryParamsResponse.params":
 		m := new(Params)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryParamsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryParamsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryParamsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -585,7 +585,7 @@ func (x *fastReflection_QueryParamsResponse) NewField(fd protoreflect.FieldDescr
 func (x *fastReflection_QueryParamsResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.evm.poolrebalancer.v1.QueryParamsResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.QueryParamsResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -813,8 +813,8 @@ var (
 )
 
 func init() {
-	file_cosmos_evm_poolrebalancer_v1_query_proto_init()
-	md_QueryPendingRedelegationsRequest = File_cosmos_evm_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingRedelegationsRequest")
+	file_cosmos_poolrebalancer_v1_query_proto_init()
+	md_QueryPendingRedelegationsRequest = File_cosmos_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingRedelegationsRequest")
 	fd_QueryPendingRedelegationsRequest_pagination = md_QueryPendingRedelegationsRequest.Fields().ByName("pagination")
 }
 
@@ -827,7 +827,7 @@ func (x *QueryPendingRedelegationsRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryPendingRedelegationsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[2]
+	mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -904,13 +904,13 @@ func (x *fastReflection_QueryPendingRedelegationsRequest) Range(f func(protorefl
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_QueryPendingRedelegationsRequest) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
 		return x.Pagination != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -922,13 +922,13 @@ func (x *fastReflection_QueryPendingRedelegationsRequest) Has(fd protoreflect.Fi
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingRedelegationsRequest) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
 		x.Pagination = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -940,14 +940,14 @@ func (x *fastReflection_QueryPendingRedelegationsRequest) Clear(fd protoreflect.
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_QueryPendingRedelegationsRequest) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
 		value := x.Pagination
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -963,13 +963,13 @@ func (x *fastReflection_QueryPendingRedelegationsRequest) Get(descriptor protore
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingRedelegationsRequest) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
 		x.Pagination = value.Message().Interface().(*v1beta1.PageRequest)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -985,16 +985,16 @@ func (x *fastReflection_QueryPendingRedelegationsRequest) Set(fd protoreflect.Fi
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingRedelegationsRequest) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
 		if x.Pagination == nil {
 			x.Pagination = new(v1beta1.PageRequest)
 		}
 		return protoreflect.ValueOfMessage(x.Pagination.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1003,14 +1003,14 @@ func (x *fastReflection_QueryPendingRedelegationsRequest) Mutable(fd protoreflec
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_QueryPendingRedelegationsRequest) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination":
 		m := new(v1beta1.PageRequest)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1020,7 +1020,7 @@ func (x *fastReflection_QueryPendingRedelegationsRequest) NewField(fd protorefle
 func (x *fastReflection_QueryPendingRedelegationsRequest) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -1300,8 +1300,8 @@ var (
 )
 
 func init() {
-	file_cosmos_evm_poolrebalancer_v1_query_proto_init()
-	md_QueryPendingRedelegationsResponse = File_cosmos_evm_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingRedelegationsResponse")
+	file_cosmos_poolrebalancer_v1_query_proto_init()
+	md_QueryPendingRedelegationsResponse = File_cosmos_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingRedelegationsResponse")
 	fd_QueryPendingRedelegationsResponse_redelegations = md_QueryPendingRedelegationsResponse.Fields().ByName("redelegations")
 	fd_QueryPendingRedelegationsResponse_pagination = md_QueryPendingRedelegationsResponse.Fields().ByName("pagination")
 }
@@ -1315,7 +1315,7 @@ func (x *QueryPendingRedelegationsResponse) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryPendingRedelegationsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[3]
+	mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1398,15 +1398,15 @@ func (x *fastReflection_QueryPendingRedelegationsResponse) Range(f func(protoref
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_QueryPendingRedelegationsResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
 		return len(x.Redelegations) != 0
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
 		return x.Pagination != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1418,15 +1418,15 @@ func (x *fastReflection_QueryPendingRedelegationsResponse) Has(fd protoreflect.F
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingRedelegationsResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
 		x.Redelegations = nil
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
 		x.Pagination = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1438,20 +1438,20 @@ func (x *fastReflection_QueryPendingRedelegationsResponse) Clear(fd protoreflect
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_QueryPendingRedelegationsResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
 		if len(x.Redelegations) == 0 {
 			return protoreflect.ValueOfList(&_QueryPendingRedelegationsResponse_1_list{})
 		}
 		listValue := &_QueryPendingRedelegationsResponse_1_list{list: &x.Redelegations}
 		return protoreflect.ValueOfList(listValue)
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
 		value := x.Pagination
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -1467,17 +1467,17 @@ func (x *fastReflection_QueryPendingRedelegationsResponse) Get(descriptor protor
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingRedelegationsResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
 		lv := value.List()
 		clv := lv.(*_QueryPendingRedelegationsResponse_1_list)
 		x.Redelegations = *clv.list
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
 		x.Pagination = value.Message().Interface().(*v1beta1.PageResponse)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1493,22 +1493,22 @@ func (x *fastReflection_QueryPendingRedelegationsResponse) Set(fd protoreflect.F
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingRedelegationsResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
 		if x.Redelegations == nil {
 			x.Redelegations = []*PendingRedelegation{}
 		}
 		value := &_QueryPendingRedelegationsResponse_1_list{list: &x.Redelegations}
 		return protoreflect.ValueOfList(value)
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
 		if x.Pagination == nil {
 			x.Pagination = new(v1beta1.PageResponse)
 		}
 		return protoreflect.ValueOfMessage(x.Pagination.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1517,17 +1517,17 @@ func (x *fastReflection_QueryPendingRedelegationsResponse) Mutable(fd protorefle
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_QueryPendingRedelegationsResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations":
 		list := []*PendingRedelegation{}
 		return protoreflect.ValueOfList(&_QueryPendingRedelegationsResponse_1_list{list: &list})
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination":
 		m := new(v1beta1.PageResponse)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1537,7 +1537,7 @@ func (x *fastReflection_QueryPendingRedelegationsResponse) NewField(fd protorefl
 func (x *fastReflection_QueryPendingRedelegationsResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -1821,8 +1821,8 @@ var (
 )
 
 func init() {
-	file_cosmos_evm_poolrebalancer_v1_query_proto_init()
-	md_QueryPendingUndelegationsRequest = File_cosmos_evm_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingUndelegationsRequest")
+	file_cosmos_poolrebalancer_v1_query_proto_init()
+	md_QueryPendingUndelegationsRequest = File_cosmos_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingUndelegationsRequest")
 	fd_QueryPendingUndelegationsRequest_pagination = md_QueryPendingUndelegationsRequest.Fields().ByName("pagination")
 }
 
@@ -1835,7 +1835,7 @@ func (x *QueryPendingUndelegationsRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryPendingUndelegationsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[4]
+	mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1912,13 +1912,13 @@ func (x *fastReflection_QueryPendingUndelegationsRequest) Range(f func(protorefl
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_QueryPendingUndelegationsRequest) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
 		return x.Pagination != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1930,13 +1930,13 @@ func (x *fastReflection_QueryPendingUndelegationsRequest) Has(fd protoreflect.Fi
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingUndelegationsRequest) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
 		x.Pagination = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1948,14 +1948,14 @@ func (x *fastReflection_QueryPendingUndelegationsRequest) Clear(fd protoreflect.
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_QueryPendingUndelegationsRequest) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
 		value := x.Pagination
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -1971,13 +1971,13 @@ func (x *fastReflection_QueryPendingUndelegationsRequest) Get(descriptor protore
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingUndelegationsRequest) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
 		x.Pagination = value.Message().Interface().(*v1beta1.PageRequest)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -1993,16 +1993,16 @@ func (x *fastReflection_QueryPendingUndelegationsRequest) Set(fd protoreflect.Fi
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingUndelegationsRequest) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
 		if x.Pagination == nil {
 			x.Pagination = new(v1beta1.PageRequest)
 		}
 		return protoreflect.ValueOfMessage(x.Pagination.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2011,14 +2011,14 @@ func (x *fastReflection_QueryPendingUndelegationsRequest) Mutable(fd protoreflec
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_QueryPendingUndelegationsRequest) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination":
 		m := new(v1beta1.PageRequest)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2028,7 +2028,7 @@ func (x *fastReflection_QueryPendingUndelegationsRequest) NewField(fd protorefle
 func (x *fastReflection_QueryPendingUndelegationsRequest) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -2308,8 +2308,8 @@ var (
 )
 
 func init() {
-	file_cosmos_evm_poolrebalancer_v1_query_proto_init()
-	md_QueryPendingUndelegationsResponse = File_cosmos_evm_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingUndelegationsResponse")
+	file_cosmos_poolrebalancer_v1_query_proto_init()
+	md_QueryPendingUndelegationsResponse = File_cosmos_poolrebalancer_v1_query_proto.Messages().ByName("QueryPendingUndelegationsResponse")
 	fd_QueryPendingUndelegationsResponse_undelegations = md_QueryPendingUndelegationsResponse.Fields().ByName("undelegations")
 	fd_QueryPendingUndelegationsResponse_pagination = md_QueryPendingUndelegationsResponse.Fields().ByName("pagination")
 }
@@ -2323,7 +2323,7 @@ func (x *QueryPendingUndelegationsResponse) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryPendingUndelegationsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[5]
+	mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2406,15 +2406,15 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) Range(f func(protoref
 // a repeated field is populated if it is non-empty.
 func (x *fastReflection_QueryPendingUndelegationsResponse) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
 		return len(x.Undelegations) != 0
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
 		return x.Pagination != nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2426,15 +2426,15 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) Has(fd protoreflect.F
 // Clear is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingUndelegationsResponse) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
 		x.Undelegations = nil
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
 		x.Pagination = nil
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2446,20 +2446,20 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) Clear(fd protoreflect
 // of the value; to obtain a mutable reference, use Mutable.
 func (x *fastReflection_QueryPendingUndelegationsResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
 		if len(x.Undelegations) == 0 {
 			return protoreflect.ValueOfList(&_QueryPendingUndelegationsResponse_1_list{})
 		}
 		listValue := &_QueryPendingUndelegationsResponse_1_list{list: &x.Undelegations}
 		return protoreflect.ValueOfList(listValue)
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
 		value := x.Pagination
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -2475,17 +2475,17 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) Get(descriptor protor
 // Set is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingUndelegationsResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
 		lv := value.List()
 		clv := lv.(*_QueryPendingUndelegationsResponse_1_list)
 		x.Undelegations = *clv.list
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
 		x.Pagination = value.Message().Interface().(*v1beta1.PageResponse)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2501,22 +2501,22 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) Set(fd protoreflect.F
 // Mutable is a mutating operation and unsafe for concurrent use.
 func (x *fastReflection_QueryPendingUndelegationsResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
 		if x.Undelegations == nil {
 			x.Undelegations = []*PendingUndelegation{}
 		}
 		value := &_QueryPendingUndelegationsResponse_1_list{list: &x.Undelegations}
 		return protoreflect.ValueOfList(value)
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
 		if x.Pagination == nil {
 			x.Pagination = new(v1beta1.PageResponse)
 		}
 		return protoreflect.ValueOfMessage(x.Pagination.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2525,17 +2525,17 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) Mutable(fd protorefle
 // For lists, maps, and messages, this returns a new, empty, mutable value.
 func (x *fastReflection_QueryPendingUndelegationsResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations":
 		list := []*PendingUndelegation{}
 		return protoreflect.ValueOfList(&_QueryPendingUndelegationsResponse_1_list{list: &list})
-	case "cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
+	case "cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination":
 		m := new(v1beta1.PageResponse)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse"))
 		}
-		panic(fmt.Errorf("message cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -2545,7 +2545,7 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) NewField(fd protorefl
 func (x *fastReflection_QueryPendingUndelegationsResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -2827,7 +2827,7 @@ func (x *fastReflection_QueryPendingUndelegationsResponse) ProtoMethods() *proto
 // versions:
 // 	protoc-gen-go v1.27.0
 // 	protoc        (unknown)
-// source: cosmos/evm/poolrebalancer/v1/query.proto
+// source: cosmos/poolrebalancer/v1/query.proto
 
 const (
 	// Verify that this generated code is sufficiently up-to-date.
@@ -2846,7 +2846,7 @@ type QueryParamsRequest struct {
 func (x *QueryParamsRequest) Reset() {
 	*x = QueryParamsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[0]
+		mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2860,7 +2860,7 @@ func (*QueryParamsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryParamsRequest.ProtoReflect.Descriptor instead.
 func (*QueryParamsRequest) Descriptor() ([]byte, []int) {
-	return file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{0}
+	return file_cosmos_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{0}
 }
 
 // QueryParamsResponse is the response type for the Query/Params RPC method.
@@ -2875,7 +2875,7 @@ type QueryParamsResponse struct {
 func (x *QueryParamsResponse) Reset() {
 	*x = QueryParamsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[1]
+		mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2889,7 +2889,7 @@ func (*QueryParamsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryParamsResponse.ProtoReflect.Descriptor instead.
 func (*QueryParamsResponse) Descriptor() ([]byte, []int) {
-	return file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{1}
+	return file_cosmos_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *QueryParamsResponse) GetParams() *Params {
@@ -2912,7 +2912,7 @@ type QueryPendingRedelegationsRequest struct {
 func (x *QueryPendingRedelegationsRequest) Reset() {
 	*x = QueryPendingRedelegationsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[2]
+		mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2926,7 +2926,7 @@ func (*QueryPendingRedelegationsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryPendingRedelegationsRequest.ProtoReflect.Descriptor instead.
 func (*QueryPendingRedelegationsRequest) Descriptor() ([]byte, []int) {
-	return file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{2}
+	return file_cosmos_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *QueryPendingRedelegationsRequest) GetPagination() *v1beta1.PageRequest {
@@ -2949,7 +2949,7 @@ type QueryPendingRedelegationsResponse struct {
 func (x *QueryPendingRedelegationsResponse) Reset() {
 	*x = QueryPendingRedelegationsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[3]
+		mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2963,7 +2963,7 @@ func (*QueryPendingRedelegationsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryPendingRedelegationsResponse.ProtoReflect.Descriptor instead.
 func (*QueryPendingRedelegationsResponse) Descriptor() ([]byte, []int) {
-	return file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{3}
+	return file_cosmos_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *QueryPendingRedelegationsResponse) GetRedelegations() []*PendingRedelegation {
@@ -2993,7 +2993,7 @@ type QueryPendingUndelegationsRequest struct {
 func (x *QueryPendingUndelegationsRequest) Reset() {
 	*x = QueryPendingUndelegationsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[4]
+		mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3007,7 +3007,7 @@ func (*QueryPendingUndelegationsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryPendingUndelegationsRequest.ProtoReflect.Descriptor instead.
 func (*QueryPendingUndelegationsRequest) Descriptor() ([]byte, []int) {
-	return file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{4}
+	return file_cosmos_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *QueryPendingUndelegationsRequest) GetPagination() *v1beta1.PageRequest {
@@ -3030,7 +3030,7 @@ type QueryPendingUndelegationsResponse struct {
 func (x *QueryPendingUndelegationsResponse) Reset() {
 	*x = QueryPendingUndelegationsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[5]
+		mi := &file_cosmos_poolrebalancer_v1_query_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -3044,7 +3044,7 @@ func (*QueryPendingUndelegationsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryPendingUndelegationsResponse.ProtoReflect.Descriptor instead.
 func (*QueryPendingUndelegationsResponse) Descriptor() ([]byte, []int) {
-	return file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{5}
+	return file_cosmos_poolrebalancer_v1_query_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *QueryPendingUndelegationsResponse) GetUndelegations() []*PendingUndelegation {
@@ -3061,29 +3061,28 @@ func (x *QueryPendingUndelegationsResponse) GetPagination() *v1beta1.PageRespons
 	return nil
 }
 
-var File_cosmos_evm_poolrebalancer_v1_query_proto protoreflect.FileDescriptor
+var File_cosmos_poolrebalancer_v1_query_proto protoreflect.FileDescriptor
 
-var file_cosmos_evm_poolrebalancer_v1_query_proto_rawDesc = []byte{
-	0x0a, 0x28, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x65, 0x76, 0x6d, 0x2f, 0x70, 0x6f, 0x6f,
-	0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f, 0x71,
-	0x75, 0x65, 0x72, 0x79, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x1c, 0x63, 0x6f, 0x73, 0x6d,
-	0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
-	0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x1a, 0x11, 0x61, 0x6d, 0x69, 0x6e, 0x6f, 0x2f,
-	0x61, 0x6d, 0x69, 0x6e, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x2a, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2f, 0x62, 0x61, 0x73, 0x65, 0x2f, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2f, 0x76,
-	0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2f, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f,
-	0x6e, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x31, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f,
-	0x65, 0x76, 0x6d, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63,
-	0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61,
-	0x6e, 0x63, 0x65, 0x72, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x14, 0x67, 0x6f, 0x67, 0x6f,
-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x1a, 0x1c, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x61, 0x6e, 0x6e,
-	0x6f, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x14,
-	0x0a, 0x12, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x71,
-	0x75, 0x65, 0x73, 0x74, 0x22, 0x5e, 0x0a, 0x13, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72,
-	0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x47, 0x0a, 0x06, 0x70,
-	0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x24, 0x2e, 0x63, 0x6f,
-	0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62,
+var file_cosmos_poolrebalancer_v1_query_proto_rawDesc = []byte{
+	0x0a, 0x24, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62,
+	0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f, 0x71, 0x75, 0x65, 0x72, 0x79,
+	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x18, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70,
+	0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31,
+	0x1a, 0x11, 0x61, 0x6d, 0x69, 0x6e, 0x6f, 0x2f, 0x61, 0x6d, 0x69, 0x6e, 0x6f, 0x2e, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x1a, 0x2a, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x62, 0x61, 0x73, 0x65,
+	0x2f, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2f, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2f, 0x70,
+	0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a,
+	0x2d, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61,
+	0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65,
+	0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x14,
+	0x67, 0x6f, 0x67, 0x6f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1c, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x61, 0x70, 0x69,
+	0x2f, 0x61, 0x6e, 0x6e, 0x6f, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2e, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x22, 0x14, 0x0a, 0x12, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61, 0x6d,
+	0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x5a, 0x0a, 0x13, 0x51, 0x75, 0x65, 0x72,
+	0x79, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
+	0x43, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x20, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62,
 	0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d,
 	0x73, 0x42, 0x09, 0xc8, 0xde, 0x1f, 0x00, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x06, 0x70, 0x61,
 	0x72, 0x61, 0x6d, 0x73, 0x22, 0x6a, 0x0a, 0x20, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e,
@@ -3093,136 +3092,132 @@ var file_cosmos_evm_poolrebalancer_v1_query_proto_rawDesc = []byte{
 	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x71, 0x75, 0x65, 0x72, 0x79,
 	0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x52, 0x65, 0x71,
 	0x75, 0x65, 0x73, 0x74, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x22, 0xd0, 0x01, 0x0a, 0x21, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e,
+	0x22, 0xcc, 0x01, 0x0a, 0x21, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e,
 	0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x62, 0x0a, 0x0d, 0x72, 0x65, 0x64, 0x65, 0x6c, 0x65,
-	0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x31, 0x2e,
-	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72,
-	0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e,
-	0x64, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x42, 0x09, 0xc8, 0xde, 0x1f, 0x00, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x0d, 0x72, 0x65, 0x64,
-	0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x47, 0x0a, 0x0a, 0x70, 0x61,
-	0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x27,
-	0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x71, 0x75, 0x65,
-	0x72, 0x79, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74,
-	0x69, 0x6f, 0x6e, 0x22, 0x6a, 0x0a, 0x20, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64,
-	0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x46, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e,
-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x26, 0x2e, 0x63, 0x6f,
-	0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2e,
-	0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x52, 0x65, 0x71, 0x75,
-	0x65, 0x73, 0x74, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22,
-	0xd0, 0x01, 0x0a, 0x21, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67,
-	0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x62, 0x0a, 0x0d, 0x75, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67,
-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x31, 0x2e, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65,
-	0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e, 0x64,
-	0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42,
-	0x09, 0xc8, 0xde, 0x1f, 0x00, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x0d, 0x75, 0x6e, 0x64, 0x65,
-	0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x47, 0x0a, 0x0a, 0x70, 0x61, 0x67,
-	0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x27, 0x2e,
-	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x71, 0x75, 0x65, 0x72,
-	0x79, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x32, 0xd3, 0x04, 0x0a, 0x05, 0x51, 0x75, 0x65, 0x72, 0x79, 0x12, 0x9b, 0x01, 0x0a,
-	0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x30, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
-	0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e,
-	0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72, 0x61,
-	0x6d, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x31, 0x2e, 0x63, 0x6f, 0x73, 0x6d,
-	0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5e, 0x0a, 0x0d, 0x72, 0x65, 0x64, 0x65, 0x6c, 0x65,
+	0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2d, 0x2e,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
+	0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67,
+	0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x09, 0xc8, 0xde,
+	0x1f, 0x00, 0xa8, 0xe7, 0xb0, 0x2a, 0x01, 0x52, 0x0d, 0x72, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67,
+	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x47, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61,
+	0x74, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x27, 0x2e, 0x63, 0x6f, 0x73,
+	0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2e, 0x76,
+	0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x52, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22,
+	0x6a, 0x0a, 0x20, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55,
+	0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x12, 0x46, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x26, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
+	0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2e, 0x76, 0x31, 0x62, 0x65,
+	0x74, 0x61, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x52,
+	0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0xcc, 0x01, 0x0a, 0x21,
+	0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65,
+	0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x12, 0x5e, 0x0a, 0x0d, 0x75, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72,
+	0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c,
+	0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x09, 0xc8, 0xde, 0x1f, 0x00, 0xa8, 0xe7, 0xb0,
+	0x2a, 0x01, 0x52, 0x0d, 0x75, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x73, 0x12, 0x47, 0x0a, 0x0a, 0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x27, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62,
+	0x61, 0x73, 0x65, 0x2e, 0x71, 0x75, 0x65, 0x72, 0x79, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61,
+	0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x0a,
+	0x70, 0x61, 0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x32, 0xaf, 0x04, 0x0a, 0x05, 0x51,
+	0x75, 0x65, 0x72, 0x79, 0x12, 0x8f, 0x01, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12,
+	0x2c, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62,
+	0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79,
+	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2d, 0x2e,
+	0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
 	0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61,
-	0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x2c, 0x82, 0xd3,
-	0xe4, 0x93, 0x02, 0x26, 0x12, 0x24, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x65, 0x76,
-	0x6d, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72,
-	0x2f, 0x76, 0x31, 0x2f, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0xd4, 0x01, 0x0a, 0x14, 0x50,
-	0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x73, 0x12, 0x3e, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d,
-	0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e,
-	0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52,
-	0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75,
-	0x65, 0x73, 0x74, 0x1a, 0x3f, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d,
-	0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e,
-	0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52,
-	0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70,
-	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x3b, 0x82, 0xd3, 0xe4, 0x93, 0x02, 0x35, 0x12, 0x33, 0x2f, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x65, 0x76, 0x6d, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65,
+	0x72, 0x61, 0x6d, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x28, 0x82, 0xd3,
+	0xe4, 0x93, 0x02, 0x22, 0x12, 0x20, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70, 0x6f,
+	0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f,
+	0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0xc8, 0x01, 0x0a, 0x14, 0x50, 0x65, 0x6e, 0x64, 0x69,
+	0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12,
+	0x3a, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62,
+	0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79,
+	0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x3b, 0x2e, 0x63, 0x6f,
+	0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e,
+	0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64,
+	0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x37, 0x82, 0xd3, 0xe4, 0x93, 0x02, 0x31,
+	0x12, 0x2f, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65,
 	0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f, 0x70, 0x65, 0x6e, 0x64,
 	0x69, 0x6e, 0x67, 0x5f, 0x72, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x73, 0x12, 0xd4, 0x01, 0x0a, 0x14, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64,
-	0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x3e, 0x2e, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61,
-	0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50,
-	0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x3f, 0x2e, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61,
-	0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50,
-	0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x3b, 0x82, 0xd3, 0xe4,
-	0x93, 0x02, 0x35, 0x12, 0x33, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x65, 0x76, 0x6d,
-	0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f,
-	0x76, 0x31, 0x2f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x75, 0x6e, 0x64, 0x65, 0x6c,
-	0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x42, 0x85, 0x02, 0x0a, 0x20, 0x63, 0x6f, 0x6d,
-	0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x65, 0x76, 0x6d, 0x2e, 0x70, 0x6f, 0x6f, 0x6c,
+	0x73, 0x12, 0xc8, 0x01, 0x0a, 0x14, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64,
+	0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x3a, 0x2e, 0x63, 0x6f, 0x73,
+	0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63,
+	0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69,
+	0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x3b, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e,
+	0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76,
+	0x31, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e,
+	0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x22, 0x37, 0x82, 0xd3, 0xe4, 0x93, 0x02, 0x31, 0x12, 0x2f, 0x2f, 0x63, 0x6f,
+	0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e,
+	0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x75,
+	0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x42, 0xec, 0x01, 0x0a,
+	0x1c, 0x63, 0x6f, 0x6d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c,
 	0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x42, 0x0a, 0x51,
-	0x75, 0x65, 0x72, 0x79, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x3e, 0x63, 0x6f, 0x73,
+	0x75, 0x65, 0x72, 0x79, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x3a, 0x63, 0x6f, 0x73,
 	0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x63, 0x6f,
-	0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x65, 0x76, 0x6d, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62,
-	0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x3b, 0x70, 0x6f, 0x6f, 0x6c, 0x72,
-	0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x43, 0x45,
-	0x50, 0xaa, 0x02, 0x1c, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x45, 0x76, 0x6d, 0x2e, 0x50,
-	0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x56, 0x31,
-	0xca, 0x02, 0x1c, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x45, 0x76, 0x6d, 0x5c, 0x50, 0x6f,
-	0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x5c, 0x56, 0x31, 0xe2,
-	0x02, 0x28, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x45, 0x76, 0x6d, 0x5c, 0x50, 0x6f, 0x6f,
+	0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e,
+	0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x3b, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
+	0x61, 0x6e, 0x63, 0x65, 0x72, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x43, 0x50, 0x58, 0xaa, 0x02, 0x18,
+	0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
+	0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x18, 0x43, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x5c, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72,
+	0x5c, 0x56, 0x31, 0xe2, 0x02, 0x24, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x50, 0x6f, 0x6f,
 	0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x5c, 0x56, 0x31, 0x5c, 0x47,
-	0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x1f, 0x43, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x3a, 0x3a, 0x45, 0x76, 0x6d, 0x3a, 0x3a, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65,
-	0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x3a, 0x3a, 0x56, 0x31, 0xc8, 0xe1, 0x1e, 0x00,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x1a, 0x43, 0x6f, 0x73,
+	0x6d, 0x6f, 0x73, 0x3a, 0x3a, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e,
+	0x63, 0x65, 0x72, 0x3a, 0x3a, 0x56, 0x31, 0xc8, 0xe1, 0x1e, 0x00, 0x62, 0x06, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x33,
 }
 
 var (
-	file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescOnce sync.Once
-	file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescData = file_cosmos_evm_poolrebalancer_v1_query_proto_rawDesc
+	file_cosmos_poolrebalancer_v1_query_proto_rawDescOnce sync.Once
+	file_cosmos_poolrebalancer_v1_query_proto_rawDescData = file_cosmos_poolrebalancer_v1_query_proto_rawDesc
 )
 
-func file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescGZIP() []byte {
-	file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescOnce.Do(func() {
-		file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescData = protoimpl.X.CompressGZIP(file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescData)
+func file_cosmos_poolrebalancer_v1_query_proto_rawDescGZIP() []byte {
+	file_cosmos_poolrebalancer_v1_query_proto_rawDescOnce.Do(func() {
+		file_cosmos_poolrebalancer_v1_query_proto_rawDescData = protoimpl.X.CompressGZIP(file_cosmos_poolrebalancer_v1_query_proto_rawDescData)
 	})
-	return file_cosmos_evm_poolrebalancer_v1_query_proto_rawDescData
+	return file_cosmos_poolrebalancer_v1_query_proto_rawDescData
 }
 
-var file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
-var file_cosmos_evm_poolrebalancer_v1_query_proto_goTypes = []interface{}{
-	(*QueryParamsRequest)(nil),                // 0: cosmos.evm.poolrebalancer.v1.QueryParamsRequest
-	(*QueryParamsResponse)(nil),               // 1: cosmos.evm.poolrebalancer.v1.QueryParamsResponse
-	(*QueryPendingRedelegationsRequest)(nil),  // 2: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest
-	(*QueryPendingRedelegationsResponse)(nil), // 3: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse
-	(*QueryPendingUndelegationsRequest)(nil),  // 4: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest
-	(*QueryPendingUndelegationsResponse)(nil), // 5: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse
-	(*Params)(nil),               // 6: cosmos.evm.poolrebalancer.v1.Params
+var file_cosmos_poolrebalancer_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_cosmos_poolrebalancer_v1_query_proto_goTypes = []interface{}{
+	(*QueryParamsRequest)(nil),                // 0: cosmos.poolrebalancer.v1.QueryParamsRequest
+	(*QueryParamsResponse)(nil),               // 1: cosmos.poolrebalancer.v1.QueryParamsResponse
+	(*QueryPendingRedelegationsRequest)(nil),  // 2: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest
+	(*QueryPendingRedelegationsResponse)(nil), // 3: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse
+	(*QueryPendingUndelegationsRequest)(nil),  // 4: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest
+	(*QueryPendingUndelegationsResponse)(nil), // 5: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse
+	(*Params)(nil),               // 6: cosmos.poolrebalancer.v1.Params
 	(*v1beta1.PageRequest)(nil),  // 7: cosmos.base.query.v1beta1.PageRequest
-	(*PendingRedelegation)(nil),  // 8: cosmos.evm.poolrebalancer.v1.PendingRedelegation
+	(*PendingRedelegation)(nil),  // 8: cosmos.poolrebalancer.v1.PendingRedelegation
 	(*v1beta1.PageResponse)(nil), // 9: cosmos.base.query.v1beta1.PageResponse
-	(*PendingUndelegation)(nil),  // 10: cosmos.evm.poolrebalancer.v1.PendingUndelegation
+	(*PendingUndelegation)(nil),  // 10: cosmos.poolrebalancer.v1.PendingUndelegation
 }
-var file_cosmos_evm_poolrebalancer_v1_query_proto_depIdxs = []int32{
-	6,  // 0: cosmos.evm.poolrebalancer.v1.QueryParamsResponse.params:type_name -> cosmos.evm.poolrebalancer.v1.Params
-	7,  // 1: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	8,  // 2: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations:type_name -> cosmos.evm.poolrebalancer.v1.PendingRedelegation
-	9,  // 3: cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	7,  // 4: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	10, // 5: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations:type_name -> cosmos.evm.poolrebalancer.v1.PendingUndelegation
-	9,  // 6: cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	0,  // 7: cosmos.evm.poolrebalancer.v1.Query.Params:input_type -> cosmos.evm.poolrebalancer.v1.QueryParamsRequest
-	2,  // 8: cosmos.evm.poolrebalancer.v1.Query.PendingRedelegations:input_type -> cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsRequest
-	4,  // 9: cosmos.evm.poolrebalancer.v1.Query.PendingUndelegations:input_type -> cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsRequest
-	1,  // 10: cosmos.evm.poolrebalancer.v1.Query.Params:output_type -> cosmos.evm.poolrebalancer.v1.QueryParamsResponse
-	3,  // 11: cosmos.evm.poolrebalancer.v1.Query.PendingRedelegations:output_type -> cosmos.evm.poolrebalancer.v1.QueryPendingRedelegationsResponse
-	5,  // 12: cosmos.evm.poolrebalancer.v1.Query.PendingUndelegations:output_type -> cosmos.evm.poolrebalancer.v1.QueryPendingUndelegationsResponse
+var file_cosmos_poolrebalancer_v1_query_proto_depIdxs = []int32{
+	6,  // 0: cosmos.poolrebalancer.v1.QueryParamsResponse.params:type_name -> cosmos.poolrebalancer.v1.Params
+	7,  // 1: cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	8,  // 2: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.redelegations:type_name -> cosmos.poolrebalancer.v1.PendingRedelegation
+	9,  // 3: cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	7,  // 4: cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	10, // 5: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.undelegations:type_name -> cosmos.poolrebalancer.v1.PendingUndelegation
+	9,  // 6: cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	0,  // 7: cosmos.poolrebalancer.v1.Query.Params:input_type -> cosmos.poolrebalancer.v1.QueryParamsRequest
+	2,  // 8: cosmos.poolrebalancer.v1.Query.PendingRedelegations:input_type -> cosmos.poolrebalancer.v1.QueryPendingRedelegationsRequest
+	4,  // 9: cosmos.poolrebalancer.v1.Query.PendingUndelegations:input_type -> cosmos.poolrebalancer.v1.QueryPendingUndelegationsRequest
+	1,  // 10: cosmos.poolrebalancer.v1.Query.Params:output_type -> cosmos.poolrebalancer.v1.QueryParamsResponse
+	3,  // 11: cosmos.poolrebalancer.v1.Query.PendingRedelegations:output_type -> cosmos.poolrebalancer.v1.QueryPendingRedelegationsResponse
+	5,  // 12: cosmos.poolrebalancer.v1.Query.PendingUndelegations:output_type -> cosmos.poolrebalancer.v1.QueryPendingUndelegationsResponse
 	10, // [10:13] is the sub-list for method output_type
 	7,  // [7:10] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
@@ -3230,14 +3225,14 @@ var file_cosmos_evm_poolrebalancer_v1_query_proto_depIdxs = []int32{
 	0,  // [0:7] is the sub-list for field type_name
 }
 
-func init() { file_cosmos_evm_poolrebalancer_v1_query_proto_init() }
-func file_cosmos_evm_poolrebalancer_v1_query_proto_init() {
-	if File_cosmos_evm_poolrebalancer_v1_query_proto != nil {
+func init() { file_cosmos_poolrebalancer_v1_query_proto_init() }
+func file_cosmos_poolrebalancer_v1_query_proto_init() {
+	if File_cosmos_poolrebalancer_v1_query_proto != nil {
 		return
 	}
-	file_cosmos_evm_poolrebalancer_v1_poolrebalancer_proto_init()
+	file_cosmos_poolrebalancer_v1_poolrebalancer_proto_init()
 	if !protoimpl.UnsafeEnabled {
-		file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_cosmos_poolrebalancer_v1_query_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryParamsRequest); i {
 			case 0:
 				return &v.state
@@ -3249,7 +3244,7 @@ func file_cosmos_evm_poolrebalancer_v1_query_proto_init() {
 				return nil
 			}
 		}
-		file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_cosmos_poolrebalancer_v1_query_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryParamsResponse); i {
 			case 0:
 				return &v.state
@@ -3261,7 +3256,7 @@ func file_cosmos_evm_poolrebalancer_v1_query_proto_init() {
 				return nil
 			}
 		}
-		file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+		file_cosmos_poolrebalancer_v1_query_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryPendingRedelegationsRequest); i {
 			case 0:
 				return &v.state
@@ -3273,7 +3268,7 @@ func file_cosmos_evm_poolrebalancer_v1_query_proto_init() {
 				return nil
 			}
 		}
-		file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+		file_cosmos_poolrebalancer_v1_query_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryPendingRedelegationsResponse); i {
 			case 0:
 				return &v.state
@@ -3285,7 +3280,7 @@ func file_cosmos_evm_poolrebalancer_v1_query_proto_init() {
 				return nil
 			}
 		}
-		file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+		file_cosmos_poolrebalancer_v1_query_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryPendingUndelegationsRequest); i {
 			case 0:
 				return &v.state
@@ -3297,7 +3292,7 @@ func file_cosmos_evm_poolrebalancer_v1_query_proto_init() {
 				return nil
 			}
 		}
-		file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+		file_cosmos_poolrebalancer_v1_query_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryPendingUndelegationsResponse); i {
 			case 0:
 				return &v.state
@@ -3314,18 +3309,18 @@ func file_cosmos_evm_poolrebalancer_v1_query_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: file_cosmos_evm_poolrebalancer_v1_query_proto_rawDesc,
+			RawDescriptor: file_cosmos_poolrebalancer_v1_query_proto_rawDesc,
 			NumEnums:      0,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_cosmos_evm_poolrebalancer_v1_query_proto_goTypes,
-		DependencyIndexes: file_cosmos_evm_poolrebalancer_v1_query_proto_depIdxs,
-		MessageInfos:      file_cosmos_evm_poolrebalancer_v1_query_proto_msgTypes,
+		GoTypes:           file_cosmos_poolrebalancer_v1_query_proto_goTypes,
+		DependencyIndexes: file_cosmos_poolrebalancer_v1_query_proto_depIdxs,
+		MessageInfos:      file_cosmos_poolrebalancer_v1_query_proto_msgTypes,
 	}.Build()
-	File_cosmos_evm_poolrebalancer_v1_query_proto = out.File
-	file_cosmos_evm_poolrebalancer_v1_query_proto_rawDesc = nil
-	file_cosmos_evm_poolrebalancer_v1_query_proto_goTypes = nil
-	file_cosmos_evm_poolrebalancer_v1_query_proto_depIdxs = nil
+	File_cosmos_poolrebalancer_v1_query_proto = out.File
+	file_cosmos_poolrebalancer_v1_query_proto_rawDesc = nil
+	file_cosmos_poolrebalancer_v1_query_proto_goTypes = nil
+	file_cosmos_poolrebalancer_v1_query_proto_depIdxs = nil
 }

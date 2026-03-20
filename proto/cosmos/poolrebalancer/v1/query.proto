@@ -1,9 +1,9 @@
 syntax = "proto3";
-package cosmos.evm.poolrebalancer.v1;
+package cosmos.poolrebalancer.v1;
 
 import "amino/amino.proto";
 import "cosmos/base/query/v1beta1/pagination.proto";
-import "cosmos/evm/poolrebalancer/v1/poolrebalancer.proto";
+import "cosmos/poolrebalancer/v1/poolrebalancer.proto";
 import "gogoproto/gogo.proto";
 import "google/api/annotations.proto";
 
@@ -14,21 +14,21 @@ option (gogoproto.goproto_getters_all) = false;
 service Query {
   // Params returns the poolrebalancer module params.
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
-    option (google.api.http).get = "/cosmos/evm/poolrebalancer/v1/params";
+    option (google.api.http).get = "/cosmos/poolrebalancer/v1/params";
   }
 
   // PendingRedelegations returns tracked in-flight redelegations.
   rpc PendingRedelegations(QueryPendingRedelegationsRequest)
       returns (QueryPendingRedelegationsResponse) {
     option (google.api.http).get =
-        "/cosmos/evm/poolrebalancer/v1/pending_redelegations";
+        "/cosmos/poolrebalancer/v1/pending_redelegations";
   }
 
   // PendingUndelegations returns tracked in-flight undelegations.
   rpc PendingUndelegations(QueryPendingUndelegationsRequest)
       returns (QueryPendingUndelegationsResponse) {
     option (google.api.http).get =
-        "/cosmos/evm/poolrebalancer/v1/pending_undelegations";
+        "/cosmos/poolrebalancer/v1/pending_undelegations";
   }
 }
 

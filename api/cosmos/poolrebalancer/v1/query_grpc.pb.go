@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             (unknown)
-// source: cosmos/evm/poolrebalancer/v1/query.proto
+// source: cosmos/poolrebalancer/v1/query.proto
 
 package poolrebalancerv1
 
@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Query_Params_FullMethodName               = "/cosmos.evm.poolrebalancer.v1.Query/Params"
-	Query_PendingRedelegations_FullMethodName = "/cosmos.evm.poolrebalancer.v1.Query/PendingRedelegations"
-	Query_PendingUndelegations_FullMethodName = "/cosmos.evm.poolrebalancer.v1.Query/PendingUndelegations"
+	Query_Params_FullMethodName               = "/cosmos.poolrebalancer.v1.Query/Params"
+	Query_PendingRedelegations_FullMethodName = "/cosmos.poolrebalancer.v1.Query/PendingRedelegations"
+	Query_PendingUndelegations_FullMethodName = "/cosmos.poolrebalancer.v1.Query/PendingUndelegations"
 )
 
 // QueryClient is the client API for Query service.
@@ -168,7 +168,7 @@ func _Query_PendingUndelegations_Handler(srv interface{}, ctx context.Context, d
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Query_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "cosmos.evm.poolrebalancer.v1.Query",
+	ServiceName: "cosmos.poolrebalancer.v1.Query",
 	HandlerType: (*QueryServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -185,5 +185,5 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cosmos/evm/poolrebalancer/v1/query.proto",
+	Metadata: "cosmos/poolrebalancer/v1/query.proto",
 }
