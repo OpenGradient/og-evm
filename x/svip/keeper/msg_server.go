@@ -34,10 +34,7 @@ func (s msgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdateParam
 
 	// Governance guardrails
 	current := s.GetParams(ctx)
-	if current.Activated && !msg.Params.Activated {
-		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, "cannot deactivate SVIP after activation")
-	}
-	if current.Activated && current.HalfLifeSeconds > 0 && msg.Params.HalfLifeSeconds > 0 {
+	if s.GetActivated(ctx) && current.HalfLifeSeconds > 0 && msg.Params.HalfLifeSeconds > 0 {
 		// Reject if half_life changes by more than 50%
 		oldHL := float64(current.HalfLifeSeconds)
 		newHL := float64(msg.Params.HalfLifeSeconds)
@@ -63,11 +60,11 @@ func (s msgServer) Activate(goCtx context.Context, msg *types.MsgActivate) (*typ
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	params := s.GetParams(ctx)
-	if params.Activated {
+	if s.GetActivated(ctx) {
 		return nil, types.ErrAlreadyActivated
 	}
 
+	params := s.GetParams(ctx)
 	if params.HalfLifeSeconds <= 0 {
 		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, "half_life_seconds must be set before activation")
 	}
@@ -80,10 +77,7 @@ func (s msgServer) Activate(goCtx context.Context, msg *types.MsgActivate) (*typ
 	s.SetPoolBalanceAtActivation(ctx, poolBalance)
 
 	// Activate
-	params.Activated = true
-	if err := s.SetParams(ctx, params); err != nil {
-		return nil, err
-	}
+	s.SetActivated(ctx, true)
 	s.SetActivationTime(ctx, ctx.BlockTime())
 	s.SetLastBlockTime(ctx, ctx.BlockTime())
 
@@ -103,8 +97,7 @@ func (s msgServer) Reactivate(goCtx context.Context, msg *types.MsgReactivate) (
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	params := s.GetParams(ctx)
-	if !params.Activated {
+	if !s.GetActivated(ctx) {
 		return nil, types.ErrNotYetActivated
 	}
 
@@ -122,13 +115,9 @@ func (s msgServer) Reactivate(goCtx context.Context, msg *types.MsgReactivate) (
 	s.SetTotalPausedSeconds(ctx, 0)
 
 	// Clear paused state if reactivating while paused
-	if params.Paused {
-		params.Paused = false
-		if err := s.SetParams(ctx, params); err != nil {
-			return nil, err
-		}
-	}
+	s.SetPaused(ctx, false)
 
+	params := s.GetParams(ctx)
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		"svip_reactivated",
 		sdk.NewAttribute("pool_balance", poolBalance.String()),
@@ -144,12 +133,8 @@ func (s msgServer) Pause(goCtx context.Context, msg *types.MsgPause) (*types.Msg
 		return nil, errorsmod.Wrapf(govtypes.ErrInvalidSigner, "invalid authority; expected %s, got %s", s.authority.String(), msg.Authority)
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
-	params := s.GetParams(ctx)
-	wasPaused := params.Paused
-	params.Paused = msg.Paused
-	if err := s.SetParams(ctx, params); err != nil {
-		return nil, err
-	}
+	wasPaused := s.GetPaused(ctx)
+	s.SetPaused(ctx, msg.Paused)
 
 	// On unpause: accumulate paused duration + reset LastBlockTime
 	if wasPaused && !msg.Paused {

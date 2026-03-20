@@ -14,6 +14,8 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, data types.GenesisState) []ab
 	if err := k.SetParams(ctx, data.Params); err != nil {
 		panic(errorsmod.Wrap(err, "could not set parameters at genesis"))
 	}
+	k.SetActivated(ctx, data.Activated)
+	k.SetPaused(ctx, data.Paused)
 	if data.TotalDistributed.IsPositive() {
 		k.SetTotalDistributed(ctx, data.TotalDistributed)
 	}
@@ -43,5 +45,7 @@ func ExportGenesis(ctx sdk.Context, k keeper.Keeper) *types.GenesisState {
 		PoolBalanceAtActivation: k.GetPoolBalanceAtActivation(ctx),
 		LastBlockTime:           k.GetLastBlockTime(ctx),
 		TotalPausedSeconds:      k.GetTotalPausedSeconds(ctx),
+		Activated:               k.GetActivated(ctx),
+		Paused:                  k.GetPaused(ctx),
 	}
 }

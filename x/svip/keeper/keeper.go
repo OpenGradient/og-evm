@@ -177,6 +177,38 @@ func (k Keeper) SetTotalPausedSeconds(ctx sdk.Context, secs int64) {
 	store.Set(types.TotalPausedSecondsKey, bz)
 }
 
+var isTrue = []byte("0x01")
+
+// GetActivated returns whether SVIP reward distribution is active.
+func (k Keeper) GetActivated(ctx sdk.Context) bool {
+	return ctx.KVStore(k.storeKey).Has(types.ActivatedKey)
+}
+
+// SetActivated stores the activated flag using a presence-based pattern.
+func (k Keeper) SetActivated(ctx sdk.Context, activated bool) {
+	store := ctx.KVStore(k.storeKey)
+	if activated {
+		store.Set(types.ActivatedKey, isTrue)
+		return
+	}
+	store.Delete(types.ActivatedKey)
+}
+
+// GetPaused returns whether SVIP is in emergency pause state.
+func (k Keeper) GetPaused(ctx sdk.Context) bool {
+	return ctx.KVStore(k.storeKey).Has(types.PausedKey)
+}
+
+// SetPaused stores the paused flag using a presence-based pattern.
+func (k Keeper) SetPaused(ctx sdk.Context, paused bool) {
+	store := ctx.KVStore(k.storeKey)
+	if paused {
+		store.Set(types.PausedKey, isTrue)
+		return
+	}
+	store.Delete(types.PausedKey)
+}
+
 // getPoolBalance reads the live pool balance from x/bank (not from custom state).
 func (k Keeper) getPoolBalance(ctx sdk.Context) sdkmath.Int {
 	moduleAddr := k.ak.GetModuleAddress(types.ModuleName)

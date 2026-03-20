@@ -14,6 +14,8 @@ const (
 	prefixLastBlockTime
 	prefixPoolBalanceAtActivation
 	prefixTotalPausedSeconds
+	prefixActivated
+	prefixPaused
 )
 
 var (
@@ -23,4 +25,6 @@ var (
 	LastBlockTimeKey           = []byte{prefixLastBlockTime}
 	PoolBalanceAtActivationKey = []byte{prefixPoolBalanceAtActivation}
 	TotalPausedSecondsKey      = []byte{prefixTotalPausedSeconds}
+	ActivatedKey               = []byte{prefixActivated}
+	PausedKey                  = []byte{prefixPaused}
 )

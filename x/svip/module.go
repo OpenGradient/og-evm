@@ -23,7 +23,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 )
 
-const consensusVersion = 1
+const consensusVersion = 2
 
 var (
 	_ module.AppModule      = AppModule{}

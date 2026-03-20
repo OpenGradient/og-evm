@@ -16,6 +16,8 @@ func DefaultGenesisState() *GenesisState {
 		PoolBalanceAtActivation: sdkmath.ZeroInt(),
 		LastBlockTime:           time.Time{},
 		TotalPausedSeconds:      0,
+		Activated:               false,
+		Paused:                  false,
 	}
 }
 
@@ -29,6 +31,9 @@ func (gs GenesisState) Validate() error {
 	}
 	if gs.TotalPausedSeconds < 0 {
 		return fmt.Errorf("total_paused_seconds cannot be negative: %d", gs.TotalPausedSeconds)
+	}
+	if gs.Activated && gs.Params.HalfLifeSeconds == 0 {
+		return fmt.Errorf("half_life_seconds must be set when activated")
 	}
 	return nil
 }

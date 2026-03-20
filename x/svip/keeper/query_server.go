@@ -30,13 +30,15 @@ func (s queryServer) Params(goCtx context.Context, _ *types.QueryParamsRequest) 
 // PoolState returns the current SVIP pool state including balance and distribution info.
 func (s queryServer) PoolState(goCtx context.Context, _ *types.QueryPoolStateRequest) (*types.QueryPoolStateResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
-	params := s.GetParams(ctx)
+	activated := s.GetActivated(ctx)
+	paused := s.GetPaused(ctx)
 	denom := s.getDenom(ctx)
 	moduleAddr := s.ak.GetModuleAddress(types.ModuleName)
 	balance := s.bk.GetBalance(ctx, moduleAddr, denom)
 
 	var currentRate math.LegacyDec
-	if params.Activated && !params.Paused {
+	if activated && !paused {
+		params := s.GetParams(ctx)
 		totalPausedSec := float64(s.GetTotalPausedSeconds(ctx))
 		elapsed := ctx.BlockTime().Sub(s.GetActivationTime(ctx)).Seconds() - totalPausedSec
 		poolAtAct := s.GetPoolBalanceAtActivation(ctx)
@@ -51,8 +53,8 @@ func (s queryServer) PoolState(goCtx context.Context, _ *types.QueryPoolStateReq
 		PoolBalance:          balance,
 		TotalDistributed:     s.GetTotalDistributed(ctx),
 		CurrentRatePerSecond: currentRate,
-		Activated:            params.Activated,
-		Paused:               params.Paused,
+		Activated:            activated,
+		Paused:               paused,
 		ActivationTime:       s.GetActivationTime(ctx),
 	}, nil
 }

@@ -9,12 +9,12 @@ import (
 
 // BeginBlock distributes decayed rewards to FeeCollector.
 func (k Keeper) BeginBlock(ctx sdk.Context) error {
-	params := k.GetParams(ctx)
-
 	// 1. Guard: skip if not active
-	if !params.Activated || params.Paused {
+	if !k.GetActivated(ctx) || k.GetPaused(ctx) {
 		return nil
 	}
+
+	params := k.GetParams(ctx)
 
 	// 2. Time context
 	now := ctx.BlockTime()
