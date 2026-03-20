@@ -7,14 +7,11 @@ KEYALGO="eth_secp256k1"
 LOGLEVEL="info"
 BASEFEE=10000000
 BASEDIR="${BASEDIR:-"$HOME/.og-evm-devnet"}"
+VALIDATOR_COUNT="${VALIDATOR_COUNT:-3}"
 
 NODE_NUMBER="${NODE_NUMBER:-}"
 START_VALIDATOR="${START_VALIDATOR:-false}"
 GENERATE_GENESIS="${GENERATE_GENESIS:-false}"
-
-VAL0_MNEMONIC="${VAL0_MNEMONIC:-}"
-VAL1_MNEMONIC="${VAL1_MNEMONIC:-}"
-VAL2_MNEMONIC="${VAL2_MNEMONIC:-}"
 
 get_p2p_port() { echo $((26656 + ($1 * 100))); }
 get_rpc_port() { echo $((26657 + ($1 * 100))); }
@@ -22,11 +19,9 @@ get_grpc_port() { echo $((9090 + ($1 * 10))); }
 get_jsonrpc_port() { echo $((8545 + ($1 * 10))); }
 
 get_val_mnemonic() {
-  case $1 in
-    0) echo "$VAL0_MNEMONIC" ;;
-    1) echo "$VAL1_MNEMONIC" ;;
-    2) echo "$VAL2_MNEMONIC" ;;
-  esac
+  local idx="$1"
+  local var_name="VAL${idx}_MNEMONIC"
+  echo "${!var_name:-}"
 }
 
 get_home_dir() { echo "$BASEDIR/val$1"; }
@@ -39,9 +34,10 @@ usage() {
   echo "Usage: $0 [options]"
   echo ""
   echo "Environment Variables:"
-  echo "  GENERATE_GENESIS=true    Generate genesis for all 3 validators"
+  echo "  GENERATE_GENESIS=true    Generate genesis for all validators"
   echo "  START_VALIDATOR=true     Start a validator"
-  echo "  NODE_NUMBER=0|1|2        Which validator to start"
+  echo "  NODE_NUMBER=0..N-1       Which validator to start"
+  echo "  VALIDATOR_COUNT=3        Validator count for genesis/startup"
   echo "  BASEDIR=path             Base directory (default: ~/.og-evm-devnet)"
   echo ""
   echo "Options:"
@@ -143,7 +139,7 @@ set_persistent_peers() {
   local CONFIG_TOML="$HOME_DIR/config/config.toml"
 
   local PEERS=""
-  for i in 0 1 2; do
+  for i in $(seq 0 $((VALIDATOR_COUNT - 1))); do
     if [[ $i -ne $NODE_NUM ]]; then
       local PEER_PORT=$(get_p2p_port $i)
       if [[ -n "$PEERS" ]]; then
@@ -203,7 +199,7 @@ generate_dev_accounts() {
 
 generate_genesis() {
   echo "=========================================="
-  echo "Generating genesis for 3 validators..."
+  echo "Generating genesis for $VALIDATOR_COUNT validators..."
   echo "Base directory: $BASEDIR"
   echo "=========================================="
 
@@ -225,10 +221,15 @@ generate_genesis() {
 
   echo ""
   echo ">>> Step 1: Initializing all validators..."
-  for i in 0 1 2; do
+  for i in $(seq 0 $((VALIDATOR_COUNT - 1))); do
     HOME_DIR=$(get_home_dir $i)
     MNEMONIC=$(get_val_mnemonic $i)
     VALKEY="val${i}"
+    if [[ -z "$MNEMONIC" ]]; then
+      echo "Error: VAL${i}_MNEMONIC is required for validator $i"
+      exit 1
+    fi
+
 
     echo "--- Initializing validator $i at $HOME_DIR ---"
 
@@ -251,7 +252,7 @@ generate_genesis() {
 
   echo ""
   echo ">>> Step 3: Adding all validator accounts with initial balances..."
-  for i in 0 1 2; do
+  for i in $(seq 0 $((VALIDATOR_COUNT - 1))); do
     VALKEY="val${i}"
     VAL_HOME=$(get_home_dir $i)
 
@@ -267,14 +268,14 @@ generate_genesis() {
 
   echo ""
   echo ">>> Step 5: Copying genesis to all validators..."
-  for i in 1 2; do
+  for i in $(seq 1 $((VALIDATOR_COUNT - 1))); do
     cp "$GENESIS" "$(get_home_dir $i)/config/genesis.json"
     echo "Copied genesis to val$i"
   done
 
   echo ""
   echo ">>> Step 6: Creating gentx for each validator..."
-  for i in 0 1 2; do
+  for i in $(seq 0 $((VALIDATOR_COUNT - 1))); do
     HOME_DIR=$(get_home_dir $i)
     VALKEY="val${i}"
     P2P_PORT=$(get_p2p_port $i)
@@ -292,7 +293,7 @@ generate_genesis() {
   echo ""
   echo ">>> Step 7: Collecting all gentxs..."
   GENTX_DIR="$(get_home_dir 0)/config/gentx"
-  for i in 1 2; do
+  for i in $(seq 1 $((VALIDATOR_COUNT - 1))); do
     cp "$(get_home_dir $i)/config/gentx/"*.json "$GENTX_DIR/"
     echo "Copied gentx from val$i"
   done
@@ -304,22 +305,23 @@ generate_genesis() {
   echo ""
   echo ">>> Step 8: Distributing final genesis to all validators..."
   FINAL_GENESIS="$(get_home_dir 0)/config/genesis.json"
-  for i in 1 2; do
+  for i in $(seq 1 $((VALIDATOR_COUNT - 1))); do
     cp "$FINAL_GENESIS" "$(get_home_dir $i)/config/genesis.json"
     echo "Copied final genesis to val$i"
   done
 
   echo ""
   echo ">>> Step 9: Applying config customizations and setting peers..."
-  for i in 0 1 2; do
+  for i in $(seq 0 $((VALIDATOR_COUNT - 1))); do
     HOME_DIR=$(get_home_dir $i)
     apply_config_customizations "$HOME_DIR" "$i"
     set_persistent_peers "$HOME_DIR" "$i" "${NODE_IDS[@]}"
   done
 
-  echo "NODE0_ID=${NODE_IDS[0]}" > "$BASEDIR/node_ids.txt"
-  echo "NODE1_ID=${NODE_IDS[1]}" >> "$BASEDIR/node_ids.txt"
-  echo "NODE2_ID=${NODE_IDS[2]}" >> "$BASEDIR/node_ids.txt"
+  : > "$BASEDIR/node_ids.txt"
+  for i in $(seq 0 $((VALIDATOR_COUNT - 1))); do
+    echo "NODE${i}_ID=${NODE_IDS[$i]}" >> "$BASEDIR/node_ids.txt"
+  done
 
   echo ""
   echo "=========================================="
@@ -330,14 +332,19 @@ generate_genesis() {
   echo "  $BASEDIR/"
   echo "  ├── val0/            (Validator 0 home)"
   echo "  ├── val1/            (Validator 1 home)"
-  echo "  ├── val2/            (Validator 2 home)"
+  if (( VALIDATOR_COUNT >= 3 )); then
+    echo "  ├── val2/            (Validator 2 home)"
+  fi
+  if (( VALIDATOR_COUNT > 3 )); then
+    echo "  ├── ...              (Validator 3..$((VALIDATOR_COUNT - 1)) home)"
+  fi
   echo "  ├── dev_accounts.txt (10 funded dev accounts)"
   echo "  └── node_ids.txt"
   echo ""
   echo "Port mapping:"
-  echo "  val0: P2P=26656, RPC=26657, gRPC=9090, JSON-RPC=8545"
-  echo "  val1: P2P=26756, RPC=26757, gRPC=9091, JSON-RPC=8546"
-  echo "  val2: P2P=26856, RPC=26857, gRPC=9092, JSON-RPC=8547"
+  for i in $(seq 0 $((VALIDATOR_COUNT - 1))); do
+    echo "  val${i}: P2P=$(get_p2p_port "$i"), RPC=$(get_rpc_port "$i"), gRPC=$(get_grpc_port "$i"), JSON-RPC=$(get_jsonrpc_port "$i")"
+  done
   echo ""
   echo "Validators funded: 100000000000000000000000000ogwei each"
   echo "Dev accounts funded: 1000000000000000000000000ogwei each"
@@ -347,12 +354,12 @@ generate_genesis() {
 
 start_validator() {
   if [[ -z "$NODE_NUMBER" ]]; then
-    echo "Error: NODE_NUMBER env variable required (0, 1, or 2)"
+    echo "Error: NODE_NUMBER env variable required (0..$((VALIDATOR_COUNT - 1)))"
     exit 1
   fi
 
-  if [[ ! "$NODE_NUMBER" =~ ^[0-2]$ ]]; then
-    echo "Error: NODE_NUMBER must be 0, 1, or 2"
+  if [[ ! "$NODE_NUMBER" =~ ^[0-9]+$ ]] || (( NODE_NUMBER < 0 || NODE_NUMBER >= VALIDATOR_COUNT )); then
+    echo "Error: NODE_NUMBER must be between 0 and $((VALIDATOR_COUNT - 1))"
     exit 1
   fi
 
