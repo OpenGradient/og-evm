@@ -1,0 +1,26 @@
+
+syntax = "proto3";
+package cosmos.bridge.v1;
+
+import "amino/amino.proto";
+import "cosmos/bridge/v1/bridge.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/cosmos/evm/x/bridge/types";
+
+// GenesisState defines the bridge module's genesis state.
+message GenesisState {
+  // params defines all the parameters of the bridge module.
+  Params params = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+  // total_minted is the cumulative tokens minted via bridge.
+  string total_minted = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // total_burned is the cumulative tokens burned via bridge.
+  string total_burned = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}

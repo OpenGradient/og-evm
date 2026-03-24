@@ -1,0 +1,29 @@
+
+syntax = "proto3";
+package cosmos.bridge.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/cosmos/evm/x/bridge/types";
+
+// Params defines the x/bridge module parameters.
+message Params {
+  option (amino.name) = "cosmos/x/bridge/Params";
+
+  // authorized_contract is the hex EVM address of the authorized bridge contract.
+  string authorized_contract = 1 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "authorized_contract"];
+  // hyperlane_mailbox is the hex EVM address of the Hyperlane Mailbox.
+  string hyperlane_mailbox = 2 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "hyperlane_mailbox"];
+  // base_domain_id is the Hyperlane domain ID for Base (default 8453).
+  uint32 base_domain_id = 3 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "base_domain_id"];
+  // enabled indicates whether the bridge is active.
+  bool enabled = 4 [(amino.dont_omitempty) = true, (gogoproto.jsontag) = "enabled"];
+  // max_transfer_amount is the maximum amount per transfer.
+  string max_transfer_amount = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (gogoproto.jsontag) = "max_transfer_amount"
+  ];
+}

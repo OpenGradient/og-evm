@@ -1,0 +1,54 @@
+
+syntax = "proto3";
+package cosmos.bridge.v1;
+
+import "amino/amino.proto";
+import "cosmos/bridge/v1/bridge.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/cosmos/evm/x/bridge/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // Params queries the parameters of x/bridge module.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/cosmos/bridge/v1/params";
+  }
+
+  // BridgeStatus queries the current bridge status and statistics.
+  rpc BridgeStatus(QueryBridgeStatusRequest) returns (QueryBridgeStatusResponse) {
+    option (google.api.http).get = "/cosmos/bridge/v1/bridge_status";
+  }
+}
+
+// QueryParamsRequest defines the request type for querying x/bridge parameters.
+message QueryParamsRequest {}
+
+// QueryParamsResponse defines the response type for querying x/bridge parameters.
+message QueryParamsResponse {
+  // params define the bridge module parameters.
+  Params params = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+}
+
+// QueryBridgeStatusRequest defines the request type for querying bridge status.
+message QueryBridgeStatusRequest {}
+
+// QueryBridgeStatusResponse returns the current bridge status and statistics.
+message QueryBridgeStatusResponse {
+  // enabled indicates whether the bridge is active.
+  bool enabled = 1;
+  // total_minted is the cumulative tokens minted via bridge.
+  string total_minted = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // total_burned is the cumulative tokens burned via bridge.
+  string total_burned = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // authorized_contract is the hex EVM address of the authorized bridge contract.
+  string authorized_contract = 4;
+}

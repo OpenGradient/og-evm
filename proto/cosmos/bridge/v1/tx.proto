@@ -1,0 +1,49 @@
+
+syntax = "proto3";
+package cosmos.bridge.v1;
+
+import "amino/amino.proto";
+import "cosmos/bridge/v1/bridge.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/cosmos/evm/x/bridge/types";
+
+// Msg defines the bridge Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+  // UpdateParams updates the x/bridge module parameters. Governance-only.
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+  // SetAuthorizedContract sets the authorized bridge contract address. Governance-only.
+  rpc SetAuthorizedContract(MsgSetAuthorizedContract) returns (MsgSetAuthorizedContractResponse);
+}
+
+// MsgUpdateParams defines a Msg for updating the x/bridge module parameters.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "cosmos/x/bridge/MsgUpdateParams";
+
+  // authority is the address of the governance account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // params defines the x/bridge parameters to update.
+  Params params = 2
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+}
+
+// MsgUpdateParamsResponse defines the response for MsgUpdateParams.
+message MsgUpdateParamsResponse {}
+
+// MsgSetAuthorizedContract sets the authorized bridge contract address. Governance-only.
+message MsgSetAuthorizedContract {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "cosmos/x/bridge/MsgSetAuthorizedContract";
+
+  // authority is the address of the governance account.
+  string authority = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // contract_address is the hex EVM address of the authorized bridge contract.
+  string contract_address = 2;
+}
+
+// MsgSetAuthorizedContractResponse defines the response for MsgSetAuthorizedContract.
+message MsgSetAuthorizedContractResponse {}
