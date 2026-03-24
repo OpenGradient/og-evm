@@ -27,7 +27,3 @@ func (m *MsgSetAuthorizedContract) ValidateBasic() error {
 	}
 	return nil
 }
-
-// GetSignBytes implementations for EIP-712 support
-func (m MsgUpdateParams) GetSignBytes() []byte         { return AminoCdc.MustMarshalJSON(&m) }
-func (m MsgSetAuthorizedContract) GetSignBytes() []byte { return AminoCdc.MustMarshalJSON(&m) }

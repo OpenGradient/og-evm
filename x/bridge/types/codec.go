@@ -10,7 +10,6 @@ import (
 var (
 	amino     = codec.NewLegacyAmino()
 	ModuleCdc = codec.NewProtoCodec(codectypes.NewInterfaceRegistry())
-	AminoCdc  = codec.NewAminoCodec(amino)
 )
 
 const (

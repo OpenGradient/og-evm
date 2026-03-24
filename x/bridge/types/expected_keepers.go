@@ -4,13 +4,11 @@ import (
 	"context"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 // AccountKeeper defines the expected account keeper interface.
 type AccountKeeper interface {
 	GetModuleAddress(moduleName string) sdk.AccAddress
-	GetModuleAccount(ctx context.Context, moduleName string) authtypes.ModuleAccountI
 }
 
 // BankKeeper defines the expected bank keeper interface.
