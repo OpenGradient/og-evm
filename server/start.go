@@ -235,6 +235,12 @@ which accepts a path for the resulting pprof file.
 	cmd.Flags().String(srvflags.TLSCertPath, "", "the cert.pem file path for the server TLS configuration")
 	cmd.Flags().String(srvflags.TLSKeyPath, "", "the key.pem file path for the server TLS configuration")
 
+	cmd.Flags().Bool(srvflags.OTelEnable, false, "enable OpenTelemetry trace and metric export")
+	cmd.Flags().String(srvflags.OTelEndpoint, cosmosevmserverconfig.DefaultOTelConfig().Endpoint, "OTLP gRPC endpoint for trace export")
+	cmd.Flags().Bool(srvflags.OTelInsecure, true, "use insecure (non-TLS) connection for OTLP export")
+	cmd.Flags().Float64(srvflags.OTelSampleRate, cosmosevmserverconfig.DefaultOTelConfig().SampleRate, "trace sampling rate (0.0 to 1.0)")
+	cmd.Flags().String(srvflags.OTelChainID, cosmosevmserverconfig.DefaultOTelConfig().ChainID, "chain ID for trace identification")
+
 	cmd.Flags().Uint64(server.FlagStateSyncSnapshotInterval, 0, "State sync snapshot interval")
 	cmd.Flags().Uint32(server.FlagStateSyncSnapshotKeepRecent, 2, "State sync snapshot to keep")
 
@@ -289,6 +295,8 @@ func startStandAlone(svrCtx *server.Context, opts StartOptions) error {
 		svrCtx.Logger.Error("invalid server config", "error", err.Error())
 		return err
 	}
+
+	defer initOTelWithCleanup(context.Background(), config.OTel, svrCtx.Logger)()
 
 	_, err = startTelemetry(config)
 	if err != nil {
@@ -463,6 +471,8 @@ func startInProcess(svrCtx *server.Context, clientCtx client.Context, opts Start
 			m.SetClientCtx(clientCtx)
 		}
 	}
+
+	defer initOTelWithCleanup(ctx, config.OTel, logger)()
 
 	metrics, err := startTelemetry(config)
 	if err != nil {
