@@ -140,4 +140,26 @@ certificate-path = "{{ .TLS.CertificatePath }}"
 
 # Key path defines the key.pem file path for the TLS configuration.
 key-path = "{{ .TLS.KeyPath }}"
+
+###############################################################################
+###                      OpenTelemetry Configuration                        ###
+###############################################################################
+
+[otel]
+
+# Enable defines if the OpenTelemetry exporter should be enabled.
+enable = {{ .OTel.Enable }}
+
+# Endpoint defines the OTLP gRPC endpoint to export traces and metrics to.
+# Example: "localhost:4317" for a local OTel Collector.
+endpoint = "{{ .OTel.Endpoint }}"
+
+# Insecure defines if the exporter should use an insecure (non-TLS) connection.
+insecure = {{ .OTel.Insecure }}
+
+# SampleRate controls the fraction of traces sampled (0.0 to 1.0). Default: 0.1 (10%).
+sample-rate = {{ .OTel.SampleRate }}
+
+# ChainID identifies this chain in traces. Attached as chain_id resource attribute.
+chain-id = "{{ .OTel.ChainID }}"
 `

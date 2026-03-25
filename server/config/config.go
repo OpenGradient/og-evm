@@ -134,6 +134,7 @@ type Config struct {
 	EVM     EVMConfig     `mapstructure:"evm"`
 	JSONRPC JSONRPCConfig `mapstructure:"json-rpc"`
 	TLS     TLSConfig     `mapstructure:"tls"`
+	OTel    OTelConfig    `mapstructure:"otel"`
 }
 
 // EVMConfig defines the application configuration values for the EVM.
@@ -402,6 +403,42 @@ func (c JSONRPCConfig) Validate() error {
 	return nil
 }
 
+// OTelConfig defines the OpenTelemetry configuration for exporting traces and metrics.
+type OTelConfig struct {
+	// Enable defines if the OpenTelemetry exporter should be enabled.
+	Enable bool `mapstructure:"enable"`
+	// Endpoint defines the OTLP gRPC endpoint to export traces to (e.g., "localhost:4317").
+	Endpoint string `mapstructure:"endpoint"`
+	// Insecure defines if the OTLP exporter should use an insecure (non-TLS) connection.
+	Insecure bool `mapstructure:"insecure"`
+	// SampleRate controls the fraction of traces sampled (0.0 to 1.0).
+	SampleRate float64 `mapstructure:"sample-rate"`
+	// ChainID identifies this chain in traces. Attached as chain_id resource attribute.
+	ChainID string `mapstructure:"chain-id"`
+}
+
+// DefaultOTelConfig returns the default OpenTelemetry configuration (disabled).
+func DefaultOTelConfig() *OTelConfig {
+	return &OTelConfig{
+		Enable:      false,
+		Endpoint:    "localhost:4317",
+		Insecure:    true,
+		SampleRate: 0.1,
+		ChainID:    "",
+	}
+}
+
+// Validate returns an error if the OTel configuration is invalid.
+func (c OTelConfig) Validate() error {
+	if c.Enable && c.Endpoint == "" {
+		return errors.New("OTel endpoint must be set when OTel is enabled")
+	}
+	if c.SampleRate < 0 || c.SampleRate > 1 {
+		return fmt.Errorf("OTel sample-rate must be between 0.0 and 1.0, got %f", c.SampleRate)
+	}
+	return nil
+}
+
 // DefaultTLSConfig returns the default TLS configuration
 func DefaultTLSConfig() *TLSConfig {
 	return &TLSConfig{
@@ -440,6 +477,7 @@ func DefaultConfig() *Config {
 		EVM:     *DefaultEVMConfig(),
 		JSONRPC: *DefaultJSONRPCConfig(),
 		TLS:     *DefaultTLSConfig(),
+		OTel:    *DefaultOTelConfig(),
 	}
 }
 
@@ -469,6 +507,10 @@ func (c Config) ValidateBasic() error {
 
 	if err := c.TLS.Validate(); err != nil {
 		return errorsmod.Wrapf(errortypes.ErrAppConfig, "invalid tls config value: %s", err.Error())
+	}
+
+	if err := c.OTel.Validate(); err != nil {
+		return errorsmod.Wrapf(errortypes.ErrAppConfig, "invalid otel config value: %s", err.Error())
 	}
 
 	return c.Config.ValidateBasic()
