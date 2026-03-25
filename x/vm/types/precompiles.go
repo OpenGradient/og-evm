@@ -15,6 +15,7 @@ const (
 	SlashingPrecompileAddress     = "0x0000000000000000000000000000000000000806"
 	ICS02PrecompileAddress        = "0x0000000000000000000000000000000000000807"
 	TEEPrecompileAddress          = "0x0000000000000000000000000000000000000900"
+	BridgePrecompileAddress       = "0x0000000000000000000000000000000000000A00"
 )
 
 // AvailableStaticPrecompiles defines the full list of all available EVM extension addresses.
@@ -33,4 +34,5 @@ var AvailableStaticPrecompiles = []string{
 	SlashingPrecompileAddress,
 	ICS02PrecompileAddress,
 	TEEPrecompileAddress,
+	BridgePrecompileAddress,
 }

@@ -9,6 +9,7 @@ import (
 
 	ibcutils "github.com/cosmos/evm/ibc"
 	bankprecompile "github.com/cosmos/evm/precompiles/bank"
+	bridgeprecompile "github.com/cosmos/evm/precompiles/bridge"
 
 	"github.com/cosmos/evm/precompiles/bech32"
 	cmn "github.com/cosmos/evm/precompiles/common"
@@ -21,6 +22,7 @@ import (
 	stakingprecompile "github.com/cosmos/evm/precompiles/staking"
 	teeprecompile "github.com/cosmos/evm/precompiles/tee"
 
+	bridgekeeper "github.com/cosmos/evm/x/bridge/keeper"
 	erc20Keeper "github.com/cosmos/evm/x/erc20/keeper"
 	transferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
 	channelkeeper "github.com/cosmos/ibc-go/v10/modules/core/04-channel/keeper"
@@ -140,6 +142,15 @@ func (s StaticPrecompiles) WithBankPrecompile(
 ) StaticPrecompiles {
 	bankPrecompile := bankprecompile.NewPrecompile(bankKeeper, erc20Keeper)
 	s[bankPrecompile.Address()] = bankPrecompile
+	return s
+}
+
+func (s StaticPrecompiles) WithBridgePrecompile(
+	bridgeKeeper bridgekeeper.Keeper,
+	bankKeeper cmn.BankKeeper,
+) StaticPrecompiles {
+	bridgePrecompile := bridgeprecompile.NewPrecompile(bridgeKeeper, bankKeeper)
+	s[bridgePrecompile.Address()] = bridgePrecompile
 	return s
 }
 

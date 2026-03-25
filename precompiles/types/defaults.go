@@ -7,6 +7,7 @@ import (
 	evmaddress "github.com/cosmos/evm/encoding/address"
 	ibcutils "github.com/cosmos/evm/ibc"
 	cmn "github.com/cosmos/evm/precompiles/common"
+	bridgekeeper "github.com/cosmos/evm/x/bridge/keeper"
 	erc20Keeper "github.com/cosmos/evm/x/erc20/keeper"
 	transferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
 	channelkeeper "github.com/cosmos/ibc-go/v10/modules/core/04-channel/keeper"
@@ -67,6 +68,7 @@ func DefaultStaticPrecompiles(
 	stakingKeeper stakingkeeper.Keeper,
 	distributionKeeper distributionkeeper.Keeper,
 	bankKeeper cmn.BankKeeper,
+	bridgeKeeper bridgekeeper.Keeper,
 	erc20Keeper *erc20Keeper.Keeper,
 	transferKeeper *transferkeeper.Keeper,
 	channelKeeper *channelkeeper.Keeper,
@@ -85,6 +87,7 @@ func DefaultStaticPrecompiles(
 		WithICS02Precompile(codec, clientKeeper).
 		WithICS20Precompile(bankKeeper, stakingKeeper, transferKeeper, channelKeeper).
 		WithBankPrecompile(bankKeeper, erc20Keeper).
+		WithBridgePrecompile(bridgeKeeper, bankKeeper).
 		WithGovPrecompile(govKeeper, bankKeeper, codec, opts...).
 		WithSlashingPrecompile(slashingKeeper, bankKeeper, opts...).
 		WithTEEPrecompile()
