@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	evm "github.com/cosmos/evm"
+	bridgekeeper "github.com/cosmos/evm/x/bridge/keeper"
 	erc20keeper "github.com/cosmos/evm/x/erc20/keeper"
 	feemarketkeeper "github.com/cosmos/evm/x/feemarket/keeper"
 	"github.com/cosmos/evm/x/ibc/callbacks/keeper"
@@ -137,6 +138,14 @@ func (a *EvmAppAdapter) GetBankKeeper() bankkeeper.Keeper {
 	}
 	panicMissingProvider("BankKeeperProvider")
 	return bankkeeper.BaseKeeper{}
+}
+
+func (a *EvmAppAdapter) GetBridgeKeeper() bridgekeeper.Keeper {
+	if provider, ok := a.TestApp.(evm.BridgeKeeperProvider); ok {
+		return provider.GetBridgeKeeper()
+	}
+	panicMissingProvider("BridgeKeeperProvider")
+	return bridgekeeper.Keeper{}
 }
 
 func (a *EvmAppAdapter) GetFeeMarketKeeper() *feemarketkeeper.Keeper {

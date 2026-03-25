@@ -10,6 +10,7 @@ import (
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	cosmosevmutils "github.com/cosmos/evm/utils"
+	bridgetypes "github.com/cosmos/evm/x/bridge/types"
 	erc20types "github.com/cosmos/evm/x/erc20/types"
 	feemarkettypes "github.com/cosmos/evm/x/feemarket/types"
 	precisebanktypes "github.com/cosmos/evm/x/precisebank/types"
@@ -66,6 +67,7 @@ var maccPerms = map[string][]string{
 	feemarkettypes.ModuleName:   nil,
 	erc20types.ModuleName:       {authtypes.Minter, authtypes.Burner},
 	precisebanktypes.ModuleName: {authtypes.Minter, authtypes.Burner},
+	bridgetypes.ModuleName:      {authtypes.Minter, authtypes.Burner},
 	sviptypes.ModuleName:        nil,
 }
 

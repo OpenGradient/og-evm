@@ -11,6 +11,7 @@ import (
 	"github.com/cosmos/evm"
 	"github.com/cosmos/evm/testutil"
 	testconstants "github.com/cosmos/evm/testutil/constants"
+	bridgetypes "github.com/cosmos/evm/x/bridge/types"
 	erc20types "github.com/cosmos/evm/x/erc20/types"
 	feemarkettypes "github.com/cosmos/evm/x/feemarket/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
@@ -51,6 +52,7 @@ type defaultGenesisParams struct {
 // genesisSetupFunctions contains the available genesis setup functions
 // that can be used to customize the network genesis
 var genesisSetupFunctions = map[string]genSetupFn{
+	bridgetypes.ModuleName:    genStateSetter[*bridgetypes.GenesisState](bridgetypes.ModuleName),
 	evmtypes.ModuleName:       genStateSetter[*evmtypes.GenesisState](evmtypes.ModuleName),
 	erc20types.ModuleName:     genStateSetter[*erc20types.GenesisState](erc20types.ModuleName),
 	govtypes.ModuleName:       genStateSetter[*govtypesv1.GenesisState](govtypes.ModuleName),

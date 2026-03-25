@@ -3,6 +3,7 @@ package evm
 import (
 	"encoding/json"
 
+	bridgekeeper "github.com/cosmos/evm/x/bridge/keeper"
 	erc20keeper "github.com/cosmos/evm/x/erc20/keeper"
 	feemarketkeeper "github.com/cosmos/evm/x/feemarket/keeper"
 	"github.com/cosmos/evm/x/ibc/callbacks/keeper"
@@ -72,6 +73,7 @@ type EvmApp interface { //nolint:revive
 	FeeGrantKeeperProvider
 	FeeMarketKeeperProvider
 	GovKeeperProvider
+	BridgeKeeperProvider
 	KeyProvider
 	MempoolProvider
 	MintKeeperProvider
@@ -93,6 +95,9 @@ type (
 	}
 	BankKeeperProvider interface {
 		GetBankKeeper() bankkeeper.Keeper
+	}
+	BridgeKeeperProvider interface {
+		GetBridgeKeeper() bridgekeeper.Keeper
 	}
 	CallbackKeeperProvider interface {
 		GetCallbackKeeper() keeper.ContractKeeper

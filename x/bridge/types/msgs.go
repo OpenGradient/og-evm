@@ -27,3 +27,13 @@ func (m *MsgSetAuthorizedContract) ValidateBasic() error {
 	}
 	return nil
 }
+
+// GetSignBytes implements the LegacyMsg interface for EIP-712 support.
+func (m MsgUpdateParams) GetSignBytes() []byte {
+	return AminoCdc.MustMarshalJSON(&m)
+}
+
+// GetSignBytes implements the LegacyMsg interface for EIP-712 support.
+func (m MsgSetAuthorizedContract) GetSignBytes() []byte {
+	return AminoCdc.MustMarshalJSON(&m)
+}

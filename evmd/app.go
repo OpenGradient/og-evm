@@ -127,6 +127,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	"github.com/cosmos/evm/x/bridge"
+	bridgekeeper "github.com/cosmos/evm/x/bridge/keeper"
+	bridgetypes "github.com/cosmos/evm/x/bridge/types"
 	"github.com/cosmos/evm/x/svip"
 	svipkeeper "github.com/cosmos/evm/x/svip/keeper"
 	sviptypes "github.com/cosmos/evm/x/svip/types"
@@ -178,6 +181,7 @@ type EVMD struct {
 	EvidenceKeeper        evidencekeeper.Keeper
 	FeeGrantKeeper        feegrantkeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
+	BridgeKeeper          bridgekeeper.Keeper
 	SvipKeeper            svipkeeper.Keeper
 
 	// IBC keepers
@@ -242,6 +246,7 @@ func NewExampleApp(
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
 		// Cosmos EVM store keys
 		evmtypes.StoreKey, feemarkettypes.StoreKey, erc20types.StoreKey, precisebanktypes.StoreKey,
+		bridgetypes.StoreKey,
 		sviptypes.StoreKey,
 	)
 	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
@@ -451,6 +456,14 @@ func NewExampleApp(
 		app.AccountKeeper,
 	)
 
+	app.BridgeKeeper = bridgekeeper.NewKeeper(
+		appCodec,
+		keys[bridgetypes.StoreKey],
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+		app.PreciseBankKeeper,
+		app.AccountKeeper,
+	)
+
 	// Set up EVM keeper
 	tracer := cast.ToString(appOpts.Get(srvflags.EVMTracer))
 
@@ -472,6 +485,7 @@ func NewExampleApp(
 			*app.StakingKeeper,
 			app.DistrKeeper,
 			app.PreciseBankKeeper,
+			app.BridgeKeeper,
 			&app.Erc20Keeper,
 			&app.TransferKeeper,
 			app.IBCKeeper.ChannelKeeper,
@@ -583,6 +597,7 @@ func NewExampleApp(
 		slashing.NewAppModule(appCodec, app.SlashingKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, nil, app.interfaceRegistry),
 		distr.NewAppModule(appCodec, app.DistrKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, nil),
 		staking.NewAppModule(appCodec, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, nil),
+		bridge.NewAppModule(app.BridgeKeeper),
 		svip.NewAppModule(app.SvipKeeper),
 		upgrade.NewAppModule(app.UpgradeKeeper, app.AccountKeeper.AddressCodec()),
 		evidence.NewAppModule(app.EvidenceKeeper),
@@ -677,6 +692,7 @@ func NewExampleApp(
 	// NOTE: The genutils module must also occur after auth so that it can access the params from auth.
 	genesisModuleOrder := []string{
 		authtypes.ModuleName, banktypes.ModuleName,
+		bridgetypes.ModuleName,
 		sviptypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName,
@@ -1026,6 +1042,10 @@ func (app *EVMD) GetSlashingKeeper() slashingkeeper.Keeper {
 
 func (app *EVMD) GetBankKeeper() bankkeeper.Keeper {
 	return app.BankKeeper
+}
+
+func (app *EVMD) GetBridgeKeeper() bridgekeeper.Keeper {
+	return app.BridgeKeeper
 }
 
 func (app *EVMD) GetFeeMarketKeeper() *feemarketkeeper.Keeper {
