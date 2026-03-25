@@ -3,11 +3,15 @@
   "version": "2.0.0",
   "description": "A collection of smart contracts used in the development of the Cosmos EVM blockchain.",
   "devDependencies": {
+    "@hyperlane-xyz/core": "^11.1.0",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.3",
     "@openzeppelin/contracts": "4.9.6",
-    "hardhat": "^3.0.15"
+    "@openzeppelin/contracts-upgradeable": "^4.9.6",
+    "hardhat": "^3.0.15",
+    "viem": "^2.47.6"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "hardhat test"
   },
   "repository": {
     "type": "git",
