@@ -1,0 +1,19 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.bridge.v1.MsgUpdateParams",
+      "authority": "cosmos1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "params": {
+        "authorizedContract": "0x0000000000000000000000000000000000000000",
+        "hyperlaneMailbox": "0x0000000000000000000000000000000000000000",
+        "baseDomainId": 8453,
+        "enabled": true,
+        "maxTransferAmount": "0"
+      }
+    }
+  ],
+  "metadata": "ipfs://REPLACE_WITH_METADATA_CID",
+  "deposit": "10000000ogwei",
+  "title": "Enable Hyperlane Bridge",
+  "summary": "Enable the bridge module and point it at the deployed Hyperlane mailbox and router."
+}

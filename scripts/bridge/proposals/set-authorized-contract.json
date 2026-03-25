@@ -1,0 +1,13 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.bridge.v1.MsgSetAuthorizedContract",
+      "authority": "cosmos1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "contractAddress": "0x0000000000000000000000000000000000000000"
+    }
+  ],
+  "metadata": "ipfs://REPLACE_WITH_METADATA_CID",
+  "deposit": "10000000ogwei",
+  "title": "Set Authorized Bridge Contract",
+  "summary": "Update the bridge precompile authorization target to the deployed HypOGNative contract."
+}

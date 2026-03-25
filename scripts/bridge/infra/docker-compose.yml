@@ -1,0 +1,70 @@
+services:
+  validator:
+    image: ${HYPERLANE_AGENT_IMAGE:-ghcr.io/hyperlane-xyz/hyperlane-agent:agents-v2.1.0}
+    restart: unless-stopped
+    env_file:
+      - ./validator.env.example
+    environment:
+      CONFIG_FILES: /config/agent-config.json
+    volumes:
+      - ${HYPERLANE_AGENT_CONFIG_PATH:-../generated/agent-config.json}:/config/agent-config.json:ro
+      - ${HYPERLANE_VALIDATOR_DB_PATH:-./data/validator-db}:/hyperlane_db
+      - ${HYPERLANE_VALIDATOR_SIGNATURES_DIR:-./data/validator-signatures}:/tmp/validator-signatures
+    command:
+      - ./validator
+      - --db
+      - /hyperlane_db
+      - --originChainName
+      - ${HYPERLANE_CHAIN_NAME:-og-evm}
+      - --checkpointSyncer.type
+      - localStorage
+      - --checkpointSyncer.path
+      - /tmp/validator-signatures
+      - --validator.key
+      - ${HYPERLANE_VALIDATOR_KEY:-REPLACE_WITH_VALIDATOR_PRIVATE_KEY}
+      - --metrics-port
+      - ${HYPERLANE_VALIDATOR_METRICS_PORT:-9090}
+    ports:
+      - ${HYPERLANE_VALIDATOR_METRICS_PORT:-9090}:${HYPERLANE_VALIDATOR_METRICS_PORT:-9090}
+
+  relayer:
+    image: ${HYPERLANE_AGENT_IMAGE:-ghcr.io/hyperlane-xyz/hyperlane-agent:agents-v2.1.0}
+    restart: unless-stopped
+    env_file:
+      - ./relayer.env.example
+    environment:
+      CONFIG_FILES: /config/agent-config.json
+    volumes:
+      - ${HYPERLANE_AGENT_CONFIG_PATH:-../generated/agent-config.json}:/config/agent-config.json:ro
+      - ${HYPERLANE_RELAYER_DB_PATH:-./data/relayer-db}:/hyperlane_db
+      - ${HYPERLANE_VALIDATOR_SIGNATURES_DIR:-./data/validator-signatures}:/tmp/validator-signatures:ro
+    command:
+      - ./relayer
+      - --db
+      - /hyperlane_db
+      - --relayChains
+      - ${HYPERLANE_RELAY_CHAINS:-og-evm,base}
+      - --allowLocalCheckpointSyncers
+      - "true"
+      - --defaultSigner.key
+      - ${HYPERLANE_RELAY_SIGNER_KEY:-REPLACE_WITH_RELAYER_PRIVATE_KEY}
+      - --metrics-port
+      - ${HYPERLANE_RELAYER_METRICS_PORT:-9091}
+    ports:
+      - ${HYPERLANE_RELAYER_METRICS_PORT:-9091}:${HYPERLANE_RELAYER_METRICS_PORT:-9091}
+
+  bridge-metrics:
+    image: python:3.12-alpine
+    restart: unless-stopped
+    env_file:
+      - ./monitoring.env.example
+    environment:
+      ARTIFACT_DIR: /config/generated
+    volumes:
+      - ../generated:/config/generated:ro
+      - ../monitoring:/monitoring:ro
+    command:
+      - python
+      - /monitoring/bridge_metrics_exporter.py
+    ports:
+      - ${BRIDGE_METRICS_PORT:-9300}:${BRIDGE_METRICS_PORT:-9300}

@@ -1,0 +1,78 @@
+groups:
+  - name: bridge-health
+    rules:
+      - alert: OGEvmBridgeCollateralShortfall
+        expr: og_evm_bridge_outstanding > base_collateral_balance
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Base collateral is below outstanding bridged supply"
+          description: "The Base collateral router balance is lower than the outstanding native supply minted on og-evm."
+
+      - alert: OGEvmBridgeCollateralDrift
+        expr: abs(bridge_collateral_surplus) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bridge collateral has drifted from outstanding bridged supply"
+          description: "Locked Base collateral no longer matches outstanding bridged native supply."
+
+  - name: hyperlane-relayer
+    rules:
+      - alert: HyperlaneRelayerCriticalError
+        expr: max by (chain) (hyperlane_critical_error{job="hyperlane-relayer"}) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Hyperlane relayer has reported a critical error"
+          description: "The relayer has lost liveness on at least one chain."
+
+      - alert: HyperlaneRelayerRpcFailureRateHigh
+        expr: sum by (chain) (rate(hyperlane_request_count{job="hyperlane-relayer",status="failure"}[10m])) / clamp_min(sum by (chain) (rate(hyperlane_request_count{job="hyperlane-relayer",status=~"success|failure"}[10m])), 0.001) > 0.6
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hyperlane relayer RPC failure rate is high"
+          description: "More than 60% of relayer RPC requests have been failing for at least 10 minutes."
+
+      - alert: HyperlaneRelayerPrepareQueueBacklog
+        expr: delta(hyperlane_submitter_queue_length{job="hyperlane-relayer",queue_name="prepare_queue"}[30m]) > 0 and max_over_time(hyperlane_submitter_queue_length{job="hyperlane-relayer",queue_name="confirm_queue"}[30m]) == 0 and increase(hyperlane_span_events_total{job="hyperlane-relayer",agent="relayer",event_level=~"error|warn"}[30m]) > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hyperlane relayer delivery queue is backing up"
+          description: "The prepare queue is growing while confirmations are not moving, which usually indicates mailbox delivery failures, low balance, or a bad RPC."
+
+  - name: hyperlane-validator
+    rules:
+      - alert: HyperlaneValidatorRpcStalled
+        expr: delta(hyperlane_block_height{job="hyperlane-validator"}[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hyperlane validator RPC height is stalled"
+          description: "The validator's connected RPC has not advanced its block height for at least 15 minutes."
+
+      - alert: HyperlaneValidatorCheckpointStalled
+        expr: delta(hyperlane_block_height{job="hyperlane-validator"}[30m]) > 0 and delta(hyperlane_latest_checkpoint{job="hyperlane-validator"}[6h]) == 0 and increase(hyperlane_span_events_total{job="hyperlane-validator",agent="validator",event_level=~"error|warn"}[6h]) > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hyperlane validator checkpoints have stalled"
+          description: "The validator is still seeing chain progress, but it has not advanced its latest checkpoint for several hours."
+
+      - alert: HyperlaneValidatorSyncLoopStalled
+        expr: time() - hyperlane_contract_sync_liveness{job="hyperlane-validator"} > 900
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hyperlane validator sync loop has stalled"
+          description: "The validator contract sync liveness timestamp has not been refreshed for at least 15 minutes."
