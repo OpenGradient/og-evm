@@ -5,19 +5,34 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/hashicorp/go-metrics"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/cosmos/evm/contracts"
+	evmtrace "github.com/cosmos/evm/trace"
 	"github.com/cosmos/evm/x/erc20/types"
 
 	sdkerrors "cosmossdk.io/errors"
 	"cosmossdk.io/math"
 
-	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	errortypes "github.com/cosmos/cosmos-sdk/types/errors"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
+
+var (
+	erc20Meter         = otel.Meter("evm/x/erc20/keeper")
+	convertERC20Counter metric.Int64Counter
+	convertERC20Amount  metric.Float64Counter
+)
+
+func init() {
+	convertERC20Counter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.convert_erc20.total",
+		metric.WithDescription("Total ERC20 to coin conversions"))
+	convertERC20Amount = evmtrace.MustFloat64Counter(erc20Meter, "evm.erc20.convert_erc20.amount.total",
+		metric.WithDescription("Total ERC20 conversion amounts"))
+}
 
 var _ types.MsgServer = &Keeper{}
 
@@ -152,21 +167,13 @@ func (k Keeper) convertERC20IntoCoinsForNativeToken(
 	}
 
 	defer func() {
-		telemetry.IncrCounterWithLabels( //nolint:staticcheck // TODO: fix
-			[]string{"tx", "msg", "convert", "erc20", "total"},
-			1,
-			[]metrics.Label{
-				telemetry.NewLabel("coin", pair.Denom), //nolint:staticcheck // TODO: fix
-			},
+		convertERC20Counter.Add(ctx, 1,
+			metric.WithAttributes(attribute.String("coin", pair.Denom)),
 		)
 
 		if msg.Amount.IsInt64() {
-			telemetry.IncrCounterWithLabels( //nolint:staticcheck // TODO: fix
-				[]string{"tx", "msg", "convert", "erc20", "amount", "total"},
-				float32(msg.Amount.Int64()),
-				[]metrics.Label{
-					telemetry.NewLabel("denom", pair.Denom), //nolint:staticcheck // TODO: fix
-				},
+			convertERC20Amount.Add(ctx, float64(msg.Amount.Int64()),
+				metric.WithAttributes(attribute.String("denom", pair.Denom)),
 			)
 		}
 	}()

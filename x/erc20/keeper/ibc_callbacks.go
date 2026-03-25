@@ -4,8 +4,10 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/hashicorp/go-metrics"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
+	evmtrace "github.com/cosmos/evm/trace"
 	"github.com/cosmos/evm/ibc"
 	"github.com/cosmos/evm/x/erc20/types"
 	transfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
@@ -15,10 +17,21 @@ import (
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
 
-	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	errortypes "github.com/cosmos/cosmos-sdk/types/errors"
 )
+
+var (
+	ibcOnRecvCounter metric.Int64Counter
+	ibcErrorCounter  metric.Int64Counter
+)
+
+func init() {
+	ibcOnRecvCounter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.ibc.on_recv.total",
+		metric.WithDescription("Total successful IBC ERC20 conversions on receive"))
+	ibcErrorCounter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.ibc.error.total",
+		metric.WithDescription("Total failed IBC ERC20 conversions"))
+}
 
 // OnRecvPacket performs the ICS20 middleware receive callback for automatically
 // converting an IBC Coin to their ERC20 representation.
@@ -140,14 +153,12 @@ func (k Keeper) OnRecvPacket(
 		}
 
 		// For now the only case we are interested in adding telemetry is a successful conversion.
-		telemetry.IncrCounterWithLabels( //nolint:staticcheck // TODO: fix
-			[]string{types.ModuleName, "ibc", "on_recv", "total"},
-			1,
-			[]metrics.Label{
-				telemetry.NewLabel("denom", coin.Denom),                    //nolint:staticcheck // TODO: fix
-				telemetry.NewLabel("source_channel", packet.SourceChannel), //nolint:staticcheck // TODO: fix
-				telemetry.NewLabel("source_port", packet.SourcePort),       //nolint:staticcheck // TODO: fix
-			},
+		ibcOnRecvCounter.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("denom", coin.Denom),
+				attribute.String("source_channel", packet.SourceChannel),
+				attribute.String("source_port", packet.SourcePort),
+			),
 		)
 	}
 
@@ -238,7 +249,7 @@ func (k Keeper) ConvertCoinToERC20FromPacket(ctx sdk.Context, data transfertypes
 		if err := k.ConvertCoinNativeERC20(ctx, pair, coin.Amount, common.BytesToAddress(sender), sender); err != nil {
 			// We want to record only the failed attempt to reconvert the coins during IBC.
 			defer func() {
-				telemetry.IncrCounter(1, types.ModuleName, "ibc", "error", "total") //nolint:staticcheck // TODO: fix
+				ibcErrorCounter.Add(ctx, 1)
 			}()
 			ctx.EventManager().EmitEvents(
 				sdk.Events{
