@@ -4,6 +4,7 @@ pragma solidity >=0.8.17;
 import "../precompiles/erc20/IERC20.sol";
 import "../precompiles/staking/StakingI.sol" as staking;
 import "../precompiles/distribution/DistributionI.sol" as distribution;
+import "../precompiles/bech32/Bech32I.sol";
 
 /// @title CommunityPool
 /// @notice Pooled staking contract with internal ownership units.
@@ -27,6 +28,7 @@ contract CommunityPool {
     uint32 public maxRetrieve;
     uint32 public maxValidators;
     uint256 public minStakeAmount;
+    string public validatorPrefix;
 
     /// @dev Units held per user. User ownership fraction = unitsOf[user] / totalUnits.
     mapping(address => uint256) public unitsOf;
@@ -55,6 +57,7 @@ contract CommunityPool {
     event Stake(uint256 liquidBefore, uint256 delegatedAmount, uint256 validatorsCount, uint256 totalStakedAfter);
     event Harvest(uint256 liquidBefore, uint256 liquidAfter, uint256 harvestedAmount);
     event TotalStakedSynced(uint256 previousTotalStaked, uint256 newTotalStaked);
+    event ValidatorPrefixUpdated(string previousPrefix, string newPrefix);
 
     modifier onlyOwner() {
         if (msg.sender != owner) {
@@ -75,12 +78,16 @@ contract CommunityPool {
         uint32 maxRetrieve_,
         uint32 maxValidators_,
         uint256 minStakeAmount_,
-        address owner_
+        address owner_,
+        string memory validatorPrefix_
     ) {
         if (bondToken_ == address(0) || owner_ == address(0)) {
             revert InvalidAddress();
         }
         if (maxValidators_ == 0) {
+            revert InvalidConfig();
+        }
+        if (bytes(validatorPrefix_).length == 0) {
             revert InvalidConfig();
         }
 
@@ -89,6 +96,7 @@ contract CommunityPool {
         maxValidators = maxValidators_;
         minStakeAmount = minStakeAmount_;
         owner = owner_;
+        validatorPrefix = validatorPrefix_;
     }
 
     /// @notice Transfers owner privileges to a new address.
@@ -127,6 +135,16 @@ contract CommunityPool {
         uint256 previous = totalStaked;
         totalStaked = newTotalStaked;
         emit TotalStakedSynced(previous, newTotalStaked);
+    }
+
+    /// @notice Updates the validator bech32 prefix used by stake conversion.
+    function setValidatorPrefix(string calldata newPrefix) external onlyOwner {
+        if (bytes(newPrefix).length == 0) {
+            revert InvalidConfig();
+        }
+        string memory previous = validatorPrefix;
+        validatorPrefix = newPrefix;
+        emit ValidatorPrefixUpdated(previous, newPrefix);
     }
 
     /// @notice Current liquid token balance owned by the contract.
@@ -232,17 +250,23 @@ contract CommunityPool {
                 continue;
             }
 
+            address validatorHex = _parseHexAddress(validators[i]);
+            string memory validatorBech32 = BECH32_CONTRACT.hexToBech32(
+                validatorHex,
+                validatorPrefix
+            );
+
             bool success = staking.STAKING_CONTRACT.delegate(
                 address(this),
-                validators[i],
+                validatorBech32,
                 amount
             );
             if (!success) {
-                revert DelegateFailed(validators[i], amount);
+                revert DelegateFailed(validatorBech32, amount);
             }
 
             delegatedAmount += amount;
-            emit StakeDelegated(validators[i], amount);
+            emit StakeDelegated(validatorBech32, amount);
         }
 
         totalStaked += delegatedAmount;
@@ -315,6 +339,30 @@ contract CommunityPool {
         for (uint256 i = 0; i < count; i++) {
             out[i] = tmp[i];
         }
+    }
+
+    function _parseHexAddress(string memory value) internal pure returns (address out) {
+        bytes memory str = bytes(value);
+        if (str.length != 42 || str[0] != "0" || (str[1] != "x" && str[1] != "X")) {
+            revert InvalidAddress();
+        }
+
+        uint160 result = 0;
+        for (uint256 i = 2; i < 42; i++) {
+            uint8 c = uint8(str[i]);
+            uint8 nibble;
+            if (c >= 48 && c <= 57) {
+                nibble = c - 48;
+            } else if (c >= 65 && c <= 70) {
+                nibble = c - 55;
+            } else if (c >= 97 && c <= 102) {
+                nibble = c - 87;
+            } else {
+                revert InvalidAddress();
+            }
+            result = (result << 4) | uint160(nibble);
+        }
+        out = address(result);
     }
 }
 
