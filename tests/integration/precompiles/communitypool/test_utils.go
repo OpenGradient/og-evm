@@ -31,7 +31,6 @@ func (s *IntegrationTestSuite) deployCommunityPool(
 				maxValidators,
 				minStakeAmount,
 				owner.Addr,
-				s.validatorPrefix,
 			},
 		},
 	)

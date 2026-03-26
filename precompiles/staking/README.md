@@ -90,6 +90,13 @@ function delegate(
     uint256 amount
 ) external returns (bool success);
 
+// Delegate across bonded validators with equal split
+function delegateToBondedValidators(
+    address delegatorAddress,
+    uint256 amount,
+    uint32 maxValidators
+) external returns (uint256 delegatedAmount, uint32 validatorsUsed);
+
 // Undelegate tokens from a validator
 function undelegate(
     address delegatorAddress,
@@ -173,9 +180,17 @@ The precompile uses standard gas configuration for storage operations.
 ### Delegation Operations
 
 - **Delegate**: Stakes tokens with a validator, receiving shares in return
+- **Delegate to Bonded Validators**: Delegates one amount across up to `maxValidators` bonded validators in precompile order
 - **Undelegate**: Initiates unbonding process (subject to unbonding period)
 - **Redelegate**: Moves stake between validators without unbonding period
 - **Cancel Unbonding**: Reverses an unbonding delegation before completion
+
+### `delegateToBondedValidators` Policy
+
+- **Cap/order**: Uses the first `maxValidators` entries returned by bonded validator query order.
+- **Split/remainder**: Uses integer split `amount / n`; remainder `amount % n` is distributed as `+1` to first validators deterministically.
+- **Return shape**: Returns `(delegatedAmount, validatorsUsed)`.
+- **Atomicity**: If any internal delegate operation fails, the whole transaction reverts and no partial staking state is persisted.
 
 ### Address Formats
 

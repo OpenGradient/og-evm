@@ -11,7 +11,6 @@ This document captures assumptions that the `communitypool` integration suite de
 ## Contract + artifact assumptions
 
 - `contracts/solidity/pool/CommunityPool.json` matches the current `CommunityPool.sol` implementation.
-- The artifact includes the owner-only `setStakeValidators(string[])` method used by staking/harvest tests.
 - `contracts/community_pool.go` successfully loads that artifact via `LoadCommunityPool()`.
 
 ## Test helper assumptions
@@ -24,13 +23,16 @@ This document captures assumptions that the `communitypool` integration suite de
 
 - Deposit/withdraw accounting uses floor rounding and must never over-mint shares.
 - Dust deposits that mint zero units must revert and preserve unit state.
-- Owner-gated methods (`setConfig`, `syncTotalStaked`, `transferOwnership`, `setStakeValidators`) enforce access control.
+- Owner-gated methods (`setConfig`, `syncTotalStaked`, `transferOwnership`) enforce access control.
 - `stake()` and `harvest()` are callable in the current implementation and are tested as operational actions, not owner-only actions.
-- `stake()` uses configured bech32 validator operator addresses set through `setStakeValidators`.
+- `stake()` delegates through `staking.delegateToBondedValidators(address(this), liquid, maxValidators)`.
+- The staking precompile path is atomic at transaction scope: if any internal per-validator delegate fails, no partial delegation state persists.
+- Validator selection policy for `stake()` is the first `maxValidators` bonded validators in staking precompile/keeper order.
+- Delegation split policy is deterministic: `amount / n` base per validator and `amount % n` remainder distributed as `+1` to the first remainder validators.
 - `syncTotalStaked` is accounting-only and must not create staking side effects.
 
 ## Stability notes
 
-- If staking precompile output format for validators changes (for example, address encoding), staking-path tests may fail and need contract or test adaptation.
+- If staking precompile validator ordering or bonded-set query semantics change, staking-path tests may fail and need expectation updates.
 - If default gas behavior changes in factory or precompiles, tx helper gas defaults may need adjustment.
 - If ownership/permissions policy changes (for example, restricting `stake`/`harvest`), tests must be updated to reflect the new access model.

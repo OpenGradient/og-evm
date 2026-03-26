@@ -1,8 +1,6 @@
 package communitypool
 
 import (
-	"strings"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/suite"
 	. "github.com/onsi/gomega"
@@ -32,7 +30,6 @@ type IntegrationTestSuite struct {
 	bondDenom     string
 	bondTokenAddr common.Address
 	bondTokenPC   *erc20.Precompile
-	validatorPrefix string
 
 	communityPoolContract evmtypes.CompiledContract
 }
@@ -84,8 +81,6 @@ func (s *IntegrationTestSuite) SetupTest() {
 	s.bondDenom = bondDenom
 	s.bondTokenAddr = tokenPair.GetERC20Contract()
 	s.bondTokenPC = bondTokenPC
-	firstVal := nw.GetValidators()[0].OperatorAddress
-	s.validatorPrefix = strings.Split(firstVal, "1")[0]
 	s.communityPoolContract = poolContract
 }
 
