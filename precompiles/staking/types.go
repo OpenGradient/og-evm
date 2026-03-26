@@ -76,6 +76,14 @@ type EventCancelUnbonding struct {
 	CreationHeight   *big.Int
 }
 
+// DelegateToBondedValidatorsArgs is the parsed input for delegating across
+// bonded validators.
+type DelegateToBondedValidatorsArgs struct {
+	DelegatorAddress common.Address
+	Amount           *big.Int
+	MaxValidators    uint32
+}
+
 // Description defines a validator description.
 type Description = struct {
 	Moniker         string `json:"moniker"`
@@ -374,6 +382,41 @@ func NewMsgCancelUnbondingDelegation(args []interface{}, denom string, addrCdc a
 	}
 
 	return msg, delegatorAddr, nil
+}
+
+// NewDelegateToBondedValidatorsArgs validates and parses arguments for the
+// delegateToBondedValidators transaction.
+func NewDelegateToBondedValidatorsArgs(args []interface{}) (*DelegateToBondedValidatorsArgs, error) {
+	if len(args) != 3 {
+		return nil, fmt.Errorf(cmn.ErrInvalidNumberOfArgs, 3, len(args))
+	}
+
+	delegatorAddr, ok := args[0].(common.Address)
+	if !ok || delegatorAddr == (common.Address{}) {
+		return nil, fmt.Errorf(cmn.ErrInvalidDelegator, args[0])
+	}
+
+	amount, ok := args[1].(*big.Int)
+	if !ok {
+		return nil, fmt.Errorf(cmn.ErrInvalidAmount, args[1])
+	}
+	if amount.Sign() <= 0 {
+		return nil, errors.New("amount must be greater than zero")
+	}
+
+	maxValidators, ok := args[2].(uint32)
+	if !ok {
+		return nil, fmt.Errorf(cmn.ErrInvalidType, "maxValidators", "uint32", args[2])
+	}
+	if maxValidators == 0 {
+		return nil, errors.New("maxValidators must be greater than zero")
+	}
+
+	return &DelegateToBondedValidatorsArgs{
+		DelegatorAddress: delegatorAddr,
+		Amount:           amount,
+		MaxValidators:    maxValidators,
+	}, nil
 }
 
 // NewDelegationRequest creates a new QueryDelegationRequest instance and does sanity checks

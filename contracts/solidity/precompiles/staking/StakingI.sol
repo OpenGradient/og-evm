@@ -174,6 +174,18 @@ interface StakingI {
         uint256 amount
     ) external returns (bool success);
 
+    /// @dev Defines a method for delegating a total amount across bonded validators equally.
+    /// @param delegatorAddress The address of the delegator.
+    /// @param amount The total amount of bond denomination to delegate.
+    /// @param maxValidators Max bonded validators to include (first N in precompile order).
+    /// @return delegatedAmount The total amount actually delegated.
+    /// @return validatorsUsed Number of validators used for the split.
+    function delegateToBondedValidators(
+        address delegatorAddress,
+        uint256 amount,
+        uint32 maxValidators
+    ) external returns (uint256 delegatedAmount, uint32 validatorsUsed);
+
     /// @dev Defines a method for performing an undelegation from a delegate and a validator.
     /// @param delegatorAddress The address of the delegator
     /// @param validatorAddress The address of the validator

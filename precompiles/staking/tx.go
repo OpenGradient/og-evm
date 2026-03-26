@@ -3,6 +3,7 @@ package staking
 import (
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -10,7 +11,11 @@ import (
 
 	cmn "github.com/cosmos/evm/precompiles/common"
 
+	"cosmossdk.io/math"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 const (
@@ -21,6 +26,9 @@ const (
 	// DelegateMethod defines the ABI method name for the staking Delegate
 	// transaction.
 	DelegateMethod = "delegate"
+	// DelegateToBondedValidatorsMethod defines the ABI method name for delegating
+	// equally across the bonded validator set in a single transaction.
+	DelegateToBondedValidatorsMethod = "delegateToBondedValidators"
 	// UndelegateMethod defines the ABI method name for the staking Undelegate
 	// transaction.
 	UndelegateMethod = "undelegate"
@@ -183,6 +191,99 @@ func (p *Precompile) Delegate(
 	}
 
 	return method.Outputs.Pack(true)
+}
+
+// DelegateToBondedValidators delegates equally across bonded validators.
+func (p *Precompile) DelegateToBondedValidators(
+	ctx sdk.Context,
+	contract *vm.Contract,
+	stateDB vm.StateDB,
+	method *abi.Method,
+	args []interface{},
+) ([]byte, error) {
+	input, err := NewDelegateToBondedValidatorsArgs(args)
+	if err != nil {
+		return nil, err
+	}
+
+	msgSender := contract.Caller()
+	if msgSender != input.DelegatorAddress {
+		return nil, fmt.Errorf(cmn.ErrRequesterIsNotMsgSender, msgSender.String(), input.DelegatorAddress.String())
+	}
+
+	bondDenom, err := p.stakingKeeper.BondDenom(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := p.stakingQuerier.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
+		Status: stakingtypes.BondStatusBonded,
+		Pagination: &query.PageRequest{
+			Limit: uint64(input.MaxValidators),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(res.Validators) == 0 {
+		return nil, errors.New("no bonded validators found")
+	}
+
+	delegatorAddrStr, err := p.addrCdc.BytesToString(input.DelegatorAddress.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode delegator address: %w", err)
+	}
+
+	validatorCount := uint32(len(res.Validators))
+	baseAmount := new(big.Int).Div(input.Amount, big.NewInt(int64(validatorCount)))
+	remainder := new(big.Int).Mod(input.Amount, big.NewInt(int64(validatorCount))).Uint64()
+
+	totalDelegated := big.NewInt(0)
+	validatorsUsed := uint32(0)
+	for i := uint32(0); i < validatorCount; i++ {
+		perValidator := new(big.Int).Set(baseAmount)
+		if uint64(i) < remainder {
+			perValidator = perValidator.Add(perValidator, big.NewInt(1))
+		}
+		// Skip zero-amount delegates (e.g. amount < validatorCount).
+		if perValidator.Sign() == 0 {
+			continue
+		}
+
+		msg := &stakingtypes.MsgDelegate{
+			DelegatorAddress: delegatorAddrStr,
+			ValidatorAddress: res.Validators[i].OperatorAddress,
+			Amount: sdk.Coin{
+				Denom:  bondDenom,
+				Amount: math.NewIntFromBigInt(perValidator),
+			},
+		}
+
+		if _, err = p.stakingMsgServer.Delegate(ctx, msg); err != nil {
+			return nil, err
+		}
+		if err = p.EmitDelegateEvent(ctx, stateDB, msg, input.DelegatorAddress); err != nil {
+			return nil, err
+		}
+
+		totalDelegated.Add(totalDelegated, perValidator)
+		validatorsUsed++
+	}
+
+	p.Logger(ctx).Debug(
+		"tx called",
+		"method", method.Name,
+		"args", fmt.Sprintf(
+			"{ delegator_address: %s, amount: %s, max_validators: %d, delegated_amount: %s, validators_used: %d }",
+			input.DelegatorAddress,
+			input.Amount,
+			input.MaxValidators,
+			totalDelegated,
+			validatorsUsed,
+		),
+	)
+
+	return method.Outputs.Pack(totalDelegated, validatorsUsed)
 }
 
 // Undelegate performs the undelegation of coins from a validator for a delegate.

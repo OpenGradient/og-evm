@@ -546,6 +546,174 @@ func TestPrecompileIntegrationTestSuite(t *testing.T, create network.CreateEvmAp
 			})
 		})
 
+		Describe("to delegate equally to bonded validators", func() {
+			BeforeEach(func() {
+				callArgs.MethodName = staking.DelegateToBondedValidatorsMethod
+			})
+
+			It("should delegate with equal split and deterministic remainder", func() {
+				newAddr, newAddrPriv := testutiltx.NewAccAddressAndKey()
+				err := utils.FundAccountWithBaseDenom(s.factory, s.network, s.keyring.GetKey(0), newAddr, math.NewInt(2e18))
+				Expect(err).To(BeNil(), "error while funding account")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(5),
+					uint32(2),
+				}
+				logCheckArgs := passCheck.WithExpEvents(staking.EventTypeDelegate, staking.EventTypeDelegate)
+
+				_, ethRes, err := s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					logCheckArgs,
+				)
+				Expect(err).To(BeNil(), "error while calling the smart contract: %v", err)
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				unpacked, err := s.precompile.ABI.Unpack(staking.DelegateToBondedValidatorsMethod, ethRes.Ret)
+				Expect(err).To(BeNil(), "error while unpacking tx output")
+				Expect(unpacked).To(HaveLen(2))
+
+				delegatedAmount, ok := unpacked[0].(*big.Int)
+				Expect(ok).To(BeTrue(), "expected delegatedAmount to be *big.Int")
+				validatorsUsed, ok := unpacked[1].(uint32)
+				Expect(ok).To(BeTrue(), "expected validatorsUsed to be uint32")
+				Expect(delegatedAmount).To(Equal(big.NewInt(5)))
+				Expect(validatorsUsed).To(Equal(uint32(2)))
+
+				qc := s.network.GetStakingClient()
+				valsRes, err := qc.Validators(s.network.GetContext(), &stakingtypes.QueryValidatorsRequest{
+					Status: stakingtypes.BondStatusBonded,
+					Pagination: &query.PageRequest{
+						Limit: 2,
+					},
+				})
+				Expect(err).To(BeNil())
+				Expect(valsRes.Validators).To(HaveLen(2))
+
+				// deterministic remainder policy: for amount=5 and n=2 => [3,2]
+				exp := []int64{3, 2}
+				for i, v := range valsRes.Validators {
+					delRes, delErr := s.grpcHandler.GetDelegation(newAddr.String(), v.OperatorAddress)
+					Expect(delErr).To(BeNil(), "expected delegation for validator %s", v.OperatorAddress)
+					Expect(delRes.DelegationResponse.Balance.Amount.Int64()).To(Equal(exp[i]))
+				}
+			})
+
+			It("should honor maxValidators cap", func() {
+				newAddr, newAddrPriv := testutiltx.NewAccAddressAndKey()
+				err := utils.FundAccountWithBaseDenom(s.factory, s.network, s.keyring.GetKey(0), newAddr, math.NewInt(2e18))
+				Expect(err).To(BeNil(), "error while funding account")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(9),
+					uint32(1),
+				}
+				logCheckArgs := passCheck.WithExpEvents(staking.EventTypeDelegate)
+
+				_, ethRes, err := s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					logCheckArgs,
+				)
+				Expect(err).To(BeNil(), "error while calling the smart contract: %v", err)
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				unpacked, err := s.precompile.ABI.Unpack(staking.DelegateToBondedValidatorsMethod, ethRes.Ret)
+				Expect(err).To(BeNil(), "error while unpacking tx output")
+				delegatedAmount, ok := unpacked[0].(*big.Int)
+				Expect(ok).To(BeTrue())
+				validatorsUsed, ok := unpacked[1].(uint32)
+				Expect(ok).To(BeTrue())
+				Expect(delegatedAmount).To(Equal(big.NewInt(9)))
+				Expect(validatorsUsed).To(Equal(uint32(1)))
+			})
+
+			It("should fail when caller is different from delegator address", func() {
+				delegator := s.keyring.GetKey(0)
+				differentAddr := testutiltx.GenerateAddress()
+
+				callArgs.Args = []interface{}{
+					differentAddr,
+					big.NewInt(10),
+					uint32(2),
+				}
+				logCheckArgs := defaultLogCheck.WithErrContains(
+					fmt.Sprintf(cmn.ErrRequesterIsNotMsgSender, delegator.Addr, differentAddr),
+				)
+
+				_, _, err := s.factory.CallContractAndCheckLogs(
+					delegator.Priv,
+					txArgs,
+					callArgs,
+					logCheckArgs,
+				)
+				Expect(err).To(BeNil(), "error while calling the smart contract: %v", err)
+			})
+
+			It("should fail when maxValidators is zero", func() {
+				delegator := s.keyring.GetKey(0)
+
+				callArgs.Args = []interface{}{
+					delegator.Addr,
+					big.NewInt(10),
+					uint32(0),
+				}
+				logCheckArgs := defaultLogCheck.WithErrContains("maxValidators must be greater than zero")
+
+				_, _, err := s.factory.CallContractAndCheckLogs(
+					delegator.Priv,
+					txArgs,
+					callArgs,
+					logCheckArgs,
+				)
+				Expect(err).To(BeNil(), "error while calling the smart contract: %v", err)
+			})
+
+			It("should fail when account balance is insufficient", func() {
+				newAddr, newAddrPriv := testutiltx.NewAccAddressAndKey()
+				err := utils.FundAccountWithBaseDenom(s.factory, s.network, s.keyring.GetKey(0), newAddr, math.NewInt(1))
+				Expect(err).To(BeNil(), "error while funding account")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(2),
+					uint32(2),
+				}
+				logCheckArgs := defaultLogCheck.WithErrContains("insufficient funds")
+
+				_, _, err = s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					logCheckArgs,
+				)
+				Expect(err).To(BeNil(), "error while calling the smart contract: %v", err)
+
+				// Atomicity assertion: failed call must not persist any delegation state.
+				qc := s.network.GetStakingClient()
+				valsRes, qErr := qc.Validators(s.network.GetContext(), &stakingtypes.QueryValidatorsRequest{
+					Status: stakingtypes.BondStatusBonded,
+					Pagination: &query.PageRequest{
+						Limit: 2,
+					},
+				})
+				Expect(qErr).To(BeNil())
+				Expect(valsRes.Validators).To(HaveLen(2))
+				for _, v := range valsRes.Validators {
+					_, delErr := s.grpcHandler.GetDelegation(newAddr.String(), v.OperatorAddress)
+					Expect(delErr).ToNot(BeNil(), "expected no delegation persisted for validator %s", v.OperatorAddress)
+				}
+			})
+		})
+
 		Describe("to redelegate", func() {
 			BeforeEach(func() {
 				callArgs.MethodName = staking.RedelegateMethod

@@ -303,6 +303,40 @@
         "type": "address"
       },
       {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "maxValidators",
+        "type": "uint32"
+      }
+    ],
+    "name": "delegateToBondedValidators",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "delegatedAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "validatorsUsed",
+        "type": "uint32"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "delegatorAddress",
+        "type": "address"
+      },
+      {
         "internalType": "string",
         "name": "validatorAddress",
         "type": "string"

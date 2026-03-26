@@ -114,6 +114,8 @@ func (p Precompile) Execute(ctx sdk.Context, stateDB vm.StateDB, contract *vm.Co
 		bz, err = p.EditValidator(ctx, contract, stateDB, method, args)
 	case DelegateMethod:
 		bz, err = p.Delegate(ctx, contract, stateDB, method, args)
+	case DelegateToBondedValidatorsMethod:
+		bz, err = p.DelegateToBondedValidators(ctx, contract, stateDB, method, args)
 	case UndelegateMethod:
 		bz, err = p.Undelegate(ctx, contract, stateDB, method, args)
 	case RedelegateMethod:
@@ -146,6 +148,7 @@ func (p Precompile) Execute(ctx sdk.Context, stateDB vm.StateDB, contract *vm.Co
 //   - CreateValidator
 //   - EditValidator
 //   - Delegate
+//   - DelegateToBondedValidators
 //   - Undelegate
 //   - Redelegate
 //   - CancelUnbondingDelegation
@@ -154,6 +157,7 @@ func (Precompile) IsTransaction(method *abi.Method) bool {
 	case CreateValidatorMethod,
 		EditValidatorMethod,
 		DelegateMethod,
+		DelegateToBondedValidatorsMethod,
 		UndelegateMethod,
 		RedelegateMethod,
 		CancelUnbondingDelegationMethod:
