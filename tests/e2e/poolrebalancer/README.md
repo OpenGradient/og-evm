@@ -60,3 +60,22 @@ bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh --scenario expansion
   - `evmd query poolrebalancer params ...`
   - `evmd query poolrebalancer pending-redelegations ...`
   - `evmd query poolrebalancer pending-undelegations ...`
+
+## Event Signals to Watch
+
+The rebalancer emits these event types during EndBlock processing:
+
+- `rebalance_summary`: successful operations were scheduled in this block.
+- `redelegation_started`: a redelegation was initiated and tracked.
+- `undelegation_started`: an undelegation fallback operation was initiated and tracked.
+- `redelegation_failed`: a candidate redelegation failed and was skipped for this pass.
+- `undelegation_failed`: undelegation fallback failed and the fallback loop stopped for this pass.
+- `redelegations_completed`: matured pending redelegation tracking entries were cleaned.
+- `undelegations_completed`: matured pending undelegation tracking entries were cleaned.
+
+For failure events, the `reason` attribute contains the underlying error string.
+
+## EndBlock Failure Policy
+
+- Cleanup phases (`CompletePendingRedelegations`, `CompletePendingUndelegations`) are strict; failures return an error.
+- `ProcessRebalance` is best-effort; failures are logged and retried on the next block.

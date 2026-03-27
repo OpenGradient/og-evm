@@ -152,6 +152,35 @@ func minInt(a, b math.Int) math.Int {
 	return b
 }
 
+func (k Keeper) emitRedelegationFailureEvent(ctx context.Context, del sdk.AccAddress, srcVal, dstVal sdk.ValAddress, coin sdk.Coin, reason string) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeRedelegationFailed,
+			sdk.NewAttribute(types.AttributeKeyDelegator, del.String()),
+			sdk.NewAttribute(types.AttributeKeySrcValidator, srcVal.String()),
+			sdk.NewAttribute(types.AttributeKeyDstValidator, dstVal.String()),
+			sdk.NewAttribute(types.AttributeKeyAmount, coin.Amount.String()),
+			sdk.NewAttribute(types.AttributeKeyDenom, coin.Denom),
+			sdk.NewAttribute(types.AttributeKeyReason, reason),
+		),
+	)
+}
+
+func (k Keeper) emitUndelegationFailureEvent(ctx context.Context, del sdk.AccAddress, val sdk.ValAddress, coin sdk.Coin, reason string) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeUndelegationFailed,
+			sdk.NewAttribute(types.AttributeKeyDelegator, del.String()),
+			sdk.NewAttribute(types.AttributeKeyValidator, val.String()),
+			sdk.NewAttribute(types.AttributeKeyAmount, coin.Amount.String()),
+			sdk.NewAttribute(types.AttributeKeyDenom, coin.Denom),
+			sdk.NewAttribute(types.AttributeKeyReason, reason),
+		),
+	)
+}
+
 // PickBestRedelegation selects a single (src, dst, amount) move based on deltas.
 // Ties are broken deterministically by (src,dst) ordering. If maxMove is non-zero, it caps the amount.
 func (k Keeper) PickBestRedelegation(
@@ -348,6 +377,8 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 					deltas[dstKey] = deltas[dstKey].Sub(amt)
 					opsDone++
 					continue
+				} else {
+					k.emitRedelegationFailureEvent(ctx, del, srcVal, dstVal, coin, err.Error())
 				}
 			}
 
@@ -376,6 +407,7 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 		}
 		coin := sdk.NewCoin(bondDenom, undelAmt)
 		if _, _, err := k.BeginTrackedUndelegation(ctx, del, valAddr, coin); err != nil {
+			k.emitUndelegationFailureEvent(ctx, del, valAddr, coin, err.Error())
 			break
 		}
 		deltas[valKey] = deltas[valKey].Add(undelAmt)

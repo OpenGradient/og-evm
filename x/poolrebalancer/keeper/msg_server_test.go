@@ -91,3 +91,14 @@ func TestMsgUpdateParams_ValidateBasic_RejectsInvalidParams(t *testing.T) {
 
 	require.Error(t, msg.ValidateBasic())
 }
+
+func TestSetParams_RejectsInvalidParamsDirectly(t *testing.T) {
+	ctx, k := newTestKeeper(t)
+
+	invalid := types.DefaultParams()
+	invalid.MaxTargetValidators = 0
+
+	err := k.SetParams(ctx, invalid)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "max_target_validators must be positive")
+}
