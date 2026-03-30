@@ -34,6 +34,12 @@ func (s msgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdateParam
 
 	// Governance guardrails
 	current := s.GetParams(ctx)
+
+	// After activation, half_life must remain strictly positive.
+	if s.GetActivated(ctx) && msg.Params.HalfLifeSeconds <= 0 {
+		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, "half_life_seconds must be > 0 while module is activated")
+	}
+
 	if s.GetActivated(ctx) && current.HalfLifeSeconds > 0 && msg.Params.HalfLifeSeconds > 0 {
 		// Reject if half_life changes by more than 50%
 		oldHL := float64(current.HalfLifeSeconds)
@@ -101,6 +107,12 @@ func (s msgServer) Reactivate(goCtx context.Context, msg *types.MsgReactivate) (
 		return nil, types.ErrNotYetActivated
 	}
 
+	// Defense-in-depth: ensure half_life is valid before restarting the curve.
+	params := s.GetParams(ctx)
+	if params.HalfLifeSeconds <= 0 {
+		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, "half_life_seconds must be set before reactivation")
+	}
+
 	// Re-snapshot pool balance and restart the decay curve
 	poolBalance := s.getPoolBalance(ctx)
 	if poolBalance.IsZero() {
@@ -117,7 +129,6 @@ func (s msgServer) Reactivate(goCtx context.Context, msg *types.MsgReactivate) (
 	// Clear paused state if reactivating while paused
 	s.SetPaused(ctx, false)
 
-	params := s.GetParams(ctx)
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		"svip_reactivated",
 		sdk.NewAttribute("pool_balance", poolBalance.String()),
