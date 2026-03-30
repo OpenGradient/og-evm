@@ -42,7 +42,7 @@ message QueryPoolStateRequest {}
 message QueryPoolStateResponse {
   // pool_balance is the current balance in the SVIP module account.
   cosmos.base.v1beta1.Coin pool_balance = 1 [ (gogoproto.nullable) = false ];
-  // total_distributed is cumulative tokens sent to FeeCollector.
+  // total_distributed is tokens sent to FeeCollector since the last (re)activation.
   string total_distributed = 2 [
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable) = false

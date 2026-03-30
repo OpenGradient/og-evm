@@ -33,7 +33,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 type GenesisState struct {
 	// params defines all the parameters of the svip module.
 	Params Params `protobuf:"bytes,1,opt,name=params,proto3" json:"params"`
-	// total_distributed is the cumulative tokens sent to FeeCollector.
+	// total_distributed is tokens sent to FeeCollector since the last (re)activation.
 	TotalDistributed cosmossdk_io_math.Int `protobuf:"bytes,2,opt,name=total_distributed,json=totalDistributed,proto3,customtype=cosmossdk.io/math.Int" json:"total_distributed"`
 	// activation_time is when SVIP was activated. Zero if not yet activated.
 	ActivationTime time.Time `protobuf:"bytes,3,opt,name=activation_time,json=activationTime,proto3,stdtime" json:"activation_time"`

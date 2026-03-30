@@ -913,7 +913,7 @@ type GenesisState struct {
 
 	// params defines all the parameters of the svip module.
 	Params *Params `protobuf:"bytes,1,opt,name=params,proto3" json:"params,omitempty"`
-	// total_distributed is the cumulative tokens sent to FeeCollector.
+	// total_distributed is tokens sent to FeeCollector since the last (re)activation.
 	TotalDistributed string `protobuf:"bytes,2,opt,name=total_distributed,json=totalDistributed,proto3" json:"total_distributed,omitempty"`
 	// activation_time is when SVIP was activated. Zero if not yet activated.
 	ActivationTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=activation_time,json=activationTime,proto3" json:"activation_time,omitempty"`

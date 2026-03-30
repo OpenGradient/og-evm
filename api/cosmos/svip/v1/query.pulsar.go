@@ -2026,7 +2026,7 @@ type QueryPoolStateResponse struct {
 
 	// pool_balance is the current balance in the SVIP module account.
 	PoolBalance *v1beta1.Coin `protobuf:"bytes,1,opt,name=pool_balance,json=poolBalance,proto3" json:"pool_balance,omitempty"`
-	// total_distributed is cumulative tokens sent to FeeCollector.
+	// total_distributed is tokens sent to FeeCollector since the last (re)activation.
 	TotalDistributed string `protobuf:"bytes,2,opt,name=total_distributed,json=totalDistributed,proto3" json:"total_distributed,omitempty"`
 	// current_rate_per_second is the current reward rate after decay.
 	CurrentRatePerSecond string `protobuf:"bytes,3,opt,name=current_rate_per_second,json=currentRatePerSecond,proto3" json:"current_rate_per_second,omitempty"`

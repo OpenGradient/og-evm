@@ -160,7 +160,7 @@ var xxx_messageInfo_QueryPoolStateRequest proto.InternalMessageInfo
 type QueryPoolStateResponse struct {
 	// pool_balance is the current balance in the SVIP module account.
 	PoolBalance types.Coin `protobuf:"bytes,1,opt,name=pool_balance,json=poolBalance,proto3" json:"pool_balance"`
-	// total_distributed is cumulative tokens sent to FeeCollector.
+	// total_distributed is tokens sent to FeeCollector since the last (re)activation.
 	TotalDistributed cosmossdk_io_math.Int `protobuf:"bytes,2,opt,name=total_distributed,json=totalDistributed,proto3,customtype=cosmossdk.io/math.Int" json:"total_distributed"`
 	// current_rate_per_second is the current reward rate after decay.
 	CurrentRatePerSecond cosmossdk_io_math.LegacyDec `protobuf:"bytes,3,opt,name=current_rate_per_second,json=currentRatePerSecond,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"current_rate_per_second"`

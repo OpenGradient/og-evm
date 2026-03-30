@@ -50,7 +50,7 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 
 // --- State accessors ---
 
-// GetTotalDistributed returns the cumulative amount of tokens distributed.
+// GetTotalDistributed returns the amount of tokens distributed since the last (re)activation.
 func (k Keeper) GetTotalDistributed(ctx sdk.Context) sdkmath.Int {
 	store := ctx.KVStore(k.storeKey)
 	bz := store.Get(types.TotalDistributedKey)
@@ -64,7 +64,7 @@ func (k Keeper) GetTotalDistributed(ctx sdk.Context) sdkmath.Int {
 	return val
 }
 
-// SetTotalDistributed sets the cumulative amount of tokens distributed.
+// SetTotalDistributed sets the amount of tokens distributed since the last (re)activation.
 func (k Keeper) SetTotalDistributed(ctx sdk.Context, val sdkmath.Int) {
 	store := ctx.KVStore(k.storeKey)
 	bz, err := val.Marshal()
