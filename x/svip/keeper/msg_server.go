@@ -82,6 +82,10 @@ func (s msgServer) Activate(goCtx context.Context, msg *types.MsgActivate) (*typ
 	}
 	s.SetPoolBalanceAtActivation(ctx, poolBalance)
 
+	// Clean any stale pause state before activating (defense-in-depth).
+	s.SetPaused(ctx, false)
+	s.SetTotalPausedSeconds(ctx, 0)
+
 	// Activate
 	s.SetActivated(ctx, true)
 	s.SetActivationTime(ctx, ctx.BlockTime())
@@ -144,6 +148,11 @@ func (s msgServer) Pause(goCtx context.Context, msg *types.MsgPause) (*types.Msg
 		return nil, errorsmod.Wrapf(govtypes.ErrInvalidSigner, "invalid authority; expected %s, got %s", s.authority.String(), msg.Authority)
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	if !s.GetActivated(ctx) {
+		return nil, types.ErrNotYetActivated
+	}
+
 	wasPaused := s.GetPaused(ctx)
 	s.SetPaused(ctx, msg.Paused)
 
