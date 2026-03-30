@@ -288,6 +288,9 @@ func TestPause_HappyPath(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
+	// Must be activated for pause to work
+	td.keeper.SetActivated(td.ctx, true)
+
 	// Set LastBlockTime so unpause has a valid reference point
 	td.keeper.SetLastBlockTime(td.ctx, td.ctx.BlockTime())
 
@@ -405,4 +408,162 @@ func TestBeginBlock_AfterPauseUnpause(t *testing.T) {
 	// Sanity: correct reward must be ~2x buggy reward after 1 half-life pause
 	require.True(t, correctReward.GT(buggyReward),
 		"correct reward (%s) should be ~2x buggy reward (%s)", correctReward, buggyReward)
+}
+
+func TestUpdateParams_RejectZeroHalfLifeWhenActivated(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	// Set a valid half-life and activate
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 31536000}))
+	td.keeper.SetActivated(td.ctx, true)
+
+	// Attempt to set half_life to 0 while activated — must fail
+	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
+		Authority: govAuthority(),
+		Params:    types.Params{HalfLifeSeconds: 0},
+	})
+	require.ErrorContains(t, err, "half_life_seconds must be > 0 while module is activated")
+
+	// Params must remain unchanged
+	require.Equal(t, int64(31536000), td.keeper.GetParams(td.ctx).HalfLifeSeconds)
+}
+
+func TestUpdateParams_AllowZeroHalfLifePreActivation(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	// Module is not activated — setting to 0 should be allowed (default state)
+	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
+		Authority: govAuthority(),
+		Params:    types.Params{HalfLifeSeconds: 0},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(0), td.keeper.GetParams(td.ctx).HalfLifeSeconds)
+}
+
+func TestUpdateParams_TwoStepExploitBlocked(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	// Set a valid half-life and activate
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 100_000_000}))
+	td.keeper.SetActivated(td.ctx, true)
+
+	// Step 1 of the exploit: try to set half_life to 0 — must be blocked
+	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
+		Authority: govAuthority(),
+		Params:    types.Params{HalfLifeSeconds: 0},
+	})
+	require.Error(t, err, "step 1 of two-step exploit must be blocked")
+
+	// Verify the half-life is still the original value
+	require.Equal(t, int64(100_000_000), td.keeper.GetParams(td.ctx).HalfLifeSeconds)
+
+	// Step 2 would have been: set to an arbitrary value bypassing the 50% cap.
+	// Since step 1 is blocked, the exploit is impossible. Verify the 50% cap
+	// still applies: jumping from 100M to 999B must fail.
+	_, err = srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
+		Authority: govAuthority(),
+		Params:    types.Params{HalfLifeSeconds: 999_999_999_999},
+	})
+	require.ErrorIs(t, err, types.ErrHalfLifeChange, "50%% cap must still block large jumps")
+}
+
+func TestReactivate_RejectZeroHalfLife(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	// Force an inconsistent state: activated=true but half_life=0
+	// (shouldn't happen with the UpdateParams fix, but tests defense-in-depth)
+	td.keeper.SetActivated(td.ctx, true)
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: 0}))
+
+	_, err := srv.Reactivate(td.ctx, &types.MsgReactivate{Authority: govAuthority()})
+	require.ErrorContains(t, err, "half_life_seconds must be set before reactivation")
+}
+
+func TestPause_RejectedBeforeActivation(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	// Module is not activated — pause must be rejected
+	_, err := srv.Pause(td.ctx, &types.MsgPause{Authority: govAuthority(), Paused: true})
+	require.ErrorIs(t, err, types.ErrNotYetActivated)
+
+	// Unpause also rejected before activation
+	_, err = srv.Pause(td.ctx, &types.MsgPause{Authority: govAuthority(), Paused: false})
+	require.ErrorIs(t, err, types.ErrNotYetActivated)
+}
+
+func TestActivate_ClearsStalePauseState(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	halfLife := int64(31536000)
+	poolBalance := sdkmath.NewInt(1_000_000_000_000)
+
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: halfLife}))
+
+	// Simulate poisoned pre-activation state (e.g. from genesis import)
+	td.keeper.SetPaused(td.ctx, true)
+	td.keeper.SetTotalPausedSeconds(td.ctx, 99999999999)
+
+	denom := vmtypes.GetEVMCoinDenom()
+	moduleAddr := authtypes.NewModuleAddress(types.ModuleName)
+	td.ak.On("GetModuleAddress", types.ModuleName).Return(moduleAddr)
+	td.bk.On("GetBalance", mock.Anything, moduleAddr, denom).Return(sdk.NewCoin(denom, poolBalance))
+
+	blockTime := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	ctx := td.ctx.WithBlockTime(blockTime)
+
+	_, err := srv.Activate(ctx, &types.MsgActivate{Authority: govAuthority()})
+	require.NoError(t, err)
+
+	// Verify activation cleaned the poisoned state
+	require.False(t, td.keeper.GetPaused(ctx), "activate must clear paused flag")
+	require.Equal(t, int64(0), td.keeper.GetTotalPausedSeconds(ctx), "activate must reset total_paused_seconds")
+	require.True(t, td.keeper.GetActivated(ctx))
+}
+
+func TestPause_PreActivationPoisonFixed(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	halfLife := int64(31536000)
+	poolBalance := sdkmath.NewInt(1_000_000_000_000_000)
+
+	require.NoError(t, td.keeper.SetParams(td.ctx, types.Params{HalfLifeSeconds: halfLife}))
+
+	denom := vmtypes.GetEVMCoinDenom()
+	moduleAddr := authtypes.NewModuleAddress(types.ModuleName)
+	td.ak.On("GetModuleAddress", types.ModuleName).Return(moduleAddr)
+	td.bk.On("GetBalance", mock.Anything, moduleAddr, denom).Return(sdk.NewCoin(denom, poolBalance))
+	td.bk.On("SendCoinsFromModuleToModule",
+		mock.Anything, types.ModuleName, authtypes.FeeCollectorName, mock.Anything,
+	).Return(nil)
+
+	// 1. Attempt pause before activation — must fail
+	_, err := srv.Pause(td.ctx, &types.MsgPause{Authority: govAuthority(), Paused: true})
+	require.ErrorIs(t, err, types.ErrNotYetActivated)
+
+	// 2. Activate
+	activationTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ctx := td.ctx.WithBlockTime(activationTime)
+	_, err = srv.Activate(ctx, &types.MsgActivate{Authority: govAuthority()})
+	require.NoError(t, err)
+
+	// 3. Verify TotalPausedSeconds is 0 after activation
+	require.Equal(t, int64(0), td.keeper.GetTotalPausedSeconds(ctx))
+
+	// 4. Run BeginBlock 10 seconds later — should produce rewards
+	t10 := activationTime.Add(10 * time.Second)
+	ctx10 := td.ctx.WithBlockTime(t10)
+	err = td.keeper.BeginBlock(ctx10)
+	require.NoError(t, err)
+
+	// 5. Verify rewards were actually distributed (not zero)
+	distributed := td.keeper.GetTotalDistributed(ctx10)
+	require.True(t, distributed.IsPositive(),
+		"rewards must be distributed after clean activation, got %s", distributed)
 }
