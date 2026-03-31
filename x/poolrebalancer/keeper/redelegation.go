@@ -21,8 +21,8 @@ func (k Keeper) addPendingRedelegation(ctx context.Context, del sdk.AccAddress, 
 	store := k.storeService.OpenKVStore(ctx)
 	denom := coin.Denom
 
-	// Primary key: merge if an entry already exists for the same (del, denom, dst, completion).
-	primaryKey := types.GetPendingRedelegationKey(del, denom, dstVal, completionTime)
+	// Primary key: merge if an entry already exists for the same (del, denom, src, dst, completion).
+	primaryKey := types.GetPendingRedelegationKey(del, denom, srcVal, dstVal, completionTime)
 	var entry types.PendingRedelegation
 	if bz, err := store.Get(primaryKey); err == nil && bz != nil && len(bz) > 0 {
 		if err := k.cdc.Unmarshal(bz, &entry); err != nil {
@@ -156,7 +156,7 @@ func (k Keeper) deletePendingRedelegation(ctx context.Context, entry types.Pendi
 	}
 	denom := entry.Amount.Denom
 
-	primaryKey := types.GetPendingRedelegationKey(del, denom, dstVal, completion)
+	primaryKey := types.GetPendingRedelegationKey(del, denom, srcVal, dstVal, completion)
 	if err := store.Delete(primaryKey); err != nil {
 		return err
 	}

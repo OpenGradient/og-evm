@@ -24,7 +24,7 @@ var (
 	ParamsKey = []byte{0x01} // module params
 
 	// Pending redelegation tracking.
-	// Primary key: (delegator, denom, dstValidator, completionTime)
+	// Primary key: (delegator, denom, dstValidator, srcValidator, completionTime)
 	PendingRedelegationKey = []byte{0x11}
 	// Index by source validator: (srcValidator, completionTime, denom, dstValidator, delegator)
 	PendingRedelegationBySrcIndexKey = []byte{0x12}
@@ -39,13 +39,14 @@ var (
 )
 
 // GetPendingRedelegationKey returns the primary key for a pending redelegation.
-// Key format: prefix | lengthPrefixed(delegator) | lengthPrefixed(denom) | lengthPrefixed(dstValidator) | completionTime.
-func GetPendingRedelegationKey(del sdk.AccAddress, denom string, dstVal sdk.ValAddress, completion time.Time) []byte {
+// Key format: prefix | lengthPrefixed(delegator) | lengthPrefixed(denom) | lengthPrefixed(dstValidator) | lengthPrefixed(srcValidator) | completionTime.
+func GetPendingRedelegationKey(del sdk.AccAddress, denom string, srcVal, dstVal sdk.ValAddress, completion time.Time) []byte {
 	key := make([]byte, 0)
 	key = append(key, PendingRedelegationKey...)
 	key = append(key, address.MustLengthPrefix(del)...)
 	key = append(key, address.MustLengthPrefix([]byte(denom))...)
 	key = append(key, address.MustLengthPrefix(dstVal)...)
+	key = append(key, address.MustLengthPrefix(srcVal)...)
 	key = append(key, sdk.FormatTimeBytes(completion)...)
 	return key
 }
