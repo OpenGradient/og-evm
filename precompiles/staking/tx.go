@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -32,6 +33,9 @@ const (
 	// UndelegateMethod defines the ABI method name for the staking Undelegate
 	// transaction.
 	UndelegateMethod = "undelegate"
+	// UndelegateFromBondedValidatorsMethod defines the ABI method name for
+	// undelegating across bonded validators in a single transaction.
+	UndelegateFromBondedValidatorsMethod = "undelegateFromBondedValidators"
 	// RedelegateMethod defines the ABI method name for the staking Redelegate
 	// transaction.
 	RedelegateMethod = "redelegate"
@@ -284,6 +288,164 @@ func (p *Precompile) DelegateToBondedValidators(
 	)
 
 	return method.Outputs.Pack(totalDelegated, validatorsUsed)
+}
+
+// UndelegateFromBondedValidators undelegates across bonded validators.
+// Selection policy is deterministic: largest delegation first, tie-broken by
+// validator address ascending.
+func (p *Precompile) UndelegateFromBondedValidators(
+	ctx sdk.Context,
+	contract *vm.Contract,
+	stateDB vm.StateDB,
+	method *abi.Method,
+	args []interface{},
+) ([]byte, error) {
+	input, err := NewUndelegateFromBondedValidatorsArgs(args)
+	if err != nil {
+		return nil, err
+	}
+
+	msgSender := contract.Caller()
+	if msgSender != input.DelegatorAddress {
+		return nil, fmt.Errorf(cmn.ErrRequesterIsNotMsgSender, msgSender.String(), input.DelegatorAddress.String())
+	}
+
+	bondDenom, err := p.stakingKeeper.BondDenom(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	delegatorAddrStr, err := p.addrCdc.BytesToString(input.DelegatorAddress.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode delegator address: %w", err)
+	}
+
+	type candidateUndelegation struct {
+		validatorAddress string
+		amount           *big.Int
+	}
+
+	candidates := make([]candidateUndelegation, 0)
+	var nextKey []byte
+	for {
+		delegationsRes, err := p.stakingQuerier.DelegatorDelegations(ctx, &stakingtypes.QueryDelegatorDelegationsRequest{
+			DelegatorAddr: delegatorAddrStr,
+			Pagination: &query.PageRequest{
+				Key:   nextKey,
+				Limit: 200,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, delResp := range delegationsRes.DelegationResponses {
+			amount := delResp.Balance.Amount.BigInt()
+			if amount.Sign() <= 0 {
+				continue
+			}
+
+			validatorRes, err := p.stakingQuerier.Validator(ctx, &stakingtypes.QueryValidatorRequest{
+				ValidatorAddr: delResp.Delegation.ValidatorAddress,
+			})
+			if err != nil {
+				return nil, err
+			}
+			if validatorRes.Validator.Status != stakingtypes.Bonded {
+				continue
+			}
+
+			candidates = append(candidates, candidateUndelegation{
+				validatorAddress: delResp.Delegation.ValidatorAddress,
+				amount:           amount,
+			})
+		}
+		if delegationsRes.Pagination == nil || len(delegationsRes.Pagination.NextKey) == 0 {
+			break
+		}
+		nextKey = delegationsRes.Pagination.NextKey
+	}
+
+	if len(candidates) == 0 {
+		return nil, errors.New("no bonded delegations found")
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		cmp := candidates[i].amount.Cmp(candidates[j].amount)
+		if cmp != 0 {
+			return cmp > 0
+		}
+		return candidates[i].validatorAddress < candidates[j].validatorAddress
+	})
+
+	remaining := new(big.Int).Set(input.Amount)
+	undelegatedAmount := big.NewInt(0)
+	validatorsUsed := uint32(0)
+	var maturityTime int64
+
+	for _, candidate := range candidates {
+		if remaining.Sign() == 0 || validatorsUsed >= input.MaxValidators {
+			break
+		}
+
+		stepAmount := new(big.Int).Set(remaining)
+		if candidate.amount.Cmp(stepAmount) < 0 {
+			stepAmount = new(big.Int).Set(candidate.amount)
+		}
+		if stepAmount.Sign() == 0 {
+			continue
+		}
+
+		msg := &stakingtypes.MsgUndelegate{
+			DelegatorAddress: delegatorAddrStr,
+			ValidatorAddress: candidate.validatorAddress,
+			Amount: sdk.Coin{
+				Denom:  bondDenom,
+				Amount: math.NewIntFromBigInt(stepAmount),
+			},
+		}
+
+		res, err := p.stakingMsgServer.Undelegate(ctx, msg)
+		if err != nil {
+			return nil, err
+		}
+
+		completion := res.CompletionTime.UTC().Unix()
+		if completion > maturityTime {
+			maturityTime = completion
+		}
+		if err = p.EmitUnbondEvent(ctx, stateDB, msg, input.DelegatorAddress, completion); err != nil {
+			return nil, err
+		}
+
+		undelegatedAmount.Add(undelegatedAmount, stepAmount)
+		remaining.Sub(remaining, stepAmount)
+		validatorsUsed++
+	}
+
+	if remaining.Sign() > 0 {
+		return nil, fmt.Errorf(
+			"insufficient bonded delegations to undelegate requested amount: requested=%s undelegated=%s",
+			input.Amount.String(),
+			undelegatedAmount.String(),
+		)
+	}
+
+	p.Logger(ctx).Debug(
+		"tx called",
+		"method", method.Name,
+		"args", fmt.Sprintf(
+			"{ delegator_address: %s, amount: %s, max_validators: %d, undelegated_amount: %s, validators_used: %d, maturity_time: %d }",
+			input.DelegatorAddress,
+			input.Amount,
+			input.MaxValidators,
+			undelegatedAmount,
+			validatorsUsed,
+			maturityTime,
+		),
+	)
+
+	return method.Outputs.Pack(undelegatedAmount, validatorsUsed, maturityTime)
 }
 
 // Undelegate performs the undelegation of coins from a validator for a delegate.

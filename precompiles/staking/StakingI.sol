@@ -174,6 +174,18 @@ interface StakingI {
         uint256 amount
     ) external returns (bool success);
 
+    /// @dev Defines a method for delegating a total amount across bonded validators.
+    /// @param delegatorAddress The address of the delegator.
+    /// @param amount The total amount of bond denomination to delegate.
+    /// @param maxValidators Max bonded validators to include (first N in precompile order).
+    /// @return delegatedAmount The total amount actually delegated.
+    /// @return validatorsUsed Number of validators used for the delegation.
+    function delegateToBondedValidators(
+        address delegatorAddress,
+        uint256 amount,
+        uint32 maxValidators
+    ) external returns (uint256 delegatedAmount, uint32 validatorsUsed);
+
     /// @dev Defines a method for performing an undelegation from a delegate and a validator.
     /// @param delegatorAddress The address of the delegator
     /// @param validatorAddress The address of the validator
@@ -185,6 +197,19 @@ interface StakingI {
         string memory validatorAddress,
         uint256 amount
     ) external returns (int64 completionTime);
+
+    /// @dev Defines a method for undelegating a total amount across bonded validators.
+    /// @param delegatorAddress The address of the delegator.
+    /// @param amount The total amount of bond denomination to undelegate.
+    /// @param maxValidators Max bonded validators to undelegate from.
+    /// @return undelegatedAmount The total amount actually undelegated.
+    /// @return validatorsUsed Number of validators used for the undelegation.
+    /// @return maturityTime The maximum completion time across internal undelegations.
+    function undelegateFromBondedValidators(
+        address delegatorAddress,
+        uint256 amount,
+        uint32 maxValidators
+    ) external returns (uint256 undelegatedAmount, uint32 validatorsUsed, int64 maturityTime);
 
     /// @dev Defines a method for performing a redelegation
     /// of coins from a delegator and source validator to a destination validator.

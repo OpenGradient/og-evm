@@ -84,6 +84,14 @@ type DelegateToBondedValidatorsArgs struct {
 	MaxValidators    uint32
 }
 
+// UndelegateFromBondedValidatorsArgs is the parsed input for undelegating
+// across bonded validators.
+type UndelegateFromBondedValidatorsArgs struct {
+	DelegatorAddress common.Address
+	Amount           *big.Int
+	MaxValidators    uint32
+}
+
 // Description defines a validator description.
 type Description = struct {
 	Moniker         string `json:"moniker"`
@@ -413,6 +421,41 @@ func NewDelegateToBondedValidatorsArgs(args []interface{}) (*DelegateToBondedVal
 	}
 
 	return &DelegateToBondedValidatorsArgs{
+		DelegatorAddress: delegatorAddr,
+		Amount:           amount,
+		MaxValidators:    maxValidators,
+	}, nil
+}
+
+// NewUndelegateFromBondedValidatorsArgs validates and parses arguments for the
+// undelegateFromBondedValidators transaction.
+func NewUndelegateFromBondedValidatorsArgs(args []interface{}) (*UndelegateFromBondedValidatorsArgs, error) {
+	if len(args) != 3 {
+		return nil, fmt.Errorf(cmn.ErrInvalidNumberOfArgs, 3, len(args))
+	}
+
+	delegatorAddr, ok := args[0].(common.Address)
+	if !ok || delegatorAddr == (common.Address{}) {
+		return nil, fmt.Errorf(cmn.ErrInvalidDelegator, args[0])
+	}
+
+	amount, ok := args[1].(*big.Int)
+	if !ok {
+		return nil, fmt.Errorf(cmn.ErrInvalidAmount, args[1])
+	}
+	if amount.Sign() <= 0 {
+		return nil, errors.New("amount must be greater than zero")
+	}
+
+	maxValidators, ok := args[2].(uint32)
+	if !ok {
+		return nil, fmt.Errorf(cmn.ErrInvalidType, "maxValidators", "uint32", args[2])
+	}
+	if maxValidators == 0 {
+		return nil, errors.New("maxValidators must be greater than zero")
+	}
+
+	return &UndelegateFromBondedValidatorsArgs{
 		DelegatorAddress: delegatorAddr,
 		Amount:           amount,
 		MaxValidators:    maxValidators,

@@ -303,6 +303,35 @@
         "type": "address"
       },
       {
+        "internalType": "string",
+        "name": "validatorAddress",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "delegate",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "success",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "delegatorAddress",
+        "type": "address"
+      },
+      {
         "internalType": "uint256",
         "name": "amount",
         "type": "uint256"
@@ -324,35 +353,6 @@
         "internalType": "uint32",
         "name": "validatorsUsed",
         "type": "uint32"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "delegatorAddress",
-        "type": "address"
-      },
-      {
-        "internalType": "string",
-        "name": "validatorAddress",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "delegate",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "success",
-        "type": "bool"
       }
     ],
     "stateMutability": "nonpayable",
@@ -831,6 +831,45 @@
       {
         "internalType": "int64",
         "name": "completionTime",
+        "type": "int64"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "delegatorAddress",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "maxValidators",
+        "type": "uint32"
+      }
+    ],
+    "name": "undelegateFromBondedValidators",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "undelegatedAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "validatorsUsed",
+        "type": "uint32"
+      },
+      {
+        "internalType": "int64",
+        "name": "maturityTime",
         "type": "int64"
       }
     ],

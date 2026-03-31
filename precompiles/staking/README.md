@@ -104,6 +104,13 @@ function undelegate(
     uint256 amount
 ) external returns (int64 completionTime);
 
+// Undelegate across bonded validators using deterministic largest-first selection
+function undelegateFromBondedValidators(
+    address delegatorAddress,
+    uint256 amount,
+    uint32 maxValidators
+) external returns (uint256 undelegatedAmount, uint32 validatorsUsed, int64 maturityTime);
+
 // Redelegate tokens between validators
 function redelegate(
     address delegatorAddress,
@@ -182,6 +189,7 @@ The precompile uses standard gas configuration for storage operations.
 - **Delegate**: Stakes tokens with a validator, receiving shares in return
 - **Delegate to Bonded Validators**: Delegates one amount across up to `maxValidators` bonded validators in precompile order
 - **Undelegate**: Initiates unbonding process (subject to unbonding period)
+- **Undelegate from Bonded Validators**: Undelegates one amount across up to `maxValidators` bonded validators using deterministic largest-first selection
 - **Redelegate**: Moves stake between validators without unbonding period
 - **Cancel Unbonding**: Reverses an unbonding delegation before completion
 
@@ -191,6 +199,14 @@ The precompile uses standard gas configuration for storage operations.
 - **Split/remainder**: Uses integer split `amount / n`; remainder `amount % n` is distributed as `+1` to first validators deterministically.
 - **Return shape**: Returns `(delegatedAmount, validatorsUsed)`.
 - **Atomicity**: If any internal delegate operation fails, the whole transaction reverts and no partial staking state is persisted.
+
+### `undelegateFromBondedValidators` Policy
+
+- **Selection**: Considers bonded delegations only, then sorts by delegation amount descending and validator address ascending.
+- **Cap/order**: Processes candidates in that deterministic order up to `maxValidators`.
+- **Return shape**: Returns `(undelegatedAmount, validatorsUsed, maturityTime)` where `maturityTime` is the max completion time across internal undelegations.
+- **Exactness**: Requires exact fulfillment of requested amount; otherwise transaction reverts.
+- **Atomicity**: If any internal undelegate operation fails, the whole transaction reverts and no partial undelegation state is persisted.
 
 ### Address Formats
 
