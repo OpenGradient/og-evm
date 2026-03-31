@@ -645,3 +645,197 @@ func TestNewUnbondingDelegationRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestNewDelegateToBondedValidatorsArgs(t *testing.T) {
+	delegatorAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
+	amount := big.NewInt(1000000000)
+	maxValidators := uint32(8)
+
+	tests := []struct {
+		name              string
+		args              []interface{}
+		wantErr           bool
+		errMsg            string
+		wantDelegatorAddr common.Address
+		wantAmount        *big.Int
+		wantMaxValidators uint32
+	}{
+		{
+			name:              "valid",
+			args:              []interface{}{delegatorAddr, amount, maxValidators},
+			wantErr:           false,
+			wantDelegatorAddr: delegatorAddr,
+			wantAmount:        amount,
+			wantMaxValidators: maxValidators,
+		},
+		{
+			name:    "no arguments",
+			args:    []interface{}{},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidNumberOfArgs, 3, 0),
+		},
+		{
+			name:    "too many arguments",
+			args:    []interface{}{delegatorAddr, amount, maxValidators, "extra"},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidNumberOfArgs, 3, 4),
+		},
+		{
+			name:    "invalid delegator type",
+			args:    []interface{}{"not-an-address", amount, maxValidators},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidDelegator, "not-an-address"),
+		},
+		{
+			name:    "empty delegator address",
+			args:    []interface{}{common.Address{}, amount, maxValidators},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidDelegator, common.Address{}),
+		},
+		{
+			name:    "invalid amount type",
+			args:    []interface{}{delegatorAddr, "not-a-big-int", maxValidators},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidAmount, "not-a-big-int"),
+		},
+		{
+			name:    "zero amount",
+			args:    []interface{}{delegatorAddr, big.NewInt(0), maxValidators},
+			wantErr: true,
+			errMsg:  "amount must be greater than zero",
+		},
+		{
+			name:    "negative amount",
+			args:    []interface{}{delegatorAddr, big.NewInt(-1), maxValidators},
+			wantErr: true,
+			errMsg:  "amount must be greater than zero",
+		},
+		{
+			name:    "invalid max validators type",
+			args:    []interface{}{delegatorAddr, amount, "not-uint32"},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidType, "maxValidators", "uint32", "not-uint32"),
+		},
+		{
+			name:    "zero max validators",
+			args:    []interface{}{delegatorAddr, amount, uint32(0)},
+			wantErr: true,
+			errMsg:  "maxValidators must be greater than zero",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := NewDelegateToBondedValidatorsArgs(tt.args)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errMsg)
+				require.Nil(t, parsed)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, parsed)
+				require.Equal(t, tt.wantDelegatorAddr, parsed.DelegatorAddress)
+				require.Equal(t, tt.wantAmount, parsed.Amount)
+				require.Equal(t, tt.wantMaxValidators, parsed.MaxValidators)
+			}
+		})
+	}
+}
+
+func TestNewUndelegateFromBondedValidatorsArgs(t *testing.T) {
+	delegatorAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
+	amount := big.NewInt(1000000000)
+	maxValidators := uint32(8)
+
+	tests := []struct {
+		name              string
+		args              []interface{}
+		wantErr           bool
+		errMsg            string
+		wantDelegatorAddr common.Address
+		wantAmount        *big.Int
+		wantMaxValidators uint32
+	}{
+		{
+			name:              "valid",
+			args:              []interface{}{delegatorAddr, amount, maxValidators},
+			wantErr:           false,
+			wantDelegatorAddr: delegatorAddr,
+			wantAmount:        amount,
+			wantMaxValidators: maxValidators,
+		},
+		{
+			name:    "no arguments",
+			args:    []interface{}{},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidNumberOfArgs, 3, 0),
+		},
+		{
+			name:    "too many arguments",
+			args:    []interface{}{delegatorAddr, amount, maxValidators, "extra"},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidNumberOfArgs, 3, 4),
+		},
+		{
+			name:    "invalid delegator type",
+			args:    []interface{}{"not-an-address", amount, maxValidators},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidDelegator, "not-an-address"),
+		},
+		{
+			name:    "empty delegator address",
+			args:    []interface{}{common.Address{}, amount, maxValidators},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidDelegator, common.Address{}),
+		},
+		{
+			name:    "invalid amount type",
+			args:    []interface{}{delegatorAddr, "not-a-big-int", maxValidators},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidAmount, "not-a-big-int"),
+		},
+		{
+			name:    "zero amount",
+			args:    []interface{}{delegatorAddr, big.NewInt(0), maxValidators},
+			wantErr: true,
+			errMsg:  "amount must be greater than zero",
+		},
+		{
+			name:    "negative amount",
+			args:    []interface{}{delegatorAddr, big.NewInt(-1), maxValidators},
+			wantErr: true,
+			errMsg:  "amount must be greater than zero",
+		},
+		{
+			name:    "invalid max validators type",
+			args:    []interface{}{delegatorAddr, amount, "not-uint32"},
+			wantErr: true,
+			errMsg:  fmt.Sprintf(cmn.ErrInvalidType, "maxValidators", "uint32", "not-uint32"),
+		},
+		{
+			name:    "zero max validators",
+			args:    []interface{}{delegatorAddr, amount, uint32(0)},
+			wantErr: true,
+			errMsg:  "maxValidators must be greater than zero",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := NewUndelegateFromBondedValidatorsArgs(tt.args)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errMsg)
+				require.Nil(t, parsed)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, parsed)
+				require.Equal(t, tt.wantDelegatorAddr, parsed.DelegatorAddress)
+				require.Equal(t, tt.wantAmount, parsed.Amount)
+				require.Equal(t, tt.wantMaxValidators, parsed.MaxValidators)
+			}
+		})
+	}
+}

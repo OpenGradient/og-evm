@@ -635,6 +635,38 @@ func TestPrecompileIntegrationTestSuite(t *testing.T, create network.CreateEvmAp
 				Expect(validatorsUsed).To(Equal(uint32(1)))
 			})
 
+			It("should use fewer validators when amount is smaller than maxValidators", func() {
+				newAddr, newAddrPriv := testutiltx.NewAccAddressAndKey()
+				err := utils.FundAccountWithBaseDenom(s.factory, s.network, s.keyring.GetKey(0), newAddr, math.NewInt(2e18))
+				Expect(err).To(BeNil(), "error while funding account")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(1),
+					uint32(2),
+				}
+				logCheckArgs := passCheck.WithExpEvents(staking.EventTypeDelegate)
+
+				_, ethRes, err := s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					logCheckArgs,
+				)
+				Expect(err).To(BeNil(), "error while calling the smart contract: %v", err)
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				unpacked, err := s.precompile.ABI.Unpack(staking.DelegateToBondedValidatorsMethod, ethRes.Ret)
+				Expect(err).To(BeNil(), "error while unpacking tx output")
+				delegatedAmount, ok := unpacked[0].(*big.Int)
+				Expect(ok).To(BeTrue())
+				validatorsUsed, ok := unpacked[1].(uint32)
+				Expect(ok).To(BeTrue())
+				Expect(delegatedAmount).To(Equal(big.NewInt(1)))
+				Expect(validatorsUsed).To(Equal(uint32(1)))
+			})
+
 			It("should fail when caller is different from delegator address", func() {
 				delegator := s.keyring.GetKey(0)
 				differentAddr := testutiltx.GenerateAddress()
@@ -712,6 +744,280 @@ func TestPrecompileIntegrationTestSuite(t *testing.T, create network.CreateEvmAp
 					Expect(delErr).ToNot(BeNil(), "expected no delegation persisted for validator %s", v.OperatorAddress)
 				}
 			})
+		})
+
+		Describe("to undelegate across bonded validators", func() {
+			var (
+				setupDelegations = func() (sdk.AccAddress, *ethsecp256k1.PrivKey) {
+					newAddr, newAddrPriv := testutiltx.NewAccAddressAndKey()
+					err := utils.FundAccountWithBaseDenom(s.factory, s.network, s.keyring.GetKey(0), newAddr, math.NewInt(4e18))
+					Expect(err).To(BeNil(), "error while funding account")
+					Expect(s.network.NextBlock()).To(BeNil())
+
+					callArgs.MethodName = staking.DelegateMethod
+					callArgs.Args = []interface{}{common.BytesToAddress(newAddr), valAddr.String(), big.NewInt(2e18)}
+					_, _, err = s.factory.CallContractAndCheckLogs(
+						newAddrPriv,
+						txArgs,
+						callArgs,
+						passCheck.WithExpEvents(staking.EventTypeDelegate),
+					)
+					Expect(err).To(BeNil(), "error while delegating to first validator")
+					Expect(s.network.NextBlock()).To(BeNil())
+
+					callArgs.Args = []interface{}{common.BytesToAddress(newAddr), valAddr2.String(), big.NewInt(1e18)}
+					_, _, err = s.factory.CallContractAndCheckLogs(
+						newAddrPriv,
+						txArgs,
+						callArgs,
+						passCheck.WithExpEvents(staking.EventTypeDelegate),
+					)
+					Expect(err).To(BeNil(), "error while delegating to second validator")
+					Expect(s.network.NextBlock()).To(BeNil())
+
+					return newAddr, newAddrPriv
+				}
+				amountForValidator = func(res *stakingtypes.QueryDelegatorDelegationsResponse, validatorAddr string) *big.Int {
+					for _, dr := range res.DelegationResponses {
+						if dr.Delegation.ValidatorAddress == validatorAddr {
+							return dr.Balance.Amount.BigInt()
+						}
+					}
+					return big.NewInt(0)
+				}
+			)
+
+			BeforeEach(func() {
+				callArgs.MethodName = staking.UndelegateFromBondedValidatorsMethod
+			})
+
+			It("should undelegate largest-first and return tuple", func() {
+				newAddr, newAddrPriv := setupDelegations()
+				prevGasLimit := txArgs.GasLimit
+				txArgs.GasLimit = 5_000_000
+				defer func() { txArgs.GasLimit = prevGasLimit }()
+
+				requested := big.NewInt(2500000000000000000) // 2.5e18
+				callArgs.MethodName = staking.UndelegateFromBondedValidatorsMethod
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					requested,
+					uint32(2),
+				}
+
+				_, ethRes, err := s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					passCheck.WithExpEvents(staking.EventTypeUnbond, staking.EventTypeUnbond),
+				)
+				Expect(err).To(BeNil(), "error while calling undelegateFromBondedValidators")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				unpacked, err := s.precompile.ABI.Unpack(staking.UndelegateFromBondedValidatorsMethod, ethRes.Ret)
+				Expect(err).To(BeNil(), "error while unpacking tx output")
+				Expect(unpacked).To(HaveLen(3))
+
+				undelegatedAmount, ok := unpacked[0].(*big.Int)
+				Expect(ok).To(BeTrue(), "expected undelegatedAmount to be *big.Int")
+				validatorsUsed, ok := unpacked[1].(uint32)
+				Expect(ok).To(BeTrue(), "expected validatorsUsed to be uint32")
+				maturityTime, ok := unpacked[2].(int64)
+				Expect(ok).To(BeTrue(), "expected maturityTime to be int64")
+				Expect(undelegatedAmount).To(Equal(requested))
+				Expect(validatorsUsed).To(Equal(uint32(2)))
+				Expect(maturityTime).To(BeNumerically(">", 0))
+
+				res, err := s.grpcHandler.GetDelegatorDelegations(newAddr.String())
+				Expect(err).To(BeNil(), "failed querying delegator delegations")
+
+				// Largest-first expectation with initial balances [2e18, 1e18] and request 2.5e18:
+				// first validator drained to 0, second reduced to 0.5e18.
+				Expect(amountForValidator(res, valAddr.String())).To(Equal(big.NewInt(0)))
+				Expect(amountForValidator(res, valAddr2.String())).To(Equal(big.NewInt(500000000000000000)))
+
+				// Invariant: precompile returns the maximum completion time across all
+				// undelegation steps, so pool callers can wait for a single maturity timestamp.
+				ubdRes, ubdErr := s.grpcHandler.GetDelegatorUnbondingDelegations(newAddr.String())
+				Expect(ubdErr).To(BeNil(), "failed querying unbonding delegations")
+				maxCompletion := int64(0)
+				for _, ubd := range ubdRes.UnbondingResponses {
+					for _, entry := range ubd.Entries {
+						completion := entry.CompletionTime.UTC().Unix()
+						if completion > maxCompletion {
+							maxCompletion = completion
+						}
+					}
+				}
+				Expect(maxCompletion).To(BeNumerically(">", 0))
+				Expect(maturityTime).To(Equal(maxCompletion))
+			})
+
+			It("should break ties by validator address ascending", func() {
+				newAddr, newAddrPriv := testutiltx.NewAccAddressAndKey()
+				err := utils.FundAccountWithBaseDenom(s.factory, s.network, s.keyring.GetKey(0), newAddr, math.NewInt(3e18))
+				Expect(err).To(BeNil(), "error while funding account")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				// Equal delegations to both validators so address order decides selection.
+				callArgs.MethodName = staking.DelegateMethod
+				callArgs.Args = []interface{}{common.BytesToAddress(newAddr), valAddr.String(), big.NewInt(1e18)}
+				_, _, err = s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					passCheck.WithExpEvents(staking.EventTypeDelegate),
+				)
+				Expect(err).To(BeNil(), "error while delegating to first validator")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				callArgs.Args = []interface{}{common.BytesToAddress(newAddr), valAddr2.String(), big.NewInt(1e18)}
+				_, _, err = s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					passCheck.WithExpEvents(staking.EventTypeDelegate),
+				)
+				Expect(err).To(BeNil(), "error while delegating to second validator")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				prevGasLimit := txArgs.GasLimit
+				txArgs.GasLimit = 5_000_000
+				defer func() { txArgs.GasLimit = prevGasLimit }()
+
+				callArgs.MethodName = staking.UndelegateFromBondedValidatorsMethod
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(1500000000000000000), // 1.5e18
+					uint32(2),
+				}
+				_, _, err = s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					passCheck.WithExpEvents(staking.EventTypeUnbond, staking.EventTypeUnbond),
+				)
+				Expect(err).To(BeNil(), "error while calling tie-break undelegation")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				first := valAddr.String()
+				second := valAddr2.String()
+				if second < first {
+					first, second = second, first
+				}
+
+				res, qErr := s.grpcHandler.GetDelegatorDelegations(newAddr.String())
+				Expect(qErr).To(BeNil(), "failed querying delegator delegations")
+
+				// Tie-break expectation:
+				// - lexicographically first validator is drained first (1e18 -> 0)
+				// - second validator provides the remainder (1e18 -> 0.5e18)
+				Expect(amountForValidator(res, first)).To(Equal(big.NewInt(0)))
+				Expect(amountForValidator(res, second)).To(Equal(big.NewInt(500000000000000000)))
+			})
+
+			It("should revert when maxValidators cap prevents exact undelegation", func() {
+				newAddr, newAddrPriv := setupDelegations()
+				prevGasLimit := txArgs.GasLimit
+				txArgs.GasLimit = 5_000_000
+				defer func() { txArgs.GasLimit = prevGasLimit }()
+
+				callArgs.MethodName = staking.UndelegateFromBondedValidatorsMethod
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(2500000000000000000), // 2.5e18
+					uint32(1),                       // cap prevents full amount
+				}
+
+				_, _, err := s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					defaultLogCheck.WithErrContains("insufficient bonded delegations to undelegate requested amount"),
+				)
+				Expect(err).To(BeNil(), "error while checking capped undelegation revert")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				// Atomicity: state remains unchanged on revert.
+				res, qErr := s.grpcHandler.GetDelegatorDelegations(newAddr.String())
+				Expect(qErr).To(BeNil())
+				Expect(amountForValidator(res, valAddr.String())).To(Equal(big.NewInt(2e18)))
+				Expect(amountForValidator(res, valAddr2.String())).To(Equal(big.NewInt(1e18)))
+			})
+
+			It("should revert when caller is different from delegator address", func() {
+				newAddr, _ := setupDelegations()
+				delegator := s.keyring.GetKey(0)
+				prevGasLimit := txArgs.GasLimit
+				txArgs.GasLimit = 5_000_000
+				defer func() { txArgs.GasLimit = prevGasLimit }()
+
+				callArgs.MethodName = staking.UndelegateFromBondedValidatorsMethod
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(1e18),
+					uint32(2),
+				}
+
+				_, _, err := s.factory.CallContractAndCheckLogs(
+					delegator.Priv,
+					txArgs,
+					callArgs,
+					defaultLogCheck.WithErrContains(
+						fmt.Sprintf(cmn.ErrRequesterIsNotMsgSender, delegator.Addr, common.BytesToAddress(newAddr).String()),
+					),
+				)
+				Expect(err).To(BeNil(), "error while checking requester mismatch revert")
+			})
+
+			It("should revert when maxValidators is zero", func() {
+				newAddr, newAddrPriv := setupDelegations()
+				prevGasLimit := txArgs.GasLimit
+				txArgs.GasLimit = 5_000_000
+				defer func() { txArgs.GasLimit = prevGasLimit }()
+
+				callArgs.MethodName = staking.UndelegateFromBondedValidatorsMethod
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(1e18),
+					uint32(0),
+				}
+
+				_, _, err := s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					defaultLogCheck.WithErrContains("maxValidators must be greater than zero"),
+				)
+				Expect(err).To(BeNil(), "error while checking maxValidators validation")
+			})
+
+			It("should revert when no bonded delegations exist", func() {
+				newAddr, newAddrPriv := testutiltx.NewAccAddressAndKey()
+				err := utils.FundAccountWithBaseDenom(s.factory, s.network, s.keyring.GetKey(0), newAddr, math.NewInt(1e18))
+				Expect(err).To(BeNil(), "error while funding account")
+				Expect(s.network.NextBlock()).To(BeNil())
+
+				prevGasLimit := txArgs.GasLimit
+				txArgs.GasLimit = 5_000_000
+				defer func() { txArgs.GasLimit = prevGasLimit }()
+
+				callArgs.MethodName = staking.UndelegateFromBondedValidatorsMethod
+				callArgs.Args = []interface{}{
+					common.BytesToAddress(newAddr),
+					big.NewInt(1),
+					uint32(2),
+				}
+
+				_, _, err = s.factory.CallContractAndCheckLogs(
+					newAddrPriv,
+					txArgs,
+					callArgs,
+					defaultLogCheck.WithErrContains("no bonded delegations found"),
+				)
+				Expect(err).To(BeNil(), "error while checking no bonded delegations revert")
+			})
+
 		})
 
 		Describe("to redelegate", func() {
