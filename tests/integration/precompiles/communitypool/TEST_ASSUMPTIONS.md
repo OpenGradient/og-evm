@@ -24,7 +24,7 @@ This document captures assumptions that the `communitypool` integration suite de
 - Deposit/withdraw accounting uses floor rounding and must never over-mint shares.
 - Dust deposits that mint zero units must revert and preserve unit state.
 - Owner-gated methods (`setConfig`, `syncTotalStaked`, `transferOwnership`) enforce access control.
-- `stake()` and `harvest()` are callable in the current implementation and are tested as operational actions, not owner-only actions.
+- `stake()` and `harvest()` are restricted to `owner` or configured `automationCaller`.
 - `stake()` delegates through `staking.delegateToBondedValidators(address(this), liquid, maxValidators)`.
 - The staking precompile path is atomic at transaction scope: if any internal per-validator delegate fails, no partial delegation state persists.
 - Validator selection policy for `stake()` is the first `maxValidators` bonded validators in staking precompile/keeper order.
@@ -35,4 +35,4 @@ This document captures assumptions that the `communitypool` integration suite de
 
 - If staking precompile validator ordering or bonded-set query semantics change, staking-path tests may fail and need expectation updates.
 - If default gas behavior changes in factory or precompiles, tx helper gas defaults may need adjustment.
-- If ownership/permissions policy changes (for example, restricting `stake`/`harvest`), tests must be updated to reflect the new access model.
+- If ownership/permissions policy changes, tests must be updated to reflect the new access model.

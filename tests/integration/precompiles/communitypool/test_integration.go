@@ -132,6 +132,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("creates async withdraw request and updates accounting", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 
 			depositAmount := big.NewInt(1000)
@@ -147,7 +148,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 			// Withdraw path is strict unbonding-based, so ensure principal is staked first.
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -183,6 +184,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("increments nextWithdrawRequestId across multiple requests", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 
 			depositAmount := big.NewInt(1000)
@@ -197,7 +199,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -305,6 +307,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("enforces maturity and ownership in claimWithdraw", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			other := s.keyring.GetKey(2)
 
@@ -320,7 +323,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -352,6 +355,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("claims matured withdraw and prevents double claim", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 
 			depositAmount := big.NewInt(1000)
@@ -366,7 +370,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -413,6 +417,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("emits withdraw lifecycle events with expected request id", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			depositAmount := big.NewInt(1000)
 			withdrawUnits := big.NewInt(400)
@@ -426,7 +431,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -476,6 +481,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("claims multiple matured requests out of order", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 
 			depositAmount := big.NewInt(1000)
@@ -490,7 +496,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -618,11 +624,64 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
+			s.execTxExpectCustomError(
+				nonOwner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", nonOwner.Addr),
+				"Unauthorized()",
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
 			// Owner can still execute privileged actions.
 			s.execTxExpectSuccess(
 				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "setConfig", uint32(20), uint32(7), big.NewInt(2)),
+			)
+		})
+
+		It("restricts stake and harvest to owner or automation caller", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			nonOwner := s.keyring.GetKey(1)
+			automation := s.keyring.GetKey(2)
+			depositAmount := big.NewInt(1000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				nonOwner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectCustomError(
+				nonOwner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+				"Unauthorized()",
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", automation.Addr),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				automation.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectCustomError(
+				nonOwner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "harvest"),
+				"Unauthorized()",
 			)
 		})
 
@@ -711,6 +770,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 		It("allows owner to call all privileged methods", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
 			owner := s.keyring.GetKey(0)
+			automation := s.keyring.GetKey(1)
 
 			s.execTxExpectSuccess(
 				owner.Priv,
@@ -726,10 +786,19 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", automation.Addr),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
 			maxValidators := s.queryPoolUint(0, poolAddr, "maxValidators")
 			totalStaked := s.queryPoolUint(0, poolAddr, "totalStaked")
+			automationCaller := s.queryPoolAddress(poolAddr, "automationCaller")
 			Expect(maxValidators.String()).To(Equal("6"))
 			Expect(totalStaked.String()).To(Equal("321"))
+			Expect(automationCaller.Hex()).To(Equal(automation.Addr.Hex()))
 		})
 
 		It("reverts setConfig when maxValidators is zero", func() {
@@ -797,7 +866,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -814,7 +883,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -893,6 +962,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 		It("stake is a no-op when liquid is below minStakeAmount", func() {
 			// minStakeAmount is intentionally set above deposit.
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(2000))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			depositAmount := big.NewInt(1000)
 
@@ -905,7 +975,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -917,6 +987,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("stake delegates liquid and updates totalStaked accounting", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			depositAmount := big.NewInt(1000)
 
@@ -929,7 +1000,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -941,6 +1012,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("stake creates on-chain delegation for pool contract delegator", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			depositAmount := big.NewInt(1000)
 			firstVal := s.network.GetValidators()[0].OperatorAddress
@@ -954,7 +1026,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -970,6 +1042,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("harvest executes successfully after staking", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			depositAmount := big.NewInt(1000)
 
@@ -982,14 +1055,14 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "harvest"),
 			)
@@ -998,6 +1071,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("harvest does not modify totalStaked accounting", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			depositAmount := big.NewInt(1000)
 
@@ -1010,7 +1084,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -1020,7 +1094,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			beforeLiquid := s.queryPoolUint(1, poolAddr, "liquidBalance")
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "harvest"),
 			)
@@ -1073,6 +1147,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 		It("claimRewards is idempotent for a given reward index", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
 			depositAmount := big.NewInt(1000)
 
@@ -1085,7 +1160,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "stake"),
 			)
@@ -1093,7 +1168,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 			// Harvest updates reward index and reserve (or leaves unchanged in zero-reward conditions).
 			s.execTxExpectSuccess(
-				user.Priv,
+				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "harvest"),
 			)

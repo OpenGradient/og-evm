@@ -24,6 +24,8 @@ contract CommunityPool {
     uint256 public constant PRECISION = 1e18;
 
     address public owner;
+    /// @dev Optional automation caller allowed to trigger periodic stake/harvest.
+    address public automationCaller;
     /// @dev Total ownership units minted by the pool.
     uint256 public totalUnits;
     /// @dev Accounting value of delegated principal (not auto-reconciled with staking state).
@@ -82,6 +84,7 @@ contract CommunityPool {
     error StakeablePrincipalInvariantViolation(uint256 accountedLiquid, uint256 liquidBalance);
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event AutomationCallerUpdated(address indexed previousCaller, address indexed newCaller);
     event ConfigUpdated(uint32 maxRetrieve, uint32 maxValidators, uint256 minStakeAmount);
     event Deposit(address indexed user, uint256 amount, uint256 mintedUnits, uint256 totalUnitsAfter);
     event Stake(uint256 liquidBefore, uint256 delegatedAmount, uint256 validatorsCount, uint256 totalStakedAfter);
@@ -106,6 +109,13 @@ contract CommunityPool {
 
     modifier onlyOwner() {
         if (msg.sender != owner) {
+            revert Unauthorized();
+        }
+        _;
+    }
+
+    modifier onlyAutomationOrOwner() {
+        if (msg.sender != owner && msg.sender != automationCaller) {
             revert Unauthorized();
         }
         _;
@@ -137,6 +147,7 @@ contract CommunityPool {
         maxValidators = maxValidators_;
         minStakeAmount = minStakeAmount_;
         owner = owner_;
+        automationCaller = owner_;
     }
 
     /// @notice Transfers owner privileges to a new address.
@@ -148,6 +159,16 @@ contract CommunityPool {
         address previousOwner = owner;
         owner = newOwner;
         emit OwnershipTransferred(previousOwner, newOwner);
+    }
+
+    /// @notice Sets the automation caller allowed to run stake/harvest besides owner.
+    function setAutomationCaller(address newAutomationCaller) external onlyOwner {
+        if (newAutomationCaller == address(0)) {
+            revert InvalidAddress();
+        }
+        address previousCaller = automationCaller;
+        automationCaller = newAutomationCaller;
+        emit AutomationCallerUpdated(previousCaller, newAutomationCaller);
     }
 
     /// @notice Updates operational parameters used by stake/harvest.
@@ -350,8 +371,8 @@ contract CommunityPool {
     }
 
     /// @notice Delegates available principal liquid to bonded validators via staking precompile.
-    /// @dev Uses a single precompile call that performs bonded-set selection and equal split.
-    function stake() external nonReentrant returns (uint256 delegatedAmount) {
+    /// @dev Callable by owner or automation caller; uses one precompile call for bonded-set selection and equal split.
+    function stake() external nonReentrant onlyAutomationOrOwner returns (uint256 delegatedAmount) {
         uint256 liquidBefore = stakeablePrincipalLedger;
         if (liquidBefore < minStakeAmount) {
             return 0;
@@ -370,8 +391,8 @@ contract CommunityPool {
     }
 
     /// @notice Claims staking rewards to this contract's liquid balance.
-    /// @dev Does not modify `totalStaked` because rewards are liquid yield, not principal.
-    function harvest() external nonReentrant returns (uint256 harvestedAmount) {
+    /// @dev Callable by owner or automation caller; does not modify `totalStaked` because rewards are liquid yield, not principal.
+    function harvest() external nonReentrant onlyAutomationOrOwner returns (uint256 harvestedAmount) {
         uint256 liquidBefore = liquidBalance();
         bool success = distribution.DISTRIBUTION_CONTRACT.claimRewards(
             address(this),

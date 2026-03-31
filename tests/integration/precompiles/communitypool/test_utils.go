@@ -118,6 +118,26 @@ func (s *IntegrationTestSuite) queryPoolUint(
 	}
 }
 
+func (s *IntegrationTestSuite) queryPoolAddress(
+	contractAddr common.Address,
+	method string,
+	args ...interface{},
+) common.Address {
+	txArgs := buildTxArgs(contractAddr)
+	callArgs := buildCallArgs(s.communityPoolContract, method, args...)
+
+	ethRes, err := s.factory.QueryContract(txArgs, callArgs, 0)
+	Expect(err).To(BeNil(), "query call failed")
+
+	out, err := s.communityPoolContract.ABI.Unpack(method, ethRes.Ret)
+	Expect(err).To(BeNil(), "failed to unpack query output")
+	Expect(out).To(HaveLen(1), "unexpected query output length")
+
+	addr, ok := out[0].(common.Address)
+	Expect(ok).To(BeTrue(), "unexpected query output type")
+	return addr
+}
+
 func (s *IntegrationTestSuite) execTxExpectSuccess(
 	priv cryptotypes.PrivKey,
 	txArgs evmtypes.EvmTxArgs,
