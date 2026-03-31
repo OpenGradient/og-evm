@@ -25,7 +25,6 @@ import (
 func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp, options ...network.ConfigOption) {
 	_ = Describe("CommunityPool integration scaffold", func() {
 		var s *IntegrationTestSuite
-		var err error
 
 		BeforeEach(func() {
 			s = NewIntegrationTestSuite(create, options...)
@@ -65,11 +64,12 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			owner := s.keyring.GetKey(0)
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
 
-			txArgs := buildTxArgs(poolAddr)
-			callArgs := buildCallArgs(s.communityPoolContract, "deposit", big.NewInt(0))
-			check := testutil.LogCheckArgs{}.WithErrContains(vm.ErrExecutionReverted.Error())
-			_, _, err := s.factory.CallContractAndCheckLogs(owner.Priv, txArgs, callArgs, check)
-			Expect(err).To(BeNil())
+			s.execTxExpectCustomError(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", big.NewInt(0)),
+				"InvalidAmount()",
+			)
 		})
 
 		It("mints 1:1 units on first deposit", func() {
@@ -130,7 +130,227 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(totalUnits.String()).To(Equal("1500"))
 		})
 
-		It("withdraws successfully when enough liquid is available", func() {
+		It("creates async withdraw request and updates accounting", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			depositAmount := big.NewInt(1000)
+			withdrawUnits := big.NewInt(400)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Withdraw path is strict unbonding-based, so ensure principal is staked first.
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			remainingUnits := s.queryPoolUint(1, poolAddr, "unitsOf", user.Addr)
+			totalUnits := s.queryPoolUint(1, poolAddr, "totalUnits")
+			Expect(remainingUnits.String()).To(Equal("600"))
+			Expect(totalUnits.String()).To(Equal("600"))
+
+			totalStaked := s.queryPoolUint(1, poolAddr, "totalStaked")
+			pendingReserve := s.queryPoolUint(1, poolAddr, "pendingWithdrawReserve")
+			maturedReserve := s.queryPoolUint(1, poolAddr, "maturedWithdrawReserve")
+			Expect(totalStaked.String()).To(Equal("600"))
+			Expect(pendingReserve.String()).To(Equal("400"))
+			Expect(maturedReserve.Sign()).To(Equal(0))
+
+			request := s.queryWithdrawRequest(poolAddr, big.NewInt(1))
+			Expect(request.Owner).To(Equal(user.Addr))
+			Expect(request.AmountOut.String()).To(Equal("400"))
+			Expect(request.ReserveMoved).To(BeFalse())
+			Expect(request.Claimed).To(BeFalse())
+			Expect(request.Maturity).To(BeNumerically(">", 0))
+			s.assertPoolInvariants(poolAddr)
+		})
+
+		It("increments nextWithdrawRequestId across multiple requests", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			depositAmount := big.NewInt(1000)
+			withdrawUnits := big.NewInt(200)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Starts at 1 before any request.
+			nextBefore := s.queryPoolUint(1, poolAddr, "nextWithdrawRequestId")
+			Expect(nextBefore.String()).To(Equal("1"))
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			nextAfterFirst := s.queryPoolUint(1, poolAddr, "nextWithdrawRequestId")
+			Expect(nextAfterFirst.String()).To(Equal("2"))
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			nextAfterSecond := s.queryPoolUint(1, poolAddr, "nextWithdrawRequestId")
+			Expect(nextAfterSecond.String()).To(Equal("3"))
+
+			req1 := s.queryWithdrawRequest(poolAddr, big.NewInt(1))
+			req2 := s.queryWithdrawRequest(poolAddr, big.NewInt(2))
+			Expect(req1.Owner).To(Equal(user.Addr))
+			Expect(req2.Owner).To(Equal(user.Addr))
+			Expect(req1.AmountOut.String()).To(Equal("200"))
+			Expect(req2.AmountOut.String()).To(Equal("200"))
+			Expect(req1.Claimed).To(BeFalse())
+			Expect(req2.Claimed).To(BeFalse())
+			s.assertPoolInvariants(poolAddr)
+		})
+
+		It("reverts withdraw when userUnits is zero", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			depositAmount := big.NewInt(1000)
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectCustomError(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", big.NewInt(0)),
+				"InvalidUnits()",
+			)
+			s.assertPoolInvariants(poolAddr)
+		})
+
+		It("reverts withdraw when requested units exceed user balance", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			depositAmount := big.NewInt(1000)
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectCustomError(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", big.NewInt(1001)),
+				"InvalidUnits()",
+			)
+			s.assertPoolInvariants(poolAddr)
+		})
+
+		It("reverts withdraw when no staked principal exists", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			depositAmount := big.NewInt(1000)
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectCustomError(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", big.NewInt(1000)),
+				"InvalidAmount()",
+			)
+		})
+
+		It("enforces maturity and ownership in claimWithdraw", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+			other := s.keyring.GetKey(2)
+
+			depositAmount := big.NewInt(1000)
+			withdrawUnits := big.NewInt(400)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Request owner only.
+			s.execTxExpectCustomError(
+				other.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(1)),
+				"Unauthorized()",
+			)
+
+			// Request cannot be claimed before maturity.
+			s.execTxExpectCustomError(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(1)),
+				"RequestNotMatured(uint64,uint64)",
+			)
+		})
+
+		It("claims matured withdraw and prevents double claim", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
 			user := s.keyring.GetKey(1)
 
@@ -148,22 +368,55 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			s.execTxExpectSuccess(
 				user.Priv,
 				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			remainingUnits := s.queryPoolUint(1, poolAddr, "unitsOf", user.Addr)
-			totalUnits := s.queryPoolUint(1, poolAddr, "totalUnits")
-			Expect(remainingUnits.String()).To(Equal("600"))
-			Expect(totalUnits.String()).To(Equal("600"))
+			request := s.queryWithdrawRequest(poolAddr, big.NewInt(1))
+			s.advanceToMaturity(request.Maturity)
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(1)),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Reserves should be fully consumed for this single request.
+			pendingReserve := s.queryPoolUint(1, poolAddr, "pendingWithdrawReserve")
+			maturedReserve := s.queryPoolUint(1, poolAddr, "maturedWithdrawReserve")
+			commitments := s.queryPoolUint(1, poolAddr, "totalWithdrawCommitments")
+			Expect(pendingReserve.Sign()).To(Equal(0))
+			Expect(maturedReserve.Sign()).To(Equal(0))
+			Expect(commitments.Sign()).To(Equal(0))
+
+			claimedReq := s.queryWithdrawRequest(poolAddr, big.NewInt(1))
+			Expect(claimedReq.ReserveMoved).To(BeTrue())
+			Expect(claimedReq.Claimed).To(BeTrue())
+
+			// Second claim must revert.
+			s.execTxExpectCustomError(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(1)),
+				"RequestAlreadyClaimed()",
+			)
+			s.assertPoolInvariants(poolAddr)
 		})
 
-		It("reverts withdraw when proportional claim exceeds liquid balance", func() {
+		It("emits withdraw lifecycle events with expected request id", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
-			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
-
 			depositAmount := big.NewInt(1000)
+			withdrawUnits := big.NewInt(400)
+
 			s.approveBondToken(1, poolAddr, depositAmount)
 			s.execTxExpectSuccess(
 				user.Priv,
@@ -172,22 +425,138 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			// Inflate accounting assets without adding liquid balance.
 			s.execTxExpectSuccess(
-				owner.Priv,
+				user.Priv,
 				buildTxArgs(poolAddr),
-				buildCallArgs(s.communityPoolContract, "syncTotalStaked", big.NewInt(1000)),
+				buildCallArgs(s.communityPoolContract, "stake"),
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			check := testutil.LogCheckArgs{}.WithErrContains(vm.ErrExecutionReverted.Error())
-			_, _, err = s.factory.CallContractAndCheckLogs(
+			withdrawRes := s.execTxAndGetEthResponse(
 				user.Priv,
 				buildTxArgs(poolAddr),
-				buildCallArgs(s.communityPoolContract, "withdraw", big.NewInt(1000)),
-				check,
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
 			)
-			Expect(err).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			withdrawEvt := s.communityPoolContract.ABI.Events["WithdrawRequested"]
+			withdrawLog := s.findEventLog(withdrawRes, poolAddr, withdrawEvt)
+			Expect(withdrawLog).ToNot(BeNil(), "expected WithdrawRequested event")
+			Expect(withdrawLog.Topics).To(HaveLen(3))
+			Expect(withdrawLog.Topics[1]).To(Equal(common.BytesToHash(user.Addr.Bytes()).Hex()))
+			Expect(withdrawLog.Topics[2]).To(Equal(common.BigToHash(big.NewInt(1)).Hex()))
+
+			requestData, err := withdrawEvt.Inputs.Unpack(withdrawLog.Data)
+			Expect(err).To(BeNil(), "failed to decode WithdrawRequested data")
+			Expect(requestData).To(HaveLen(3))
+			unitsVal, ok := requestData[0].(*big.Int)
+			Expect(ok).To(BeTrue())
+			amountOutVal, ok := requestData[1].(*big.Int)
+			Expect(ok).To(BeTrue())
+			Expect(unitsVal.String()).To(Equal(withdrawUnits.String()))
+			Expect(amountOutVal.String()).To(Equal("400"))
+
+			request := s.queryWithdrawRequest(poolAddr, big.NewInt(1))
+			s.advanceToMaturity(request.Maturity)
+
+			claimRes := s.execTxAndGetEthResponse(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(1)),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			claimEvt := s.communityPoolContract.ABI.Events["WithdrawClaimed"]
+			claimLog := s.findEventLog(claimRes, poolAddr, claimEvt)
+			Expect(claimLog).ToNot(BeNil(), "expected WithdrawClaimed event")
+			Expect(claimLog.Topics).To(HaveLen(3))
+			Expect(claimLog.Topics[1]).To(Equal(common.BytesToHash(user.Addr.Bytes()).Hex()))
+			Expect(claimLog.Topics[2]).To(Equal(common.BigToHash(big.NewInt(1)).Hex()))
+		})
+
+		It("claims multiple matured requests out of order", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			depositAmount := big.NewInt(1000)
+			withdrawUnits := big.NewInt(200)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			req1 := s.queryWithdrawRequest(poolAddr, big.NewInt(1))
+			req2 := s.queryWithdrawRequest(poolAddr, big.NewInt(2))
+			if req2.Maturity > req1.Maturity {
+				s.advanceToMaturity(req2.Maturity)
+			} else {
+				s.advanceToMaturity(req1.Maturity)
+			}
+
+			// Claim second request first, then first request.
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(2)),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(1)),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			claimedReq1 := s.queryWithdrawRequest(poolAddr, big.NewInt(1))
+			claimedReq2 := s.queryWithdrawRequest(poolAddr, big.NewInt(2))
+			Expect(claimedReq1.Claimed).To(BeTrue())
+			Expect(claimedReq2.Claimed).To(BeTrue())
+			Expect(claimedReq1.ReserveMoved).To(BeTrue())
+			Expect(claimedReq2.ReserveMoved).To(BeTrue())
+
+			pendingReserve := s.queryPoolUint(1, poolAddr, "pendingWithdrawReserve")
+			maturedReserve := s.queryPoolUint(1, poolAddr, "maturedWithdrawReserve")
+			Expect(pendingReserve.Sign()).To(Equal(0))
+			Expect(maturedReserve.Sign()).To(Equal(0))
+			s.assertPoolInvariants(poolAddr)
+		})
+
+		It("reverts claimWithdraw for non-existent request", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			s.execTxExpectCustomError(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimWithdraw", big.NewInt(9999)),
+				"InvalidRequest()",
+			)
 		})
 
 		It("returns expected pricePerUnit for empty and adjusted pool", func() {
@@ -208,7 +577,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			// poolAssets=2000, totalUnits=1000 => pricePerUnit=2e18.
+			// principalAssets=2000, totalUnits=1000 => pricePerUnit=2e18.
 			s.execTxExpectSuccess(
 				owner.Priv,
 				buildTxArgs(poolAddr),
@@ -225,31 +594,29 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			owner := s.keyring.GetKey(0)
 			nonOwner := s.keyring.GetKey(1)
 
-			revertCheck := testutil.LogCheckArgs{}.WithErrContains(vm.ErrExecutionReverted.Error())
-
-			_, _, err := s.factory.CallContractAndCheckLogs(
+			s.execTxExpectCustomError(
 				nonOwner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "setConfig", uint32(20), uint32(7), big.NewInt(2)),
-				revertCheck,
+				"Unauthorized()",
 			)
-			Expect(err).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
 
-			_, _, err = s.factory.CallContractAndCheckLogs(
+			s.execTxExpectCustomError(
 				nonOwner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "syncTotalStaked", big.NewInt(123)),
-				revertCheck,
+				"Unauthorized()",
 			)
-			Expect(err).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
 
-			_, _, err = s.factory.CallContractAndCheckLogs(
+			s.execTxExpectCustomError(
 				nonOwner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "transferOwnership", nonOwner.Addr),
-				revertCheck,
+				"Unauthorized()",
 			)
-			Expect(err).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
 
 			// Owner can still execute privileged actions.
 			s.execTxExpectSuccess(
@@ -287,13 +654,12 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			beforeUser2Units := s.queryPoolUint(2, poolAddr, "unitsOf", user2.Addr)
 			beforeTotalUnits := s.queryPoolUint(2, poolAddr, "totalUnits")
 
-			_, _, err = s.factory.CallContractAndCheckLogs(
+			s.execTxExpectCustomError(
 				user2.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "deposit", big.NewInt(1)),
-				testutil.LogCheckArgs{}.WithErrContains(vm.ErrExecutionReverted.Error()),
+				"ZeroMintedUnits()",
 			)
-			Expect(err).To(BeNil())
 
 			afterUser2Units := s.queryPoolUint(2, poolAddr, "unitsOf", user2.Addr)
 			afterTotalUnits := s.queryPoolUint(2, poolAddr, "totalUnits")
@@ -313,16 +679,13 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			revertCheck := testutil.LogCheckArgs{}.WithErrContains(vm.ErrExecutionReverted.Error())
-
 			// Old owner should now be blocked.
-			_, _, err = s.factory.CallContractAndCheckLogs(
+			s.execTxExpectCustomError(
 				oldOwner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "setConfig", uint32(99), uint32(9), big.NewInt(3)),
-				revertCheck,
+				"Unauthorized()",
 			)
-			Expect(err).To(BeNil())
 
 			// New owner should now be allowed.
 			s.execTxExpectSuccess(
@@ -337,13 +700,12 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			owner := s.keyring.GetKey(0)
 
 			zeroAddr := common.Address{}
-			_, _, err := s.factory.CallContractAndCheckLogs(
+			s.execTxExpectCustomError(
 				owner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "transferOwnership", zeroAddr),
-				testutil.LogCheckArgs{}.WithErrContains(vm.ErrExecutionReverted.Error()),
+				"InvalidAddress()",
 			)
-			Expect(err).To(BeNil())
 		})
 
 		It("allows owner to call all privileged methods", func() {
@@ -370,6 +732,99 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(totalStaked.String()).To(Equal("321"))
 		})
 
+		It("reverts setConfig when maxValidators is zero", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+
+			s.execTxExpectCustomError(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setConfig", uint32(10), uint32(0), big.NewInt(1)),
+				"InvalidConfig()",
+			)
+		})
+
+		It("emits ConfigUpdated with applied values", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+
+			res := s.execTxAndGetEthResponse(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setConfig", uint32(20), uint32(7), big.NewInt(2)),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			cfgEvt := s.communityPoolContract.ABI.Events["ConfigUpdated"]
+			cfgLog := s.findEventLog(res, poolAddr, cfgEvt)
+			Expect(cfgLog).ToNot(BeNil(), "expected ConfigUpdated event")
+
+			cfgData, err := cfgEvt.Inputs.Unpack(cfgLog.Data)
+			Expect(err).To(BeNil(), "failed to decode ConfigUpdated data")
+			Expect(cfgData).To(HaveLen(3))
+			maxRetrieve, ok := cfgData[0].(uint32)
+			Expect(ok).To(BeTrue())
+			maxValidators, ok := cfgData[1].(uint32)
+			Expect(ok).To(BeTrue())
+			minStakeAmount, ok := cfgData[2].(*big.Int)
+			Expect(ok).To(BeTrue())
+
+			Expect(maxRetrieve).To(Equal(uint32(20)))
+			Expect(maxValidators).To(Equal(uint32(7)))
+			Expect(minStakeAmount.String()).To(Equal("2"))
+		})
+
+		It("setConfig minStakeAmount change gates stake behavior", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			user := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(1000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Raise threshold above available liquid; stake should no-op.
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setConfig", uint32(10), uint32(5), big.NewInt(2000)),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+			totalStaked := s.queryPoolUint(1, poolAddr, "totalStaked")
+			Expect(totalStaked.Sign()).To(Equal(0))
+
+			// Lower threshold; stake should now delegate.
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setConfig", uint32(10), uint32(5), big.NewInt(1)),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			totalStaked = s.queryPoolUint(1, poolAddr, "totalStaked")
+			Expect(totalStaked.String()).To(Equal("1000"))
+			s.assertPoolInvariants(poolAddr)
+		})
+
 		It("blocks old owner from syncTotalStaked after ownership transfer", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
 			oldOwner := s.keyring.GetKey(0)
@@ -382,15 +837,12 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			revertCheck := testutil.LogCheckArgs{}.WithErrContains(vm.ErrExecutionReverted.Error())
-
-			_, _, err = s.factory.CallContractAndCheckLogs(
+			s.execTxExpectCustomError(
 				oldOwner.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "syncTotalStaked", big.NewInt(500)),
-				revertCheck,
+				"Unauthorized()",
 			)
-			Expect(err).To(BeNil())
 
 			s.execTxExpectSuccess(
 				newOwner.Priv,
@@ -424,7 +876,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			beforeUserUnits := s.queryPoolUint(1, poolAddr, "unitsOf", user.Addr)
 			beforeTotalUnits := s.queryPoolUint(1, poolAddr, "totalUnits")
 
-			_, _, err = s.factory.CallContractAndCheckLogs(
+			_, _, err := s.factory.CallContractAndCheckLogs(
 				user.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "withdraw", amount),
@@ -583,7 +1035,114 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(afterLiquid.Cmp(beforeLiquid)).To(BeNumerically(">=", 0))
 		})
 
-		It("syncTotalStaked updates accounting views (poolAssets and pricePerUnit)", func() {
+		It("claimRewards is a no-op without harvested rewards", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(1000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// No harvest happened, so user has no claimable rewards.
+			beforeRewardReserve := s.queryPoolUint(1, poolAddr, "rewardReserve")
+
+			_, ethRes, err := s.factory.CallContractAndCheckLogs(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimRewards"),
+				testutil.LogCheckArgs{}.WithExpPass(true),
+			)
+			Expect(err).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			afterRewardReserve := s.queryPoolUint(1, poolAddr, "rewardReserve")
+			unpacked, err := s.communityPoolContract.ABI.Unpack("claimRewards", ethRes.Ret)
+			Expect(err).To(BeNil())
+			Expect(unpacked).To(HaveLen(1))
+			claimedAmount, ok := unpacked[0].(*big.Int)
+			Expect(ok).To(BeTrue())
+
+			Expect(claimedAmount.Sign()).To(Equal(0))
+			Expect(afterRewardReserve.String()).To(Equal(beforeRewardReserve.String()))
+		})
+
+		It("claimRewards is idempotent for a given reward index", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(1000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Harvest updates reward index and reserve (or leaves unchanged in zero-reward conditions).
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "harvest"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			beforeFirstClaimReserve := s.queryPoolUint(1, poolAddr, "rewardReserve")
+
+			_, firstClaimRes, err := s.factory.CallContractAndCheckLogs(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimRewards"),
+				testutil.LogCheckArgs{}.WithExpPass(true),
+			)
+			Expect(err).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			afterFirstClaimReserve := s.queryPoolUint(1, poolAddr, "rewardReserve")
+			firstUnpacked, err := s.communityPoolContract.ABI.Unpack("claimRewards", firstClaimRes.Ret)
+			Expect(err).To(BeNil())
+			Expect(firstUnpacked).To(HaveLen(1))
+			firstClaimed, ok := firstUnpacked[0].(*big.Int)
+			Expect(ok).To(BeTrue())
+
+			// First claim cannot increase reserve and cannot decrease user balance.
+			Expect(afterFirstClaimReserve.Cmp(beforeFirstClaimReserve)).To(BeNumerically("<=", 0))
+			Expect(firstClaimed.Sign()).To(BeNumerically(">=", 0))
+
+			// Second immediate claim should be a no-op at the same reward index.
+			_, secondClaimRes, err := s.factory.CallContractAndCheckLogs(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "claimRewards"),
+				testutil.LogCheckArgs{}.WithExpPass(true),
+			)
+			Expect(err).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			afterSecondClaimReserve := s.queryPoolUint(1, poolAddr, "rewardReserve")
+			secondUnpacked, err := s.communityPoolContract.ABI.Unpack("claimRewards", secondClaimRes.Ret)
+			Expect(err).To(BeNil())
+			Expect(secondUnpacked).To(HaveLen(1))
+			secondClaimed, ok := secondUnpacked[0].(*big.Int)
+			Expect(ok).To(BeTrue())
+
+			Expect(afterSecondClaimReserve.String()).To(Equal(afterFirstClaimReserve.String()))
+			Expect(secondClaimed.Sign()).To(Equal(0))
+		})
+
+		It("syncTotalStaked updates accounting views (principalAssets and pricePerUnit)", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
 			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
@@ -598,7 +1157,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			beforeAssets := s.queryPoolUint(0, poolAddr, "poolAssets")
+			beforeAssets := s.queryPoolUint(0, poolAddr, "principalAssets")
 			beforePPU := s.queryPoolUint(0, poolAddr, "pricePerUnit")
 
 			s.execTxExpectSuccess(
@@ -608,7 +1167,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			afterAssets := s.queryPoolUint(0, poolAddr, "poolAssets")
+			afterAssets := s.queryPoolUint(0, poolAddr, "principalAssets")
 			afterPPU := s.queryPoolUint(0, poolAddr, "pricePerUnit")
 
 			Expect(beforeAssets.String()).To(Equal("1000"))
@@ -642,4 +1201,3 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "CommunityPool Integration Suite")
 }
-
