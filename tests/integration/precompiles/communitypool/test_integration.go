@@ -732,6 +732,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 				s.network.App.GetStakingKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
+				s.network.App.GetAccountKeeper(),
 			)
 
 			params := poolrebalancertypes.DefaultParams()

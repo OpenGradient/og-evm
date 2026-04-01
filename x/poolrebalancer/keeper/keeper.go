@@ -14,6 +14,7 @@ type Keeper struct {
 	cdc           codec.BinaryCodec
 	stakingKeeper types.StakingKeeper
 	evmKeeper     types.EVMKeeper
+	accountKeeper types.AccountKeeper
 	authority     sdk.AccAddress
 }
 
@@ -24,6 +25,7 @@ func NewKeeper(
 	stakingKeeper types.StakingKeeper,
 	authority sdk.AccAddress,
 	evmKeeper types.EVMKeeper,
+	accountKeeper types.AccountKeeper,
 ) Keeper {
 	if err := sdk.VerifyAddressFormat(authority); err != nil {
 		panic(err)
@@ -33,6 +35,7 @@ func NewKeeper(
 		cdc:           cdc,
 		stakingKeeper: stakingKeeper,
 		evmKeeper:     evmKeeper,
+		accountKeeper: accountKeeper,
 		authority:     authority,
 	}
 }

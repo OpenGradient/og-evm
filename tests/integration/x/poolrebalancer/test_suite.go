@@ -91,6 +91,7 @@ func (s *KeeperIntegrationTestSuite) configurePoolKeeper() {
 		s.network.App.GetStakingKeeper(),
 		authority,
 		nil,
+		s.network.App.GetAccountKeeper(),
 	)
 }
 

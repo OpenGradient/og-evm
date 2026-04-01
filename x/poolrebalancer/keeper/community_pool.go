@@ -24,6 +24,14 @@ func (k Keeper) MaybeRunCommunityPoolAutomation(ctx sdk.Context) error {
 
 	poolContract := common.BytesToAddress(del.Bytes())
 	from := types.ModuleEVMAddress
+	// Ensure caller account exists so vm.CallEVM can resolve sequence/nonce.
+	// Some chains materialize module accounts lazily; CallEVM requires address-based lookup.
+	if k.accountKeeper != nil {
+		moduleAcc := sdk.AccAddress(from.Bytes())
+		if k.accountKeeper.GetAccount(ctx, moduleAcc) == nil {
+			k.accountKeeper.SetAccount(ctx, k.accountKeeper.NewAccountWithAddress(ctx, moduleAcc))
+		}
+	}
 
 	for _, method := range []string{"harvest", "stake"} {
 		res, callErr := k.evmKeeper.CallEVM(ctx, types.CommunityPoolABI, from, poolContract, true, nil, method)

@@ -28,7 +28,7 @@ func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingK := &stakingkeeper.Keeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := keeper.NewKeeper(cdc, storeService, stakingK, authority, nil)
+	k := keeper.NewKeeper(cdc, storeService, stakingK, authority, nil, nil)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	srcVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
@@ -60,7 +60,7 @@ func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 	ctx2 := testutil.DefaultContext(storeKey2, tKey2).WithBlockTime(time.Unix(2_000, 0))
 
 	storeService2 := runtime.NewKVStoreService(storeKey2)
-	k2 := keeper.NewKeeper(cdc, storeService2, stakingK, authority, nil)
+	k2 := keeper.NewKeeper(cdc, storeService2, stakingK, authority, nil, nil)
 
 	InitGenesis(ctx2, k2, exported)
 
@@ -84,7 +84,7 @@ func TestGenesis_RoundTripPreservesDistinctRedelegationSources(t *testing.T) {
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingK := &stakingkeeper.Keeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := keeper.NewKeeper(cdc, storeService, stakingK, authority)
+	k := keeper.NewKeeper(cdc, storeService, stakingK, authority, nil, nil)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	srcA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
@@ -114,7 +114,7 @@ func TestGenesis_RoundTripPreservesDistinctRedelegationSources(t *testing.T) {
 	storeKey2 := storetypes.NewKVStoreKey(types.ModuleName)
 	tKey2 := storetypes.NewTransientStoreKey("transient_test2")
 	ctx2 := testutil.DefaultContext(storeKey2, tKey2).WithBlockTime(time.Unix(3_000, 0))
-	k2 := keeper.NewKeeper(cdc, runtime.NewKVStoreService(storeKey2), stakingK, authority)
+	k2 := keeper.NewKeeper(cdc, runtime.NewKVStoreService(storeKey2), stakingK, authority, nil, nil)
 	InitGenesis(ctx2, k2, exported)
 
 	redels, err := k2.GetAllPendingRedelegations(ctx2)

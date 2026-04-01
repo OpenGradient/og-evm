@@ -30,7 +30,7 @@ func newEndBlockerTestKeeper(t *testing.T) (sdk.Context, keeper.Keeper, *storety
 	stakingKeeper := &stakingkeeper.Keeper{} // zero value; tests avoid staking calls
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 
-	k := keeper.NewKeeper(cdc, storeService, stakingKeeper, authority, nil)
+	k := keeper.NewKeeper(cdc, storeService, stakingKeeper, authority, nil, nil)
 	return ctx, k, storeKey
 }
 

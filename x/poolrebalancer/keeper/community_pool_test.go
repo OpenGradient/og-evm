@@ -101,4 +101,3 @@ func TestMaybeRunCommunityPoolAutomation_HarvestFailureDoesNotBlockStake(t *test
 	require.NoError(t, k.MaybeRunCommunityPoolAutomation(ctx))
 	require.Equal(t, []string{"harvest", "stake"}, mockEVM.methods)
 }
-

@@ -39,3 +39,10 @@ type EVMKeeper interface {
 		args ...any,
 	) (*evmtypes.MsgEthereumTxResponse, error)
 }
+
+// AccountKeeper defines the subset of auth keeper methods used by poolrebalancer.
+type AccountKeeper interface {
+	GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
+	SetAccount(ctx context.Context, acc sdk.AccountI)
+	NewAccountWithAddress(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
+}

@@ -488,6 +488,7 @@ func NewExampleApp(
 		app.StakingKeeper,
 		authtypes.NewModuleAddress(govtypes.ModuleName),
 		app.EVMKeeper,
+		app.AccountKeeper,
 	)
 
 	app.Erc20Keeper = erc20keeper.NewKeeper(
