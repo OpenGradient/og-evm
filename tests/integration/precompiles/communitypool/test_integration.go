@@ -15,9 +15,15 @@ import (
 	"github.com/cosmos/evm/precompiles/testutil"
 	"github.com/cosmos/evm/testutil/integration/evm/network"
 	testutiltypes "github.com/cosmos/evm/testutil/types"
+	poolrebalancer "github.com/cosmos/evm/x/poolrebalancer"
+	poolrebalancerkeeper "github.com/cosmos/evm/x/poolrebalancer/keeper"
+	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
 
+	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
 // TestCommunityPoolIntegrationSuite scaffolds the CommunityPool integration suite.
@@ -683,6 +689,59 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 				buildCallArgs(s.communityPoolContract, "harvest"),
 				"Unauthorized()",
 			)
+		})
+
+		It("runs stake automation from poolrebalancer EndBlock", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			depositor := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(1000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				depositor.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Authorize the module EVM address so EndBlock can call stake/harvest.
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", poolrebalancertypes.ModuleEVMAddress),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			ctx := s.network.GetContext()
+			moduleAcc := sdk.AccAddress(poolrebalancertypes.ModuleEVMAddress.Bytes())
+			accountKeeper := s.network.App.GetAccountKeeper()
+			if accountKeeper.GetAccount(ctx, moduleAcc) == nil {
+				// This integration harness uses a custom genesis setup that may omit
+				// the module account, so seed it explicitly for deterministic E2E coverage.
+				accountKeeper.SetAccount(ctx, accountKeeper.NewAccountWithAddress(ctx, moduleAcc))
+			}
+
+			beforeStaked := s.queryPoolUint(0, poolAddr, "totalStaked")
+			Expect(beforeStaked.Sign()).To(Equal(0))
+
+			storeService := runtime.NewKVStoreService(s.network.App.GetKey(poolrebalancertypes.StoreKey))
+			rebalancerKeeper := poolrebalancerkeeper.NewKeeper(
+				s.network.App.AppCodec(),
+				storeService,
+				s.network.App.GetStakingKeeper(),
+				authtypes.NewModuleAddress(govtypes.ModuleName),
+				s.network.App.GetEVMKeeper(),
+			)
+
+			params := poolrebalancertypes.DefaultParams()
+			params.PoolDelegatorAddress = sdk.AccAddress(poolAddr.Bytes()).String()
+			Expect(rebalancerKeeper.SetParams(ctx, params)).To(BeNil())
+
+			Expect(poolrebalancer.EndBlocker(ctx, rebalancerKeeper)).To(BeNil())
+
+			afterStaked := s.queryPoolUint(0, poolAddr, "totalStaked")
+			Expect(afterStaked.Cmp(beforeStaked)).To(BeNumerically(">", 0))
 		})
 
 		It("reverts dust deposit that would mint zero units", func() {

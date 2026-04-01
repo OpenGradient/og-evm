@@ -27,6 +27,6 @@ func newTestKeeper(t *testing.T) (sdk.Context, Keeper) {
 	stakingKeeper := &stakingkeeper.Keeper{} // zero value; do not call staking methods in unit tests
 
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := NewKeeper(cdc, storeService, stakingKeeper, authority)
+	k := NewKeeper(cdc, storeService, stakingKeeper, authority, nil)
 	return ctx, k
 }

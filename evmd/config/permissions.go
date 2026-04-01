@@ -12,6 +12,7 @@ import (
 	cosmosevmutils "github.com/cosmos/evm/utils"
 	erc20types "github.com/cosmos/evm/x/erc20/types"
 	feemarkettypes "github.com/cosmos/evm/x/feemarket/types"
+	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 	precisebanktypes "github.com/cosmos/evm/x/precisebank/types"
 	vmtypes "github.com/cosmos/evm/x/vm/types"
 	transfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
@@ -64,6 +65,7 @@ var maccPerms = map[string][]string{
 	vmtypes.ModuleName:          {authtypes.Minter, authtypes.Burner},
 	feemarkettypes.ModuleName:   nil,
 	erc20types.ModuleName:       {authtypes.Minter, authtypes.Burner},
+	poolrebalancertypes.ModuleName: nil,
 	precisebanktypes.ModuleName: {authtypes.Minter, authtypes.Burner},
 }
 

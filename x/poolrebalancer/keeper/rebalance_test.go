@@ -33,7 +33,7 @@ func testKeeperWithParams(t *testing.T, rebalanceThresholdBP, maxMovePerOp strin
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingKeeper := &stakingkeeper.Keeper{} // zero value; do not call staking methods
-	k := keeper.NewKeeper(cdc, storeService, stakingKeeper, sdk.AccAddress(bytes.Repeat([]byte{9}, 20)))
+	k := keeper.NewKeeper(cdc, storeService, stakingKeeper, sdk.AccAddress(bytes.Repeat([]byte{9}, 20)), nil)
 
 	bp, err := strconv.ParseUint(rebalanceThresholdBP, 10, 32)
 	require.NoError(t, err)

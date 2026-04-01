@@ -30,19 +30,20 @@ func newEndBlockerTestKeeper(t *testing.T) (sdk.Context, keeper.Keeper, *storety
 	stakingKeeper := &stakingkeeper.Keeper{} // zero value; tests avoid staking calls
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 
-	k := keeper.NewKeeper(cdc, storeService, stakingKeeper, authority)
+	k := keeper.NewKeeper(cdc, storeService, stakingKeeper, authority, nil)
 	return ctx, k, storeKey
 }
 
-func TestEndBlocker_ProcessRebalanceErrorIsNonHalting(t *testing.T) {
+func TestEndBlocker_OperationalErrorIsNonHalting(t *testing.T) {
 	ctx, k, storeKey := newEndBlockerTestKeeper(t)
 
-	// Inject malformed params directly to force an operational ProcessRebalance error
-	// (GetParams unmarshal failure), while keeping cleanup paths healthy.
+	// Inject malformed params directly to force an operational module error
+	// (GetParams unmarshal failure) while keeping cleanup paths healthy.
+	// This now first impacts community pool automation lookup in EndBlock.
 	ctx.KVStore(storeKey).Set(types.ParamsKey, []byte("not-a-valid-proto"))
 
 	err := EndBlocker(ctx, k)
-	require.NoError(t, err, "ProcessRebalance errors should not halt EndBlocker")
+	require.NoError(t, err, "operational errors should not halt EndBlocker")
 }
 
 func TestEndBlocker_CleanupErrorRemainsHalting(t *testing.T) {

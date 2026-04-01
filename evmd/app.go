@@ -369,13 +369,6 @@ func NewExampleApp(
 		stakingtypes.NewMultiStakingHooks(app.DistrKeeper.Hooks(), app.SlashingKeeper.Hooks()),
 	)
 
-	app.PoolRebalancerKeeper = poolrebalancerkeeper.NewKeeper(
-		appCodec,
-		runtime.NewKVStoreService(keys[poolrebalancertypes.StoreKey]),
-		app.StakingKeeper,
-		authtypes.NewModuleAddress(govtypes.ModuleName),
-	)
-
 	app.AuthzKeeper = authzkeeper.NewKeeper(
 		runtime.NewKVStoreService(keys[authzkeeper.StoreKey]),
 		appCodec,
@@ -487,6 +480,14 @@ func NewExampleApp(
 			app.SlashingKeeper,
 			appCodec,
 		),
+	)
+
+	app.PoolRebalancerKeeper = poolrebalancerkeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(keys[poolrebalancertypes.StoreKey]),
+		app.StakingKeeper,
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+		app.EVMKeeper,
 	)
 
 	app.Erc20Keeper = erc20keeper.NewKeeper(

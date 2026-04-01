@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/address"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 const (
@@ -21,6 +24,10 @@ const (
 
 // Store key prefixes (single-byte prefixes).
 var (
+	// ModuleEVMAddress is the EVM address of the poolrebalancer module account.
+	// Operators should set this as CommunityPool automationCaller for EndBlock automation.
+	ModuleEVMAddress common.Address
+
 	ParamsKey = []byte{0x01} // module params
 
 	// Pending redelegation tracking.
@@ -37,6 +44,11 @@ var (
 	// Index by validator: (validator, completionTime, denom, delegator)
 	PendingUndelegationByValIndexKey = []byte{0x22}
 )
+
+func init() {
+	// Keep derivation aligned with x/auth module account bytes -> EVM address mapping.
+	ModuleEVMAddress = common.BytesToAddress(authtypes.NewModuleAddress(ModuleName).Bytes())
+}
 
 // GetPendingRedelegationKey returns the primary key for a pending redelegation.
 // Key format: prefix | lengthPrefixed(delegator) | lengthPrefixed(denom) | lengthPrefixed(dstValidator) | lengthPrefixed(srcValidator) | completionTime.

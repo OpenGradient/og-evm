@@ -90,6 +90,7 @@ func (s *KeeperIntegrationTestSuite) configurePoolKeeper() {
 		storeService,
 		s.network.App.GetStakingKeeper(),
 		authority,
+		nil,
 	)
 }
 

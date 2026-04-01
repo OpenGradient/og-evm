@@ -13,6 +13,7 @@ type Keeper struct {
 	storeService  store.KVStoreService
 	cdc           codec.BinaryCodec
 	stakingKeeper types.StakingKeeper
+	evmKeeper     types.EVMKeeper
 	authority     sdk.AccAddress
 }
 
@@ -22,6 +23,7 @@ func NewKeeper(
 	storeService store.KVStoreService,
 	stakingKeeper types.StakingKeeper,
 	authority sdk.AccAddress,
+	evmKeeper types.EVMKeeper,
 ) Keeper {
 	if err := sdk.VerifyAddressFormat(authority); err != nil {
 		panic(err)
@@ -30,6 +32,7 @@ func NewKeeper(
 		storeService:  storeService,
 		cdc:           cdc,
 		stakingKeeper: stakingKeeper,
+		evmKeeper:     evmKeeper,
 		authority:     authority,
 	}
 }

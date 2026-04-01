@@ -113,6 +113,52 @@ represents principal already requested for unbonding, not immediately liquid.
 
 All admin methods are `onlyOwner`.
 
+## PoolRebalancer EndBlock Automation
+
+`CommunityPool.stake()` and `CommunityPool.harvest()` can be called by the
+`poolrebalancer` module during `EndBlock`.
+
+### Required Configuration
+
+1. Set CommunityPool automation caller to the poolrebalancer module EVM address:
+
+- `setAutomationCaller(<poolrebalancer_module_evm_address>)`
+
+2. Set poolrebalancer params so the pool delegator is the CommunityPool contract:
+
+- `pool_delegator_address = <community_pool_contract_address_as_bech32_acc>`
+
+Both are required. If either is wrong, EndBlock automation will not execute
+successfully.
+
+### Why This Is Required
+
+- `stake()` and `harvest()` are protected by `onlyAutomationOrOwner`.
+- EndBlock calls run with `msg.sender = poolrebalancer ModuleEVMAddress`.
+- The module targets the contract at `pool_delegator_address` (address bytes
+  mapped to EVM address).
+
+### Operational Checks
+
+Before enabling automation:
+
+- `automationCaller` on the contract equals poolrebalancer module EVM address.
+- `poolrebalancer.params.pool_delegator_address` equals the CommunityPool
+  contract address (bech32 account form).
+
+### Failure Symptoms
+
+- `Unauthorized()` revert from `stake()` or `harvest()`:
+  - `automationCaller` does not match module EVM address.
+- Automation logs failures and state does not move:
+  - `pool_delegator_address` is wrong or not the pool contract.
+
+### Notes
+
+- EndBlock automation is best-effort; errors are logged and retried in later
+  blocks.
+- Automation and rebalance are independent best-effort steps in EndBlock.
+
 ## Error Model (selected)
 
 - Input/permission: `InvalidAmount`, `InvalidUnits`, `InvalidConfig`, `Unauthorized`.

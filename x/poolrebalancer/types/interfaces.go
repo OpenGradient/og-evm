@@ -2,7 +2,13 @@ package types
 
 import (
 	"context"
+	"math/big"
 	"time"
+
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+
+	evmtypes "github.com/cosmos/evm/x/vm/types"
 
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -19,4 +25,17 @@ type StakingKeeper interface {
 	Undelegate(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress, sharesAmount sdkmath.LegacyDec) (completionTime time.Time, amount sdkmath.Int, err error)
 	UnbondingTime(ctx context.Context) (time.Duration, error)
 	BondDenom(ctx context.Context) (string, error)
+}
+
+// EVMKeeper defines the subset of vm keeper methods used by poolrebalancer.
+type EVMKeeper interface {
+	CallEVM(
+		ctx sdk.Context,
+		abi abi.ABI,
+		from, contract common.Address,
+		commit bool,
+		gasCap *big.Int,
+		method string,
+		args ...any,
+	) (*evmtypes.MsgEthereumTxResponse, error)
 }
