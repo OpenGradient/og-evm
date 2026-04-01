@@ -28,9 +28,9 @@ var (
 )
 
 func init() {
-	convertERC20Counter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.convert_erc20.total",
+	convertERC20Counter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.convert_erc20",
 		metric.WithDescription("Total ERC20 to coin conversions"))
-	convertERC20Amount = evmtrace.MustFloat64Counter(erc20Meter, "evm.erc20.convert_erc20.amount.total",
+	convertERC20Amount = evmtrace.MustFloat64Counter(erc20Meter, "evm.erc20.convert_erc20.amount",
 		metric.WithDescription("Total ERC20 conversion amounts"))
 }
 
@@ -168,7 +168,7 @@ func (k Keeper) convertERC20IntoCoinsForNativeToken(
 
 	defer func() {
 		convertERC20Counter.Add(ctx, 1,
-			metric.WithAttributes(attribute.String("coin", pair.Denom)),
+			metric.WithAttributes(attribute.String("denom", pair.Denom)),
 		)
 
 		if msg.Amount.IsInt64() {

@@ -3,7 +3,6 @@ package keeper
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"strconv"
 
 	"go.opentelemetry.io/otel"
@@ -17,7 +16,6 @@ import (
 	"github.com/cosmos/evm/x/vm/types"
 
 	errorsmod "cosmossdk.io/errors"
-	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
@@ -31,9 +29,9 @@ var (
 )
 
 func init() {
-	ethTxCounter = evmtrace.MustInt64Counter(vmMeter, "evm.tx.ethereum_tx.total",
+	ethTxCounter = evmtrace.MustInt64Counter(vmMeter, "evm.tx.ethereum_tx",
 		metric.WithDescription("Total number of Ethereum transactions"))
-	ethGasCounter = evmtrace.MustFloat64Counter(vmMeter, "evm.tx.ethereum_tx.gas_used.total",
+	ethGasCounter = evmtrace.MustFloat64Counter(vmMeter, "evm.tx.ethereum_tx.gas_used",
 		metric.WithDescription("Total gas used by Ethereum transactions"))
 	ethGasRatio = evmtrace.MustFloat64Gauge(vmMeter, "evm.tx.ethereum_tx.gas_ratio",
 		metric.WithDescription("Gas limit to gas used ratio"))
@@ -54,7 +52,7 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (_ 
 
 	tx := msg.AsTransaction()
 
-	txType := fmt.Sprintf("%d", tx.Type())
+	txType := strconv.FormatUint(uint64(tx.Type()), 10)
 	execution := "call"
 	if tx.To() == nil {
 		execution = "create"
@@ -76,13 +74,9 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (_ 
 		if response.GasUsed != 0 {
 			ethGasCounter.Add(goCtx, float64(response.GasUsed), attrs)
 
-			// Observe which users define a gas limit >> gas used. Note, that
-			// gas_limit and gas_used are always > 0
-			gasLimit := math.LegacyNewDec(int64(tx.Gas()))                            //#nosec G115 -- int overflow is not a concern here -- tx gas is not going to exceed int64 max value
-			gasRatioVal, err := gasLimit.QuoInt64(int64(response.GasUsed)).Float64() //#nosec G115 -- int overflow is not a concern here -- gas used is not going to exceed int64 max value
-			if err == nil {
-				ethGasRatio.Record(goCtx, gasRatioVal, attrs)
-			}
+			// Observe which users define a gas limit >> gas used
+			gasRatioVal := float64(tx.Gas()) / float64(response.GasUsed)
+			ethGasRatio.Record(goCtx, gasRatioVal, attrs)
 		}
 	}()
 

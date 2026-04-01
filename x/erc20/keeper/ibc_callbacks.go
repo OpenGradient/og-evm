@@ -27,9 +27,9 @@ var (
 )
 
 func init() {
-	ibcOnRecvCounter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.ibc.on_recv.total",
+	ibcOnRecvCounter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.ibc.on_recv",
 		metric.WithDescription("Total successful IBC ERC20 conversions on receive"))
-	ibcErrorCounter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.ibc.error.total",
+	ibcErrorCounter = evmtrace.MustInt64Counter(erc20Meter, "evm.erc20.ibc.error",
 		metric.WithDescription("Total failed IBC ERC20 conversions"))
 }
 

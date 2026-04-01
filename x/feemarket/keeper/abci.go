@@ -102,9 +102,7 @@ func (k *Keeper) EndBlock(ctx sdk.Context) error {
 	updatedGasWanted := math.LegacyMaxDec(limitedGasWanted, math.LegacyNewDec(int64(gasUsed))).TruncateInt().Uint64()
 	k.SetBlockGasWanted(ctx, updatedGasWanted)
 
-	defer func() {
-		blockGasGauge.Record(ctx, float64(updatedGasWanted))
-	}()
+	defer blockGasGauge.Record(ctx, float64(updatedGasWanted))
 
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		"block_gas",

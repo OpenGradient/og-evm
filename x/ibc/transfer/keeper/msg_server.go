@@ -24,7 +24,7 @@ var (
 )
 
 func init() {
-	ibcTransferCounter = evmtrace.MustInt64Counter(ibcTransferMeter, "evm.erc20.ibc.transfer.total",
+	ibcTransferCounter = evmtrace.MustInt64Counter(ibcTransferMeter, "evm.erc20.ibc.transfer",
 		metric.WithDescription("Total ERC20 IBC transfers"))
 }
 
