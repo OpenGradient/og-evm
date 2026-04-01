@@ -49,3 +49,31 @@ func (s *KeeperIntegrationTestSuite) TestSchedulingA_DriftCreatesPendingRedelega
 	s.Require().GreaterOrEqual(len(pending), 1)
 }
 
+// TestSchedulingA_ReducesSourceOverweightInStakingState verifies a successful scheduling
+// pass reduces overweight stake on the drifted source validator in staking state.
+func (s *KeeperIntegrationTestSuite) TestSchedulingA_ReducesSourceOverweightInStakingState() {
+	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt(), false)
+	s.EnableRebalancer(params)
+
+	src := s.validators[0]
+	srcAddr := src.OperatorAddress
+	s.DelegateExtraToValidator(src)
+
+	before, _, err := s.poolKeeper.GetDelegatorStakeByValidator(s.ctx, s.poolDel)
+	s.Require().NoError(err)
+	beforeSrc := before[srcAddr]
+	s.Require().True(beforeSrc.IsPositive(), "expected positive source stake before scheduling")
+
+	s.Require().NoError(s.RunEndBlock())
+
+	after, _, err := s.poolKeeper.GetDelegatorStakeByValidator(s.ctx, s.poolDel)
+	s.Require().NoError(err)
+	afterSrc := after[srcAddr]
+	s.Require().True(
+		afterSrc.LT(beforeSrc),
+		"expected source stake to decrease after one rebalance op; before=%s after=%s",
+		beforeSrc.String(),
+		afterSrc.String(),
+	)
+}
+

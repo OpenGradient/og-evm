@@ -4,7 +4,10 @@ import (
 	sdkmath "cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/runtime"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkquery "github.com/cosmos/cosmos-sdk/types/query"
 
+	poolrebalancerkeeper "github.com/cosmos/evm/x/poolrebalancer/keeper"
 	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 )
 
@@ -97,4 +100,60 @@ func (s *KeeperIntegrationTestSuite) TestMaxTargetValidators_LimitsRedelegationD
 			e.DstValidatorAddress,
 		)
 	}
+}
+
+// TestPendingRedelegationsQuery_PaginatesAndReturnsEntries verifies the gRPC query server
+// path returns pending entries with pagination in an integration environment.
+func (s *KeeperIntegrationTestSuite) TestPendingRedelegationsQuery_PaginatesAndReturnsEntries() {
+	params := s.DefaultEnabledParams(0, 2, sdkmath.ZeroInt(), false)
+	s.EnableRebalancer(params)
+
+	src := s.validators[0]
+	s.DelegateExtraToValidator(src)
+	s.Require().NoError(s.RunEndBlock())
+
+	qs := poolrebalancerkeeper.NewQueryServer(s.poolKeeper)
+	res, err := qs.PendingRedelegations(s.ctx, &poolrebalancertypes.QueryPendingRedelegationsRequest{
+		Pagination: &sdkquery.PageRequest{Limit: 1},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(res)
+	s.Require().NotEmpty(res.Redelegations, "expected paginated query to return at least one pending redelegation")
+	s.Require().NotNil(res.Pagination, "expected pagination response metadata")
+}
+
+func (s *KeeperIntegrationTestSuite) TestPendingUndelegationsAndParamsQuery_IntegrationPaths() {
+	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt(), true)
+	s.EnableRebalancer(params)
+
+	// Create fallback conditions: immature incoming redelegation to x blocks src=x use.
+	xVal := s.validators[0]
+	yVal := s.validators[1]
+	immatureCompletion := s.ctx.BlockTime().Add(s.unbondingSec).UTC()
+	s.SeedPendingRedelegation(poolrebalancertypes.PendingRedelegation{
+		DelegatorAddress:    s.poolDel.String(),
+		SrcValidatorAddress: yVal.OperatorAddress,
+		DstValidatorAddress: xVal.OperatorAddress,
+		Amount:              sdk.NewCoin(s.bondDenom, sdkmath.OneInt()),
+		CompletionTime:      immatureCompletion,
+	})
+	s.DelegateExtraToValidator(xVal)
+	s.Require().NoError(s.RunEndBlock())
+
+	qs := poolrebalancerkeeper.NewQueryServer(s.poolKeeper)
+
+	// Params query: verifies the client-facing params contract in integration.
+	pres, err := qs.Params(s.ctx, &poolrebalancertypes.QueryParamsRequest{})
+	s.Require().NoError(err)
+	s.Require().Equal(uint32(1), pres.Params.MaxOpsPerBlock)
+	s.Require().True(pres.Params.UseUndelegateFallback)
+
+	// PendingUndelegations query: verifies paginated decode path.
+	ures, err := qs.PendingUndelegations(s.ctx, &poolrebalancertypes.QueryPendingUndelegationsRequest{
+		Pagination: &sdkquery.PageRequest{Limit: 1},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(ures)
+	s.Require().NotEmpty(ures.Undelegations, "expected at least one pending undelegation from fallback path")
+	s.Require().NotNil(ures.Pagination, "expected pagination metadata")
 }
