@@ -1,21 +1,22 @@
 # og-evm Observability
 
-Production-grade monitoring and tracing for og-evm validator and full nodes using Prometheus, Grafana, Tempo, and Loki.
+Production-grade monitoring and tracing for og-evm validator and full nodes using Prometheus, Grafana, Tempo, and OpenTelemetry.
 
 ## Architecture
 
 ```
 og-evm node(s)
-  ├── :26660/metrics ──→ Prometheus (scrape)  ──→ Grafana dashboards + alerts
-  ├── :8100/metrics  ──→ Prometheus (scrape)  ──→ Grafana dashboards + alerts
-  └── OTel SDK       ──→ :4317 OTel Collector ──┬→ Tempo (traces)
-                                                 └→ Prometheus (span-derived metrics via remote write)
+  ├── :26660/metrics  ──→ Prometheus (scrape)  ──→ Grafana dashboards + alerts
+  ├── :8100/metrics   ──→ Prometheus (scrape)  ──→ Grafana dashboards + alerts
+  ├── :6065/debug/metrics ──→ Prometheus (scrape)
+  └── OTel SDK        ──→ :4317 OTel Collector ──┬→ Tempo (traces)
+                                                  └→ Prometheus (metrics via remote write)
+node-exporter (:9100) ──→ Prometheus (scrape)  ──→ Infrastructure metrics
 ```
 
-Three pillars of observability:
-- **Metrics** — Prometheus scrapes CometBFT consensus and geth EVM metrics every 15s
+Two pillars of observability:
+- **Metrics** — Prometheus scrapes CometBFT, Geth, JSON-RPC, and node-exporter metrics. OTel custom metrics and Cosmos SDK telemetry flow through the OTel Collector
 - **Traces** — OpenTelemetry SDK exports spans (EthereumTx, BeginBlock, etc.) via OTLP gRPC to Tempo
-- **Logs** — Promtail ships node logs to Loki
 
 ## Prerequisites
 
@@ -58,6 +59,7 @@ evmd start \
   --otel.endpoint <collector-host>:4317 \
   --otel.insecure \
   --otel.chain-id <your-chain-id> \
+  --otel.instance-id <validator-0> \
   --metrics
 ```
 
@@ -93,8 +95,7 @@ Change the admin password on first login for production deployments.
 | Grafana | 3000 | Dashboards, trace exploration, and alert management |
 | OTel Collector | 4317 (gRPC) / 4318 (HTTP) | Receives OTLP traces and metrics from nodes |
 | Tempo | 3200 | Distributed trace storage with span metrics generation |
-| Loki | 3100 | Log aggregation and querying |
-| Promtail | — | Ships node logs to Loki |
+| node-exporter | 9100 | Host infrastructure metrics (CPU, memory, disk, network) |
 
 ## Metrics Collected
 
@@ -132,41 +133,49 @@ Tempo automatically generates RED (Rate, Error, Duration) metrics from ingested 
 | `--otel.enable` | `otel.enable` | `false` | Enable trace and metric export |
 | `--otel.endpoint` | `otel.endpoint` | `localhost:4317` | OTLP gRPC collector endpoint |
 | `--otel.insecure` | `otel.insecure` | `true` | Use non-TLS gRPC connection |
-| `--otel.sample-rate` | `otel.sample-rate` | `1.0` | Trace sampling rate (0.0 = none, 1.0 = all) |
+| `--otel.sample-rate` | `otel.sample-rate` | `0.1` | Trace sampling rate (0.0 = none, 1.0 = all) |
 | `--otel.chain-id` | `otel.chain-id` | `""` | Chain ID attached as resource attribute on all telemetry |
+| `--otel.instance-id` | `otel.instance-id` | `""` (hostname) | Node instance ID attached as resource attribute |
 
 ### Sampling
 
 For high-throughput chains, reduce `sample-rate` to control trace volume. A rate of `0.1` samples 10% of traces. Metrics are always exported regardless of sampling rate.
 
-## Grafana Views
+## Grafana Dashboards
 
-| View | Location | Datasource |
-|------|----------|------------|
-| Chain overview | Dashboards → Cosmos Dashboard | Prometheus |
-| Trace waterfalls | Explore → Tempo | Tempo |
-| Ad-hoc metric queries | Explore → Prometheus | Prometheus |
-| Log search | Explore → Loki | Loki |
+| Dashboard | Location | Description |
+|-----------|----------|-------------|
+| OG-EVM Chain Overview | og-evm folder | Block production, consensus, mempool, validators, P2P, ABCI timing |
+| OG-EVM EVM & Application Metrics | og-evm folder | EVM transactions, gas, base fee, ERC20 conversions, IBC transfers |
+| OG-EVM Geth Internals | og-evm folder | TxPool, RPC, P2P, state DB, chain head |
+| OG-EVM Infrastructure | og-evm folder | CPU, memory, disk, network (node-exporter) |
 
 Dashboard variables:
-- **Chain ID** — filters all panels to a specific chain
+- **Chain ID** — filters CometBFT panels to a specific chain
 - **Instance** — filters to a specific validator/node
+
+Trace waterfalls are available under Explore → Tempo.
 
 ## Alerting
 
-Create alert rules in Grafana under Alerting → Alert rules using Prometheus as the datasource.
+12 alert rules are provisioned automatically via `grafana/provisioning/alerting/`:
 
-Recommended alerts:
+| Alert | Condition | Severity |
+|-------|-----------|----------|
+| Chain Halted | No blocks in 5 min | Critical |
+| No Peers | Peer count = 0 | Critical |
+| Byzantine Validator | Byzantine count > 0 | Critical |
+| Low Peer Count | Peers < 3 | Warning |
+| High Consensus Rounds | Rounds > 2 | Warning |
+| Slow Block Time | Avg > 10s | Warning |
+| Missing Validators | Missing > 0 | Warning |
+| Mempool Congestion | Size > 500 | Warning |
+| IBC Errors Spike | Error rate > 0.1/s | Warning |
+| Disk Usage High | > 85% | Warning |
+| CPU Usage High | > 90% | Warning |
+| Memory Usage High | > 90% | Warning |
 
-| Alert | PromQL | Severity |
-|-------|--------|----------|
-| Chain halted | `increase(cometbft_consensus_height[5m]) == 0` | Critical |
-| Peer count low | `cometbft_p2p_peers < 3` | Warning |
-| Missed blocks | `cometbft_consensus_missing_validators > 0` | Warning |
-| High consensus rounds | `cometbft_consensus_rounds > 2` | Warning |
-| Slow block time | `rate(cometbft_consensus_block_interval_seconds_sum[5m]) / rate(cometbft_consensus_block_interval_seconds_count[5m]) > 10` | Warning |
-
-Configure notification channels (Slack, PagerDuty, email) under Alerting → Contact points.
+Configure notification channels (Slack, PagerDuty, email) under Alerting → Contact points in the Grafana UI. Without a contact point, alerts are visible in the Grafana UI only.
 
 ## Retention
 
@@ -174,7 +183,6 @@ Configure notification channels (Slack, PagerDuty, email) under Alerting → Con
 |-------|---------|---------------|
 | Prometheus (metrics) | 30 days | `--storage.tsdb.retention.time` in `docker-compose.yml` |
 | Tempo (traces) | 14 days | `compactor.compaction.block_retention` in `tempo/config.yml` |
-| Loki (logs) | Per Loki defaults | `limits_config.retention_period` in `loki/config.yml` |
 
 ## Production Considerations
 
@@ -184,6 +192,66 @@ Configure notification channels (Slack, PagerDuty, email) under Alerting → Con
 - **Persistent volumes** — the `docker-compose.yml` uses named Docker volumes; back these up or mount to host paths for durability
 - **Resource limits** — consider setting memory/CPU limits on Tempo and Prometheus for production workloads
 - **Network security** — restrict access to Grafana (3000), Prometheus (9099), and Tempo (3200) ports
+- **Alert notifications** — configure Slack, PagerDuty, or email contact points under Alerting → Contact points in Grafana. Without a contact point, alerts fire in the Grafana UI only
+
+## Remote Deployment (Separate Monitoring Server)
+
+By default, the monitoring stack runs co-located with the validator node (`insecure=true`). For production mainnet with a dedicated monitoring server, enable TLS on the OTel endpoint.
+
+### 1. Generate TLS certificates
+
+```bash
+# Self-signed (for testing)
+openssl req -x509 -newkey rsa:4096 \
+  -keyout server.key -out server.crt \
+  -days 365 -nodes -subj "/CN=og-evm-otel-collector"
+
+# For production, use CA-signed certificates
+```
+
+### 2. Configure the OTel Collector
+
+Create `monitoring/otel-collector/config-tls.yml` with TLS receivers:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: /certs/server.crt
+          key_file: /certs/server.key
+      http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /certs/server.crt
+          key_file: /certs/server.key
+# ... rest of config same as config.yml
+```
+
+Mount certs in docker-compose override:
+
+```yaml
+  otel-collector:
+    volumes:
+      - ./otel-collector/config-tls.yml:/etc/otelcol-contrib/config.yaml:ro
+      - ./certs:/certs:ro
+```
+
+### 3. Configure validator nodes
+
+In each validator's `app.toml`:
+
+```toml
+[otel]
+enable = true
+endpoint = "<monitoring-host>:4317"
+insecure = false
+sample-rate = 0.1
+chain-id = "og-evm-mainnet"
+instance-id = "validator-0"
+```
 
 ---
 
@@ -195,13 +263,8 @@ For local testing, convenience scripts are provided:
 # Single-node local devnet with OTel
 OTEL_ENABLE=true ./local_node.sh -y --no-install
 
-# 4-node Docker testnet
+# 4-node Docker testnet (prometheus + OTel enabled automatically by wrapper.sh)
 make localnet-start
-# Then enable metrics:
-for i in 0 1 2 3; do
-  sed -i.bak 's/prometheus = false/prometheus = true/' .testnets/node${i}/evmd/config/config.toml
-done
-docker compose restart
 ```
 
 Local testnet port mapping:
