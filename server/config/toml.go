@@ -162,4 +162,8 @@ sample-rate = {{ .OTel.SampleRate }}
 
 # ChainID identifies this chain in traces. Attached as chain_id resource attribute.
 chain-id = "{{ .OTel.ChainID }}"
+
+# InstanceID identifies this node in metrics and traces (e.g., "validator-0").
+# Defaults to os.Hostname() if empty.
+instance-id = "{{ .OTel.InstanceID }}"
 `

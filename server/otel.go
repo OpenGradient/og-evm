@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -33,13 +34,16 @@ func InitOTel(ctx context.Context, cfg cosmosevmserverconfig.OTelConfig, logger 
 		return noop, nil
 	}
 
-	hostname, _ := os.Hostname()
+	instanceID := strings.TrimSpace(cfg.InstanceID)
+	if instanceID == "" {
+		instanceID, _ = os.Hostname()
+	}
 
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String("og-evm"),
 			semconv.ServiceVersionKey.String(version.AppVersion),
-			semconv.ServiceInstanceIDKey.String(hostname),
+			semconv.ServiceInstanceIDKey.String(instanceID),
 			attribute.String("chain_id", cfg.ChainID),
 		),
 	)
@@ -50,8 +54,13 @@ func InitOTel(ctx context.Context, cfg cosmosevmserverconfig.OTelConfig, logger 
 	traceOpts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(cfg.Endpoint),
 	}
+	metricOpts := []otlpmetricgrpc.Option{
+		otlpmetricgrpc.WithEndpoint(cfg.Endpoint),
+	}
 	if cfg.Insecure {
-		traceOpts = append(traceOpts, otlptracegrpc.WithTLSCredentials(insecure.NewCredentials()))
+		creds := insecure.NewCredentials()
+		traceOpts = append(traceOpts, otlptracegrpc.WithTLSCredentials(creds))
+		metricOpts = append(metricOpts, otlpmetricgrpc.WithTLSCredentials(creds))
 	}
 
 	traceExporter, err := otlptracegrpc.New(ctx, traceOpts...)
@@ -69,13 +78,6 @@ func InitOTel(ctx context.Context, cfg cosmosevmserverconfig.OTelConfig, logger 
 		propagation.TraceContext{},
 		propagation.Baggage{},
 	))
-
-	metricOpts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithEndpoint(cfg.Endpoint),
-	}
-	if cfg.Insecure {
-		metricOpts = append(metricOpts, otlpmetricgrpc.WithTLSCredentials(insecure.NewCredentials()))
-	}
 
 	metricExporter, err := otlpmetricgrpc.New(ctx, metricOpts...)
 	if err != nil {

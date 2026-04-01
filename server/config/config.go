@@ -415,6 +415,9 @@ type OTelConfig struct {
 	SampleRate float64 `mapstructure:"sample-rate"`
 	// ChainID identifies this chain in traces. Attached as chain_id resource attribute.
 	ChainID string `mapstructure:"chain-id"`
+	// InstanceID identifies this node instance in metrics and traces (e.g., "validator-0").
+	// Defaults to os.Hostname() if empty.
+	InstanceID string `mapstructure:"instance-id"`
 }
 
 // DefaultOTelConfig returns the default OpenTelemetry configuration (disabled).

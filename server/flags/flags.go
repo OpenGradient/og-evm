@@ -89,11 +89,12 @@ const (
 
 // OpenTelemetry flags
 const (
-	OTelEnable      = "otel.enable"
-	OTelEndpoint    = "otel.endpoint"
-	OTelInsecure    = "otel.insecure"
-	OTelSampleRate  = "otel.sample-rate"
-	OTelChainID = "otel.chain-id"
+	OTelEnable     = "otel.enable"
+	OTelEndpoint   = "otel.endpoint"
+	OTelInsecure   = "otel.insecure"
+	OTelSampleRate = "otel.sample-rate"
+	OTelChainID    = "otel.chain-id"
+	OTelInstanceID = "otel.instance-id"
 )
 
 // AddTxFlags adds common flags for commands to post tx

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 
+	gethmetrics "github.com/ethereum/go-ethereum/metrics"
 	ethmetricsexp "github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -240,6 +241,7 @@ which accepts a path for the resulting pprof file.
 	cmd.Flags().Bool(srvflags.OTelInsecure, true, "use insecure (non-TLS) connection for OTLP export")
 	cmd.Flags().Float64(srvflags.OTelSampleRate, cosmosevmserverconfig.DefaultOTelConfig().SampleRate, "trace sampling rate (0.0 to 1.0)")
 	cmd.Flags().String(srvflags.OTelChainID, cosmosevmserverconfig.DefaultOTelConfig().ChainID, "chain ID for trace identification")
+	cmd.Flags().String(srvflags.OTelInstanceID, "", "instance ID for trace identification (defaults to hostname)")
 
 	cmd.Flags().Uint64(server.FlagStateSyncSnapshotInterval, 0, "State sync snapshot interval")
 	cmd.Flags().Uint32(server.FlagStateSyncSnapshotKeepRecent, 2, "State sync snapshot to keep")
@@ -482,6 +484,7 @@ func startInProcess(svrCtx *server.Context, clientCtx client.Context, opts Start
 	// Enable metrics if JSONRPC is enabled and --metrics is passed
 	// Flag not added in config to avoid user enabling in config without passing in CLI
 	if config.JSONRPC.Enable && svrCtx.Viper.GetBool(srvflags.JSONRPCEnableMetrics) {
+		gethmetrics.Enable()
 		ethmetricsexp.Setup(config.JSONRPC.MetricsAddress)
 	}
 
