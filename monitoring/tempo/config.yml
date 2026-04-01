@@ -35,6 +35,10 @@ metrics_generator:
   traces_storage:
     path: /var/tempo/generator/traces
 
+compactor:
+  compaction:
+    block_retention: 336h
+
 overrides:
   defaults:
     metrics_generator:

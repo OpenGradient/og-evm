@@ -7,6 +7,7 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/targets:/etc/prometheus/targets:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -29,8 +30,7 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_AUTH_ANONYMOUS_ENABLED=false
     ports:
       - "3000:3000"
     depends_on:
@@ -60,30 +60,24 @@ services:
       - "3200:3200"   # Tempo query frontend
     restart: unless-stopped
 
-  loki:
-    image: grafana/loki:latest
-    container_name: og-evm-loki
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: og-evm-node-exporter
+    pid: host
     volumes:
-      - ./loki/config.yml:/etc/loki/local-config.yaml:ro
-      - loki_data:/loki
-    command: ["-config.file=/etc/loki/local-config.yaml"]
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
     ports:
-      - "3100:3100"
-    restart: unless-stopped
-
-  promtail:
-    image: grafana/promtail:latest
-    container_name: og-evm-promtail
-    volumes:
-      - ./promtail/config.yml:/etc/promtail/config.yaml:ro
-      - /var/log:/var/log:ro
-    command: ["-config.file=/etc/promtail/config.yaml"]
-    depends_on:
-      - loki
+      - "9100:9100"
     restart: unless-stopped
 
 volumes:
   prometheus_data:
   grafana_data:
   tempo_data:
-  loki_data:
