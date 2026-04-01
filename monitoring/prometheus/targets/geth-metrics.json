@@ -1,18 +1,18 @@
 [
   {
-    "targets": ["host.docker.internal:26660"],
+    "targets": ["host.docker.internal:8100"],
     "labels": { "chain_id": "local-4221", "instance": "validator-0" }
   },
   {
-    "targets": ["host.docker.internal:26661"],
+    "targets": ["host.docker.internal:8101"],
     "labels": { "chain_id": "local-4221", "instance": "validator-1" }
   },
   {
-    "targets": ["host.docker.internal:26662"],
+    "targets": ["host.docker.internal:8102"],
     "labels": { "chain_id": "local-4221", "instance": "validator-2" }
   },
   {
-    "targets": ["host.docker.internal:26663"],
+    "targets": ["host.docker.internal:8103"],
     "labels": { "chain_id": "local-4221", "instance": "validator-3" }
   }
 ]

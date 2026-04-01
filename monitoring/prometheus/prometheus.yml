@@ -2,6 +2,9 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   - job_name: "prometheus"
     static_configs:
@@ -23,10 +26,18 @@ scrape_configs:
     metrics_path: /metrics
     file_sd_configs:
       - files:
-          - /etc/prometheus/targets/og-evm-nodes.json
+          - /etc/prometheus/targets/geth-metrics.json
         refresh_interval: 30s
-    relabel_configs:
-      - source_labels: [__address__]
-        regex: "(.+):.*"
-        target_label: __address__
-        replacement: "${1}:8100"
+
+  - job_name: "json-rpc-metrics"
+    metrics_path: /debug/metrics/prometheus
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/json-rpc-metrics.json
+        refresh_interval: 30s
+
+  - job_name: "node-exporter"
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/node-exporters.json
+        refresh_interval: 30s
