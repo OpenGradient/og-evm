@@ -10,6 +10,8 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkquery "github.com/cosmos/cosmos-sdk/types/query"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cosmos/evm/x/poolrebalancer/types"
 )
@@ -92,4 +94,22 @@ func TestQueryPendingUndelegations_PaginatesByQueueBuckets(t *testing.T) {
 	// Pagination is over queue keys, not individual entries. With Limit=1, we can still receive
 	// multiple undelegation entries if the first queue bucket contains more than one entry.
 	require.GreaterOrEqual(t, len(res.Undelegations), 2)
+}
+
+func TestQueryPendingRedelegations_NilRequest(t *testing.T) {
+	ctx, k := newTestKeeper(t)
+	qs := NewQueryServer(k)
+
+	_, err := qs.PendingRedelegations(ctx, nil)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestQueryPendingUndelegations_NilRequest(t *testing.T) {
+	ctx, k := newTestKeeper(t)
+	qs := NewQueryServer(k)
+
+	_, err := qs.PendingUndelegations(ctx, nil)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

@@ -9,6 +9,8 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/types/query"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ types.QueryServer = QueryServer{}
@@ -33,6 +35,9 @@ func (qs QueryServer) PendingRedelegations(
 	ctx context.Context,
 	req *types.QueryPendingRedelegationsRequest,
 ) (*types.QueryPendingRedelegationsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
 	store := runtime.KVStoreAdapter(qs.k.storeService.OpenKVStore(ctx))
 	pstore := prefix.NewStore(store, types.PendingRedelegationKey)
 
@@ -59,6 +64,9 @@ func (qs QueryServer) PendingUndelegations(
 	ctx context.Context,
 	req *types.QueryPendingUndelegationsRequest,
 ) (*types.QueryPendingUndelegationsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
 	// Paginate over queue keys (completionTime, delegator); each value is a batch of entries.
 	store := runtime.KVStoreAdapter(qs.k.storeService.OpenKVStore(ctx))
 	pstore := prefix.NewStore(store, types.PendingUndelegationQueueKey)
