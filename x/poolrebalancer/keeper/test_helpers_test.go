@@ -10,7 +10,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
-	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 
 	"github.com/cosmos/evm/x/poolrebalancer/types"
 )
@@ -24,7 +23,7 @@ func newTestKeeper(t *testing.T) (sdk.Context, Keeper) {
 
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
-	stakingKeeper := &stakingkeeper.Keeper{} // zero value; do not call staking methods in unit tests
+	stakingKeeper := &mockStakingKeeper{}
 
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	k := NewKeeper(cdc, storeService, stakingKeeper, authority, nil, nil)

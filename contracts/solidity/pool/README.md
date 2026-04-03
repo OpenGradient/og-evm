@@ -159,6 +159,29 @@ Before enabling automation:
   blocks.
 - Automation and rebalance are independent best-effort steps in EndBlock.
 
+### `creditStakeableFromRebalance` (poolrebalancer / module undelegations)
+
+When the **poolrebalancer** module **undelegates** the pool delegator on-chain
+(in a path that does **not** go through `withdraw()`), bonded principal drops
+but contract `totalStaked` would otherwise stay too high until reconciled.
+
+`creditStakeableFromRebalance(amount)` fixes that **after** unbonded tokens have
+landed as liquid on the pool: it increases `stakeablePrincipalLedger` and
+decreases `totalStaked` by the same `amount`, so `principalAssets()` stays
+consistent. It enforces `amount <= totalStaked` and the usual liquid/ledger
+invariants.
+
+**Who may call it:** `owner` or `automationCaller` (same ACL as `stake` /
+`harvest`). In production, **`automationCaller`** should be the poolrebalancer
+**module EVM address**; the keeper invokes this via **`CallEVM`** using that
+sender.
+
+**EndBlock order (application):** the **staking** module completes matured
+unbonding entries and pays out **before** poolrebalancer `EndBlock` runs. The
+rebalancer then **`CompletePendingUndelegations`** (strict: EVM credit, then
+queue delete), then best-effort **`harvest` / `stake`** automation. So the
+payout is already in the pool balance when `creditStakeableFromRebalance` runs.
+
 ## Error Model (selected)
 
 - Input/permission: `InvalidAmount`, `InvalidUnits`, `InvalidConfig`, `Unauthorized`.

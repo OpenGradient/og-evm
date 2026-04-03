@@ -105,38 +105,92 @@ func (k Keeper) BeginTrackedUndelegation(ctx context.Context, del sdk.AccAddress
 	return completionTime, amountUnbonded, nil
 }
 
-// CompletePendingUndelegations deletes matured pending undelegation queue and index entries.
-// The staking module handles actual token payout to the delegator; we only clean up our tracking state.
+// maturedUndelegationBatch is a snapshot of one queue key and its unmarshaled entries.
+type maturedUndelegationBatch struct {
+	queueKey       []byte
+	completionTime time.Time
+	queued         types.QueuedUndelegation
+}
+
+// CompletePendingUndelegations credits CommunityPool stakeable principal for matured module-tracked
+// undelegations, then deletes queue and index entries. The EVM call also reduces CommunityPool.totalStaked
+// by the credited amount so principal NAV matches module undelegations that bypass withdraw().
+// Credit runs before deletes so a failed EVM call retains queue state for retry. The staking module pays
+// out liquid tokens before this runs (staking EndBlock).
 func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
-	completed := 0
 
 	coreStore := k.storeService.OpenKVStore(ctx)
 	iterStore := runtime.KVStoreAdapter(coreStore)
 
-	// Iterate all queue entries with completionTime <= blockTime.
 	start := types.PendingUndelegationQueueKey
 	end := types.GetPendingUndelegationQueueKeyByTime(blockTime)
 	endExclusive := append(append([]byte{}, end...), 0xFF)
 
 	iter := iterStore.Iterator(start, endExclusive)
-	defer iter.Close() //nolint:errcheck
-
+	var batches []maturedUndelegationBatch
 	for ; iter.Valid(); iter.Next() {
-		key := iter.Key()
+		key := append([]byte(nil), iter.Key()...)
 		completionTime, err := types.ParsePendingUndelegationQueueKeyForCompletionTime(key)
 		if err != nil {
+			iter.Close() //nolint:errcheck
 			return err
 		}
 
 		var queued types.QueuedUndelegation
 		if err := k.cdc.Unmarshal(iter.Value(), &queued); err != nil {
+			iter.Close() //nolint:errcheck
 			return err
 		}
+		batches = append(batches, maturedUndelegationBatch{
+			queueKey:       key,
+			completionTime: completionTime,
+			queued:         queued,
+		})
+	}
+	iter.Close() //nolint:errcheck
 
-		// Delete by-validator index entries for each queued undelegation entry.
-		for _, entry := range queued.Entries {
+	poolDel, err := k.GetPoolDelegatorAddress(ctx)
+	if err != nil {
+		return err
+	}
+
+	var bondDenom string
+	if !poolDel.Empty() {
+		bondDenom, err = k.stakingKeeper.BondDenom(ctx)
+		if err != nil {
+			return fmt.Errorf("bond denom: %w", err)
+		}
+	}
+
+	creditSum := math.ZeroInt()
+	if !poolDel.Empty() {
+		poolBech := poolDel.String()
+		for _, b := range batches {
+			for _, e := range b.queued.Entries {
+				if e.DelegatorAddress == poolBech && e.Balance.Denom == bondDenom {
+					creditSum = creditSum.Add(e.Balance.Amount)
+				}
+			}
+		}
+	}
+
+	if creditSum.IsPositive() {
+		if k.evmKeeper == nil {
+			return fmt.Errorf("poolrebalancer: matured pool undelegations %s require evm keeper", creditSum)
+		}
+		if poolDel.Empty() {
+			return fmt.Errorf("poolrebalancer: matured pool undelegations %s require PoolDelegatorAddress", creditSum)
+		}
+		if err := k.creditCommunityPoolStakeableFromRebalance(sdkCtx, poolDel, creditSum); err != nil {
+			return err
+		}
+	}
+
+	completed := 0
+	for _, b := range batches {
+		for _, entry := range b.queued.Entries {
 			delAddr, err := sdk.AccAddressFromBech32(entry.DelegatorAddress)
 			if err != nil {
 				return err
@@ -145,15 +199,13 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			indexKey := types.GetPendingUndelegationByValIndexKey(valAddr, completionTime, entry.Balance.Denom, delAddr)
+			indexKey := types.GetPendingUndelegationByValIndexKey(valAddr, b.completionTime, entry.Balance.Denom, delAddr)
 			if err := coreStore.Delete(indexKey); err != nil {
 				return err
 			}
 			completed++
 		}
-
-		// Delete the queue key itself.
-		iterStore.Delete(key)
+		iterStore.Delete(b.queueKey)
 	}
 
 	if completed > 0 {

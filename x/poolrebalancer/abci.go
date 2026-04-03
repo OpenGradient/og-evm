@@ -7,11 +7,14 @@ import (
 )
 
 // EndBlocker runs at end of block:
-// 1) strict cleanup of matured pending entries,
-// 2) best-effort CommunityPool automation (harvest/stake),
-// 3) best-effort staking rebalance.
+//  1) Strict cleanup of matured pending redelegations and undelegations. For matured module-tracked
+//     undelegations matching PoolDelegatorAddress and bond denom, CompletePendingUndelegations calls
+//     CommunityPool.creditStakeableFromRebalance (EVM) before removing queue entries so stakeablePrincipalLedger
+//     can be delegated on the next step; staking EndBlock has already released liquid tokens to the delegator.
+//  2) Best-effort CommunityPool automation (harvest, then stake).
+//  3) Best-effort staking rebalance.
 func EndBlocker(ctx sdk.Context, k keeper.Keeper) error {
-	// Keep cleanup strict to avoid queue/index drift from staking state.
+	// Keep cleanup strict to avoid queue/index drift from staking state and to avoid dropping creditable amounts.
 	if err := k.CompletePendingRedelegations(ctx); err != nil {
 		ctx.Logger().Error("poolrebalancer: complete pending redelegations failed", "err", err)
 		return err

@@ -3,6 +3,7 @@ package communitypool
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -19,6 +20,8 @@ import (
 	poolrebalancerkeeper "github.com/cosmos/evm/x/poolrebalancer/keeper"
 	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
+
+	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -743,6 +746,96 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 
 			afterStaked := s.queryPoolUint(0, poolAddr, "totalStaked")
 			Expect(afterStaked.Cmp(beforeStaked)).To(BeNumerically(">", 0))
+		})
+
+		It("credits ledger and restores principal NAV after a module-tracked undelegation matures (app EndBlock)", func() {
+			ctx := s.network.GetContext()
+			sk := s.network.App.GetStakingKeeper()
+			sp, err := sk.GetParams(ctx)
+			Expect(err).To(BeNil())
+			sp.UnbondingTime = 30 * time.Second
+			Expect(sk.SetParams(ctx, sp)).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			depositor := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(10_000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				depositor.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", poolrebalancertypes.ModuleEVMAddress),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			ctx = s.network.GetContext()
+			moduleAcc := sdk.AccAddress(poolrebalancertypes.ModuleEVMAddress.Bytes())
+			accountKeeper := s.network.App.GetAccountKeeper()
+			if accountKeeper.GetAccount(ctx, moduleAcc) == nil {
+				accountKeeper.SetAccount(ctx, accountKeeper.NewAccountWithAddress(ctx, moduleAcc))
+			}
+
+			storeService := runtime.NewKVStoreService(s.network.App.GetKey(poolrebalancertypes.StoreKey))
+			rebalancerKeeper := poolrebalancerkeeper.NewKeeper(
+				s.network.App.AppCodec(),
+				storeService,
+				s.network.App.GetStakingKeeper(),
+				authtypes.NewModuleAddress(govtypes.ModuleName),
+				s.network.App.GetEVMKeeper(),
+				s.network.App.GetAccountKeeper(),
+			)
+
+			params := poolrebalancertypes.DefaultParams()
+			params.PoolDelegatorAddress = sdk.AccAddress(poolAddr.Bytes()).String()
+			Expect(rebalancerKeeper.SetParams(ctx, params)).To(BeNil())
+
+			Expect(poolrebalancer.EndBlocker(ctx, rebalancerKeeper)).To(BeNil())
+
+			stakedAfterStake := s.queryPoolUint(0, poolAddr, "totalStaked")
+			Expect(stakedAfterStake.Sign()).To(BeNumerically(">", 0))
+			principalAfterStake := s.queryPoolUint(0, poolAddr, "principalAssets")
+			Expect(principalAfterStake.Cmp(stakedAfterStake)).To(Equal(0))
+
+			poolDel := sdk.AccAddress(poolAddr.Bytes())
+			vals := s.network.GetValidators()
+			Expect(vals).ToNot(BeEmpty())
+			valAddr, vErr := sdk.ValAddressFromBech32(vals[0].OperatorAddress)
+			Expect(vErr).To(BeNil())
+
+			bonded, bErr := sk.GetDelegatorBonded(ctx, poolDel)
+			Expect(bErr).To(BeNil())
+			Expect(bonded.IsPositive()).To(BeTrue())
+			undelegAmt := bonded.Quo(sdkmath.NewInt(5))
+			if undelegAmt.IsZero() {
+				undelegAmt = sdkmath.NewInt(1)
+			}
+			undelegCoin := sdk.NewCoin(s.bondDenom, undelegAmt)
+
+			goCtx := sdk.WrapSDKContext(ctx)
+			_, amountUB, uErr := rebalancerKeeper.BeginTrackedUndelegation(goCtx, poolDel, valAddr, undelegCoin)
+			Expect(uErr).To(BeNil())
+			Expect(amountUB.IsPositive()).To(BeTrue())
+
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			Expect(s.network.NextBlockAfter(40 * time.Second)).To(BeNil())
+
+			principalAfterMaturity := s.queryPoolUint(0, poolAddr, "principalAssets")
+			Expect(principalAfterMaturity.Cmp(principalAfterStake)).To(Equal(0))
+
+			ledger := s.queryPoolUint(0, poolAddr, "stakeablePrincipalLedger")
+			stakedNow := s.queryPoolUint(0, poolAddr, "totalStaked")
+			sum := new(big.Int).Add(new(big.Int).Set(ledger), stakedNow)
+			Expect(sum.Cmp(stakedAfterStake)).To(Equal(0))
 		})
 
 		It("reverts dust deposit that would mint zero units", func() {

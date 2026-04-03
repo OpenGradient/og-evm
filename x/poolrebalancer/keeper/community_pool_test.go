@@ -20,8 +20,10 @@ type mockEVMKeeper struct {
 	methods   []string
 	froms     []common.Address
 	contracts []common.Address
+	args      [][]any
 
 	errByMethod map[string]error
+	failedVM    map[string]string // method -> VmError (non-empty => Failed())
 }
 
 func (m *mockEVMKeeper) CallEVM(
@@ -36,10 +38,15 @@ func (m *mockEVMKeeper) CallEVM(
 	m.methods = append(m.methods, method)
 	m.froms = append(m.froms, from)
 	m.contracts = append(m.contracts, contract)
+	m.args = append(m.args, append([]any(nil), args...))
 	if err, ok := m.errByMethod[method]; ok {
 		return nil, err
 	}
-	return &evmtypes.MsgEthereumTxResponse{}, nil
+	vmErr := ""
+	if m.failedVM != nil {
+		vmErr = m.failedVM[method]
+	}
+	return &evmtypes.MsgEthereumTxResponse{VmError: vmErr}, nil
 }
 
 func TestMaybeRunCommunityPoolAutomation_SkipsWhenPoolDelegatorUnset(t *testing.T) {

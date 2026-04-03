@@ -106,6 +106,8 @@ contract CommunityPool {
         uint256 maturedWithdrawReserveAfter
     );
     event TotalStakedSynced(uint256 previousTotalStaked, uint256 newTotalStaked);
+    /// @dev Emitted when automation/owner credits principal from module-tracked rebalance undelegations.
+    event CreditStakeableFromRebalance(uint256 amount, uint256 stakeablePrincipalLedgerAfter);
 
     modifier onlyOwner() {
         if (msg.sender != owner) {
@@ -388,6 +390,24 @@ contract CommunityPool {
         totalStaked += delegatedAmount;
         _assertReserveInvariant();
         emit Stake(liquidBefore, delegatedAmount, uint256(validatorsCount), totalStaked);
+    }
+
+    /// @notice Credits liquid principal from module-tracked rebalance undelegations into `stakeablePrincipalLedger`.
+    /// @dev Intended for poolrebalancer after staking unbond payouts land on this contract. Decrements `totalStaked`
+    /// by the same `amount` so `principalAssets` stays consistent when undelegation bypasses `withdraw()` (module path).
+    /// The caller must pass the exact aggregate `amount` for matured entries only; incorrect values break accounting.
+    /// Not used for user `withdraw` flows. Callable by owner or `automationCaller` (same as `stake` / `harvest`).
+    function creditStakeableFromRebalance(uint256 amount) external nonReentrant onlyAutomationOrOwner {
+        if (amount == 0) {
+            return;
+        }
+        if (amount > totalStaked) {
+            revert InvalidAmount();
+        }
+        stakeablePrincipalLedger += amount;
+        totalStaked -= amount;
+        _assertReserveInvariant();
+        emit CreditStakeableFromRebalance(amount, stakeablePrincipalLedger);
     }
 
     /// @notice Claims staking rewards to this contract's liquid balance.

@@ -14,5 +14,10 @@ func TestCommunityPoolABI_MethodsPresent(t *testing.T) {
 	harvestMethod, ok := CommunityPoolABI.Methods["harvest"]
 	require.True(t, ok)
 	require.Empty(t, harvestMethod.Inputs)
+
+	creditMethod, ok := CommunityPoolABI.Methods["creditStakeableFromRebalance"]
+	require.True(t, ok)
+	require.Len(t, creditMethod.Inputs, 1)
+	require.Equal(t, "uint256", creditMethod.Inputs[0].Type.String())
 }
 
