@@ -25,6 +25,11 @@ service Query {
   }
 
   // PendingUndelegations returns tracked in-flight undelegations.
+  //
+  // Pagination steps the on-chain undelegation queue by store key: each key is one
+  // (completion_time, delegator) bucket and its value may batch many entries. So
+  // pagination.limit and next_key are bucket-oriented, not a cap on the number of
+  // undelegations returned (e.g. limit=1 can still return multiple undelegations).
   rpc PendingUndelegations(QueryPendingUndelegationsRequest)
       returns (QueryPendingUndelegationsResponse) {
     option (google.api.http).get =
@@ -56,7 +61,7 @@ message QueryPendingRedelegationsResponse {
 
 // QueryPendingUndelegationsRequest is the request type for the Query/PendingUndelegations RPC method.
 message QueryPendingUndelegationsRequest {
-  // pagination defines an optional pagination for the request.
+  // pagination paginates undelegation queue buckets; see Query.PendingUndelegations.
   cosmos.base.query.v1beta1.PageRequest pagination = 1;
 }
 
