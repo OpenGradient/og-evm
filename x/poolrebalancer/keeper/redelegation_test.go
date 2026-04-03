@@ -14,7 +14,7 @@ import (
 )
 
 func TestHasImmatureRedelegationTo_BlocksSrcWhenDstHasIncoming(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
@@ -38,7 +38,7 @@ func TestHasImmatureRedelegationTo_BlocksSrcWhenDstHasIncoming(t *testing.T) {
 }
 
 func TestCompletePendingRedelegations_RemovesPrimaryIndexAndQueue(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
@@ -85,7 +85,7 @@ func TestCompletePendingRedelegations_RemovesPrimaryIndexAndQueue(t *testing.T) 
 }
 
 func TestSetPendingRedelegation_DistinctSourcesDoNotMerge(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))

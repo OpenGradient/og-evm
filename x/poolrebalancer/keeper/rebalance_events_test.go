@@ -12,7 +12,7 @@ import (
 )
 
 func TestEmitRedelegationFailureEvent(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	src := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
@@ -42,7 +42,7 @@ func TestEmitRedelegationFailureEvent(t *testing.T) {
 }
 
 func TestEmitUndelegationFailureEvent(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))

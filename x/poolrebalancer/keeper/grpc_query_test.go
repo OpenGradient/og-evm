@@ -17,7 +17,7 @@ import (
 )
 
 func TestQueryParams_RoundTrip(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 
 	params := types.DefaultParams()
 	params.MaxOpsPerBlock = 7
@@ -30,7 +30,7 @@ func TestQueryParams_RoundTrip(t *testing.T) {
 }
 
 func TestQueryPendingRedelegations_DecodesProtoValues(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
@@ -56,7 +56,7 @@ func TestQueryPendingRedelegations_DecodesProtoValues(t *testing.T) {
 }
 
 func TestQueryPendingUndelegations_PaginatesByQueueBuckets(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
@@ -97,7 +97,7 @@ func TestQueryPendingUndelegations_PaginatesByQueueBuckets(t *testing.T) {
 }
 
 func TestQueryPendingRedelegations_NilRequest(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	qs := NewQueryServer(k)
 
 	_, err := qs.PendingRedelegations(ctx, nil)
@@ -106,7 +106,7 @@ func TestQueryPendingRedelegations_NilRequest(t *testing.T) {
 }
 
 func TestQueryPendingUndelegations_NilRequest(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	qs := NewQueryServer(k)
 
 	_, err := qs.PendingUndelegations(ctx, nil)

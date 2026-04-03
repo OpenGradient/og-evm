@@ -20,7 +20,9 @@ func DefaultParams() Params {
 	}
 }
 
-// Validate validates the params.
+// Validate runs stateless checks only. For pool_delegator_address that means Bech32 form when
+// non-empty—no EVM IsContract, no auth/account checks. User accounts, contract proof, and
+// bootstrap ordering are enforced in keeper.validatePoolDelegatorAddress (via SetParams).
 func (p Params) Validate() error {
 	if p.PoolDelegatorAddress != "" {
 		if _, err := sdk.AccAddressFromBech32(p.PoolDelegatorAddress); err != nil {
@@ -49,7 +51,8 @@ func DefaultGenesisState() *GenesisState {
 	}
 }
 
-// Validate validates the genesis state.
+// Validate checks genesis params using the same stateless rules as Params.Validate; pool
+// delegator safety still depends on keeper validation when InitGenesis calls SetParams.
 func (gs *GenesisState) Validate() error {
 	return gs.Params.Validate()
 }

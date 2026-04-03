@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math/big"
 	"testing"
 	"time"
 
 	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/math"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/runtime"
@@ -19,7 +22,25 @@ import (
 
 	"github.com/cosmos/evm/x/poolrebalancer/keeper"
 	"github.com/cosmos/evm/x/poolrebalancer/types"
+	evmtypes "github.com/cosmos/evm/x/vm/types"
 )
+
+// endBlockerMockEVM satisfies types.EVMKeeper for module-level ABCI tests.
+type endBlockerMockEVM struct{}
+
+func (endBlockerMockEVM) CallEVM(
+	_ sdk.Context,
+	_ abi.ABI,
+	_, _ common.Address,
+	_ bool,
+	_ *big.Int,
+	_ string,
+	_ ...any,
+) (*evmtypes.MsgEthereumTxResponse, error) {
+	return &evmtypes.MsgEthereumTxResponse{}, nil
+}
+
+func (endBlockerMockEVM) IsContract(sdk.Context, common.Address) bool { return true }
 
 func newEndBlockerTestKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey) {
 	t.Helper()
@@ -32,7 +53,7 @@ func newEndBlockerTestKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context,
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 
-	k := keeper.NewKeeper(cdc, storeService, sk, authority, nil, nil)
+	k := keeper.NewKeeper(cdc, storeService, sk, authority, endBlockerMockEVM{}, nil)
 	return ctx, k, storeKey
 }
 

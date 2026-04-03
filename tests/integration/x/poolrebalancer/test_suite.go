@@ -78,20 +78,22 @@ func (s *KeeperIntegrationTestSuite) configureStakingParamsForTests() {
 	s.Require().NoError(sk.SetParams(s.ctx, sp))
 }
 
-// configurePoolKeeper builds a keeper bound to the same stores as the app under test.
+// configurePoolKeeper builds a keeper bound to the same module KV stores as the app under test.
 func (s *KeeperIntegrationTestSuite) configurePoolKeeper() {
-	// This keeper shares module KV stores with the app; no mocked state.
 	poolKey := s.network.App.GetKey(poolrebalancertypes.StoreKey)
 	storeService := runtime.NewKVStoreService(poolKey)
 
 	authority := authtypes.NewModuleAddress(govtypes.ModuleName)
+	// nil account keeper: avoid rejecting the prefunded keyring account (pubkey) in
+	// validatePoolDelegatorAddress. Stub EVM reports IsContract true so params still match the
+	// "non-empty pool needs EVM attestation" path without CommunityPool deploy.
 	s.poolKeeper = poolrebalancerkeeper.NewKeeper(
 		s.network.App.AppCodec(),
 		storeService,
 		s.network.App.GetStakingKeeper(),
 		authority,
+		rebalanceIntegrationStubEVM{},
 		nil,
-		s.network.App.GetAccountKeeper(),
 	)
 }
 
@@ -107,7 +109,7 @@ func (s *KeeperIntegrationTestSuite) captureBaselineInfo() {
 	// UnitTestNetwork seeds delegations for the first test account; use it as pool delegator.
 	s.poolDel = s.keyring.GetAccAddr(0)
 
-	// Guard rail: no stake means rebalancer has nothing to do.
+	// No stake would make rebalance tests vacuous.
 	_, total, err := s.poolKeeper.GetDelegatorStakeByValidator(s.ctx, s.poolDel)
 	s.Require().NoError(err)
 	s.Require().True(total.IsPositive(), "expected pool delegator stake to be > 0")

@@ -33,6 +33,9 @@ func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
 	if err := params.Validate(); err != nil {
 		return err
 	}
+	if err := k.validatePoolDelegatorAddress(ctx, params.PoolDelegatorAddress); err != nil {
+		return err
+	}
 	store := k.storeService.OpenKVStore(ctx)
 	bz := k.cdc.MustMarshal(&params)
 	return store.Set(types.ParamsKey, bz)

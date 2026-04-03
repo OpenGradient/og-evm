@@ -15,7 +15,7 @@ import (
 )
 
 func TestCompletePendingUndelegations_RemovesQueueAndIndex(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
@@ -55,7 +55,7 @@ func TestCompletePendingUndelegations_RemovesQueueAndIndex(t *testing.T) {
 }
 
 func TestCompletePendingUndelegations_CreditsPoolBeforeDelete(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{}
 	k.evmKeeper = mockEVM
 
@@ -92,7 +92,7 @@ func TestCompletePendingUndelegations_CreditsPoolBeforeDelete(t *testing.T) {
 }
 
 func TestCompletePendingUndelegations_RetainsQueueOnCreditVMFailure(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{
 		failedVM: map[string]string{
 			"creditStakeableFromRebalance": "execution reverted",
@@ -128,7 +128,7 @@ func TestCompletePendingUndelegations_RetainsQueueOnCreditVMFailure(t *testing.T
 }
 
 func TestCompletePendingUndelegations_SumsOnlyPoolDelegatorBondDenom(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{}
 	k.evmKeeper = mockEVM
 
@@ -171,12 +171,15 @@ func TestCompletePendingUndelegations_SumsOnlyPoolDelegatorBondDenom(t *testing.
 }
 
 func TestCompletePendingUndelegations_ErrWhenPoolCreditRequiresEVMButNil(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
+	mockEVM := &mockEVMKeeper{}
+	k.evmKeeper = mockEVM
 
 	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	params := types.DefaultParams()
 	params.PoolDelegatorAddress = poolDel.String()
 	require.NoError(t, k.SetParams(ctx, params))
+	k.evmKeeper = nil
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))

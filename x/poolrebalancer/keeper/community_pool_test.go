@@ -24,6 +24,16 @@ type mockEVMKeeper struct {
 
 	errByMethod map[string]error
 	failedVM    map[string]string // method -> VmError (non-empty => Failed())
+
+	// isContractFn optionally gates IsContract; nil means all addresses are treated as contracts.
+	isContractFn func(common.Address) bool
+}
+
+func (m *mockEVMKeeper) IsContract(_ sdk.Context, addr common.Address) bool {
+	if m != nil && m.isContractFn != nil {
+		return m.isContractFn(addr)
+	}
+	return true
 }
 
 func (m *mockEVMKeeper) CallEVM(
@@ -50,7 +60,7 @@ func (m *mockEVMKeeper) CallEVM(
 }
 
 func TestMaybeRunCommunityPoolAutomation_SkipsWhenPoolDelegatorUnset(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{}
 	k.evmKeeper = mockEVM
 
@@ -59,18 +69,22 @@ func TestMaybeRunCommunityPoolAutomation_SkipsWhenPoolDelegatorUnset(t *testing.
 }
 
 func TestMaybeRunCommunityPoolAutomation_SkipsWhenEVMKeeperUnset(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
+	mockEVM := &mockEVMKeeper{}
+	k.evmKeeper = mockEVM
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{7}, 20))
 	params := pooltypes.DefaultParams()
 	params.PoolDelegatorAddress = del.String()
 	require.NoError(t, k.SetParams(ctx, params))
 
+	k.evmKeeper = nil
 	require.NoError(t, k.MaybeRunCommunityPoolAutomation(ctx))
+	require.Empty(t, mockEVM.methods)
 }
 
 func TestMaybeRunCommunityPoolAutomation_CallsHarvestThenStake(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{}
 	k.evmKeeper = mockEVM
 
@@ -92,7 +106,7 @@ func TestMaybeRunCommunityPoolAutomation_CallsHarvestThenStake(t *testing.T) {
 }
 
 func TestMaybeRunCommunityPoolAutomation_HarvestFailureDoesNotBlockStake(t *testing.T) {
-	ctx, k := newTestKeeper(t)
+	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{
 		errByMethod: map[string]error{
 			"harvest": errors.New("mock harvest failure"),

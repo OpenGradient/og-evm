@@ -1,10 +1,13 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
 	"cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 func TestParamsValidate_RejectsThresholdAbove10000(t *testing.T) {
@@ -32,6 +35,14 @@ func TestParamsValidate_RejectsInvalidPoolDelegatorAddress(t *testing.T) {
 	err := p.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "pool_delegator_address")
+}
+
+// Well-formed Bech32 is enough for Params.Validate; contract-only and user-pubkey rules are not applied here.
+func TestParamsValidate_AcceptsWellFormedBech32PoolDelegatorOnly(t *testing.T) {
+	p := DefaultParams()
+	p.PoolDelegatorAddress = sdk.AccAddress(bytes.Repeat([]byte{0x42}, 20)).String()
+
+	require.NoError(t, p.Validate())
 }
 
 func TestParamsValidate_RejectsZeroMaxOpsPerBlock(t *testing.T) {

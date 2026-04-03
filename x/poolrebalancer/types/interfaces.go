@@ -38,6 +38,8 @@ type EVMKeeper interface {
 		method string,
 		args ...any,
 	) (*evmtypes.MsgEthereumTxResponse, error)
+	// IsContract reports whether the address holds non-delegated EVM bytecode (see x/vm/keeper.IsContract).
+	IsContract(ctx sdk.Context, address common.Address) bool
 }
 
 // AccountKeeper defines the subset of auth keeper methods used by poolrebalancer.
