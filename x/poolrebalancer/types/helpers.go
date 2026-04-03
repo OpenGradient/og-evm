@@ -49,7 +49,68 @@ func DefaultGenesisState() *GenesisState {
 	}
 }
 
+// Validate validates a pending redelegation record (e.g. for genesis import).
+func (pr PendingRedelegation) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(pr.DelegatorAddress); err != nil {
+		return fmt.Errorf("invalid delegator_address: %w", err)
+	}
+	srcVal, err := sdk.ValAddressFromBech32(pr.SrcValidatorAddress)
+	if err != nil {
+		return fmt.Errorf("invalid src_validator_address: %w", err)
+	}
+	dstVal, err := sdk.ValAddressFromBech32(pr.DstValidatorAddress)
+	if err != nil {
+		return fmt.Errorf("invalid dst_validator_address: %w", err)
+	}
+	if srcVal.Equals(dstVal) {
+		return fmt.Errorf("src_validator_address and dst_validator_address must differ")
+	}
+	if err := pr.Amount.Validate(); err != nil {
+		return fmt.Errorf("invalid amount: %w", err)
+	}
+	if !pr.Amount.IsPositive() {
+		return fmt.Errorf("amount must be positive")
+	}
+	if pr.CompletionTime.IsZero() {
+		return fmt.Errorf("completion_time must be set")
+	}
+	return nil
+}
+
+// Validate validates a pending undelegation record (e.g. for genesis import).
+func (pu PendingUndelegation) Validate() error {
+	if _, err := sdk.AccAddressFromBech32(pu.DelegatorAddress); err != nil {
+		return fmt.Errorf("invalid delegator_address: %w", err)
+	}
+	if _, err := sdk.ValAddressFromBech32(pu.ValidatorAddress); err != nil {
+		return fmt.Errorf("invalid validator_address: %w", err)
+	}
+	if err := pu.Balance.Validate(); err != nil {
+		return fmt.Errorf("invalid balance: %w", err)
+	}
+	if !pu.Balance.IsPositive() {
+		return fmt.Errorf("balance must be positive")
+	}
+	if pu.CompletionTime.IsZero() {
+		return fmt.Errorf("completion_time must be set")
+	}
+	return nil
+}
+
 // Validate validates the genesis state.
 func (gs *GenesisState) Validate() error {
-	return gs.Params.Validate()
+	if err := gs.Params.Validate(); err != nil {
+		return err
+	}
+	for i, pr := range gs.PendingRedelegations {
+		if err := pr.Validate(); err != nil {
+			return fmt.Errorf("pending_redelegations[%d]: %w", i, err)
+		}
+	}
+	for i, pu := range gs.PendingUndelegations {
+		if err := pu.Validate(); err != nil {
+			return fmt.Errorf("pending_undelegations[%d]: %w", i, err)
+		}
+	}
+	return nil
 }
