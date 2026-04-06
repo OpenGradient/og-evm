@@ -401,7 +401,7 @@ func TestPickResidualUndelegation_SingleOverweight(t *testing.T) {
 
 	// maxMove=0 means no cap -> amt = 100
 	ctx, k := testKeeperWithParams(t, "50", "0")
-	val, amt, ok, err := k.PickResidualUndelegation(ctx, deltas)
+	val, amt, ok, err := k.PickResidualUndelegation(ctx, deltas, nil)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "val", val)
@@ -409,7 +409,7 @@ func TestPickResidualUndelegation_SingleOverweight(t *testing.T) {
 
 	// maxMove=10 -> amt = 10
 	ctx, k = testKeeperWithParams(t, "50", "10")
-	val, amt, ok, err = k.PickResidualUndelegation(ctx, deltas)
+	val, amt, ok, err = k.PickResidualUndelegation(ctx, deltas, nil)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "val", val)
@@ -424,7 +424,7 @@ func TestPickResidualUndelegation_LargestWins(t *testing.T) {
 	}
 	ctx, k := testKeeperWithParams(t, "50", "0")
 
-	val, amt, ok, err := k.PickResidualUndelegation(ctx, deltas)
+	val, amt, ok, err := k.PickResidualUndelegation(ctx, deltas, nil)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "valB", val)
@@ -432,7 +432,7 @@ func TestPickResidualUndelegation_LargestWins(t *testing.T) {
 
 	// With maxMove=30, amount should be 30
 	ctx, k = testKeeperWithParams(t, "50", "30")
-	_, amt, ok, err = k.PickResidualUndelegation(ctx, deltas)
+	_, amt, ok, err = k.PickResidualUndelegation(ctx, deltas, nil)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.True(t, amt.Equal(math.NewInt(30)))
@@ -446,7 +446,7 @@ func TestPickResidualUndelegation_TieBreak(t *testing.T) {
 	}
 	ctx, k := testKeeperWithParams(t, "50", "0")
 
-	val, amt, ok, err := k.PickResidualUndelegation(ctx, deltas)
+	val, amt, ok, err := k.PickResidualUndelegation(ctx, deltas, nil)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "alpha", val)
@@ -461,7 +461,7 @@ func TestPickResidualUndelegation_NoOverweight(t *testing.T) {
 	}
 	ctx, k := testKeeperWithParams(t, "50", "0")
 
-	_, _, ok, err := k.PickResidualUndelegation(ctx, deltas)
+	_, _, ok, err := k.PickResidualUndelegation(ctx, deltas, nil)
 	require.NoError(t, err)
 	require.False(t, ok)
 }
@@ -473,7 +473,30 @@ func TestPickResidualUndelegation_ZeroDelta(t *testing.T) {
 	}
 	ctx, k := testKeeperWithParams(t, "50", "0")
 
-	_, _, ok, err := k.PickResidualUndelegation(ctx, deltas)
+	_, _, ok, err := k.PickResidualUndelegation(ctx, deltas, nil)
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+// TestPickResidualUndelegation_SkipsSkippedValidators: skip set excludes a more overweight validator so the next is chosen.
+func TestPickResidualUndelegation_SkipsSkippedValidators(t *testing.T) {
+	deltas := map[string]math.Int{
+		"valA": math.NewInt(-100),
+		"valB": math.NewInt(-50),
+	}
+	ctx, k := testKeeperWithParams(t, "50", "0")
+	skip := map[string]struct{}{"valA": {}}
+
+	val, amt, ok, err := k.PickResidualUndelegation(ctx, deltas, skip)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "valB", val)
+	require.True(t, amt.Equal(math.NewInt(50)))
+
+	// All overweight validators skipped -> ok false.
+	_, _, ok, err = k.PickResidualUndelegation(ctx, deltas, map[string]struct{}{
+		"valA": {}, "valB": {},
+	})
 	require.NoError(t, err)
 	require.False(t, ok)
 }

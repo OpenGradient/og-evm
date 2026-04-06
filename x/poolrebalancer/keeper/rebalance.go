@@ -238,8 +238,9 @@ func (k Keeper) PickBestRedelegation(
 }
 
 // PickResidualUndelegation selects a single undelegation as a fallback when redelegation isn't possible.
-// It targets the most overweight validator and caps the amount by MaxMovePerOp (if set).
-func (k Keeper) PickResidualUndelegation(ctx context.Context, deltas map[string]math.Int) (val string, amt math.Int, ok bool, err error) {
+// It targets the most overweight validator among deltas, skipping any keys in skipVals (e.g. sources that
+// already failed undelegation this block). Amount is capped by MaxMovePerOp (if set).
+func (k Keeper) PickResidualUndelegation(ctx context.Context, deltas map[string]math.Int, skipVals map[string]struct{}) (val string, amt math.Int, ok bool, err error) {
 	maxMove, err := k.GetMaxMovePerOp(ctx)
 	if err != nil {
 		return "", math.ZeroInt(), false, err
@@ -255,6 +256,11 @@ func (k Keeper) PickResidualUndelegation(ctx context.Context, deltas map[string]
 	sort.Strings(keys)
 
 	for _, k := range keys {
+		if skipVals != nil {
+			if _, skip := skipVals[k]; skip {
+				continue
+			}
+		}
 		d := deltas[k]
 		if !d.IsNegative() {
 			continue
@@ -345,6 +351,7 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 
 	// Apply operations (redelegate first, then optional undelegate fallback).
 	blocked := make(map[string]map[string]struct{})
+	undelSkipped := make(map[string]struct{})
 	keys := make([]string, 0, len(deltas))
 	for key := range deltas {
 		keys = append(keys, key)
@@ -393,7 +400,7 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 			break
 		}
 
-		valKey, undelAmt, ok, err := k.PickResidualUndelegation(ctx, deltas)
+		valKey, undelAmt, ok, err := k.PickResidualUndelegation(ctx, deltas, undelSkipped)
 		if err != nil {
 			return err
 		}
@@ -408,7 +415,8 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 		coin := sdk.NewCoin(bondDenom, undelAmt)
 		if _, _, err := k.BeginTrackedUndelegation(ctx, del, valAddr, coin); err != nil {
 			k.emitUndelegationFailureEvent(ctx, del, valAddr, coin, err.Error())
-			break
+			undelSkipped[valKey] = struct{}{}
+			continue
 		}
 		deltas[valKey] = deltas[valKey].Add(undelAmt)
 		opsDone++

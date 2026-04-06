@@ -33,6 +33,11 @@ type QueryClient interface {
 	// PendingRedelegations returns tracked in-flight redelegations.
 	PendingRedelegations(ctx context.Context, in *QueryPendingRedelegationsRequest, opts ...grpc.CallOption) (*QueryPendingRedelegationsResponse, error)
 	// PendingUndelegations returns tracked in-flight undelegations.
+	//
+	// Pagination steps the on-chain undelegation queue by store key: each key is one
+	// (completion_time, delegator) bucket and its value may batch many entries. So
+	// pagination.limit and next_key are bucket-oriented, not a cap on the number of
+	// undelegations returned (e.g. limit=1 can still return multiple undelegations).
 	PendingUndelegations(ctx context.Context, in *QueryPendingUndelegationsRequest, opts ...grpc.CallOption) (*QueryPendingUndelegationsResponse, error)
 }
 
@@ -80,6 +85,11 @@ type QueryServer interface {
 	// PendingRedelegations returns tracked in-flight redelegations.
 	PendingRedelegations(context.Context, *QueryPendingRedelegationsRequest) (*QueryPendingRedelegationsResponse, error)
 	// PendingUndelegations returns tracked in-flight undelegations.
+	//
+	// Pagination steps the on-chain undelegation queue by store key: each key is one
+	// (completion_time, delegator) bucket and its value may batch many entries. So
+	// pagination.limit and next_key are bucket-oriented, not a cap on the number of
+	// undelegations returned (e.g. limit=1 can still return multiple undelegations).
 	PendingUndelegations(context.Context, *QueryPendingUndelegationsRequest) (*QueryPendingUndelegationsResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }

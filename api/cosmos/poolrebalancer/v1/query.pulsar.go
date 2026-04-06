@@ -2986,7 +2986,7 @@ type QueryPendingUndelegationsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// pagination defines an optional pagination for the request.
+	// pagination paginates undelegation queue buckets; see Query.PendingUndelegations.
 	Pagination *v1beta1.PageRequest `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 

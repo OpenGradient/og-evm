@@ -132,3 +132,76 @@ func TestGenesis_RoundTripPreservesDistinctRedelegationSources(t *testing.T) {
 	require.True(t, hasA)
 	require.True(t, hasB)
 }
+
+func TestGenesisState_Validate_PendingEntries(t *testing.T) {
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	srcVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	dstVal := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	completion := time.Unix(2_000, 0).UTC()
+	validCoin := sdk.NewCoin("stake", math.NewInt(10))
+
+	validRedel := types.PendingRedelegation{
+		DelegatorAddress:    del.String(),
+		SrcValidatorAddress: srcVal.String(),
+		DstValidatorAddress: dstVal.String(),
+		Amount:              validCoin,
+		CompletionTime:      completion,
+	}
+	validUndel := types.PendingUndelegation{
+		DelegatorAddress: del.String(),
+		ValidatorAddress: srcVal.String(),
+		Balance:          validCoin,
+		CompletionTime:   completion,
+	}
+
+	t.Run("default genesis valid", func(t *testing.T) {
+		require.NoError(t, types.DefaultGenesisState().Validate())
+	})
+
+	t.Run("valid pending entries", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		gs.PendingRedelegations = []types.PendingRedelegation{validRedel}
+		gs.PendingUndelegations = []types.PendingUndelegation{validUndel}
+		require.NoError(t, gs.Validate())
+	})
+
+	t.Run("invalid redelegation delegator", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		bad := validRedel
+		bad.DelegatorAddress = "notabech32"
+		gs.PendingRedelegations = []types.PendingRedelegation{bad}
+		require.Error(t, gs.Validate())
+	})
+
+	t.Run("invalid redelegation self delegate", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		bad := validRedel
+		bad.DstValidatorAddress = bad.SrcValidatorAddress
+		gs.PendingRedelegations = []types.PendingRedelegation{bad}
+		require.Error(t, gs.Validate())
+	})
+
+	t.Run("invalid redelegation non positive amount", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		bad := validRedel
+		bad.Amount = sdk.NewCoin("stake", math.ZeroInt())
+		gs.PendingRedelegations = []types.PendingRedelegation{bad}
+		require.Error(t, gs.Validate())
+	})
+
+	t.Run("invalid redelegation zero completion", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		bad := validRedel
+		bad.CompletionTime = time.Time{}
+		gs.PendingRedelegations = []types.PendingRedelegation{bad}
+		require.Error(t, gs.Validate())
+	})
+
+	t.Run("invalid undelegation zero completion", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		bad := validUndel
+		bad.CompletionTime = time.Time{}
+		gs.PendingUndelegations = []types.PendingUndelegation{bad}
+		require.Error(t, gs.Validate())
+	})
+}
