@@ -15,7 +15,7 @@ contract TEEBatchVerifier is TEEInferenceVerifier {
     /// @param outputHash Hash of the inference output
     /// @param timestamp Unix timestamp the TEE embedded when signing (seconds)
     /// @param signature RSA-PSS signature from the TEE's signing key
-    /// @return True if TEE is active and signature is cryptographically valid
+    /// @return True if TEE is enabled and signature is cryptographically valid
     function verifySignatureNoTimestamp(
         bytes32 teeId,
         bytes32 inputHash,
