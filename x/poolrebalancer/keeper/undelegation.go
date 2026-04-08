@@ -16,6 +16,125 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+var maturedPoolUndelegationCreditTransientKey = []byte{0x01}
+
+func normalizeCompletionTime(t time.Time) time.Time {
+	// Strip monotonic component and force UTC for deterministic equality checks.
+	return t.Round(0).UTC()
+}
+
+func completionTimeMatches(a, b time.Time) bool {
+	return normalizeCompletionTime(a).Equal(normalizeCompletionTime(b))
+}
+
+func (k Keeper) setMaturedPoolUndelegationCreditSum(ctx context.Context, sum math.Int) error {
+	if k.transientKey == nil {
+		return errors.New("poolrebalancer: transient key is nil")
+	}
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	store := sdkCtx.TransientStore(k.transientKey)
+	bz, err := sum.Marshal()
+	if err != nil {
+		return fmt.Errorf("marshal matured undelegation credit sum: %w", err)
+	}
+	store.Set(maturedPoolUndelegationCreditTransientKey, bz)
+	return nil
+}
+
+func (k Keeper) getMaturedPoolUndelegationCreditSum(ctx context.Context) (math.Int, error) {
+	if k.transientKey == nil {
+		return math.Int{}, errors.New("poolrebalancer: transient key is nil")
+	}
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	bz := sdkCtx.TransientStore(k.transientKey).Get(maturedPoolUndelegationCreditTransientKey)
+	if len(bz) == 0 {
+		return math.Int{}, errors.New("poolrebalancer: missing matured pool undelegation credit snapshot (PrepareMaturedPoolUndelegationCredits not run?)")
+	}
+	var sum math.Int
+	if err := sum.Unmarshal(bz); err != nil {
+		return math.Int{}, fmt.Errorf("unmarshal matured undelegation credit sum: %w", err)
+	}
+	return sum, nil
+}
+
+// PrepareMaturedPoolUndelegationCredits snapshots slash-adjusted staking unbonding balances for
+// matured pool-tracked undelegations and writes the sum into transient store for EndBlock use.
+func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error {
+	poolDel, err := k.GetPoolDelegatorAddress(ctx)
+	if err != nil {
+		return err
+	}
+	if poolDel.Empty() {
+		return k.setMaturedPoolUndelegationCreditSum(ctx, math.ZeroInt())
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	batches, err := k.loadMaturedUndelegationBatches(ctx, sdkCtx.BlockTime())
+	if err != nil {
+		return err
+	}
+
+	bondDenom, err := k.stakingKeeper.BondDenom(ctx)
+	if err != nil {
+		return fmt.Errorf("bond denom: %w", err)
+	}
+
+	type tripleKey struct {
+		delegator      string
+		validator      string
+		completionTime time.Time
+	}
+
+	poolBech := poolDel.String()
+	seen := make(map[tripleKey]struct{})
+	creditSum := math.ZeroInt()
+
+	for _, b := range batches {
+		for _, e := range b.queued.Entries {
+			if e.DelegatorAddress != poolBech || e.Balance.Denom != bondDenom {
+				continue
+			}
+			key := tripleKey{
+				delegator:      poolBech,
+				validator:      e.ValidatorAddress,
+				completionTime: normalizeCompletionTime(b.completionTime),
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+
+			valAddr, err := sdk.ValAddressFromBech32(e.ValidatorAddress)
+			if err != nil {
+				return err
+			}
+			ubd, err := k.stakingKeeper.GetUnbondingDelegation(ctx, poolDel, valAddr)
+			if err != nil {
+				return fmt.Errorf("get unbonding delegation for (%s,%s,%s): %w", key.delegator, key.validator, key.completionTime.Format(time.RFC3339Nano), err)
+			}
+
+			// Sum every staking entry whose completion matches this triple. Same-block undelegations
+			// merge into one entry (same CreationHeight+CompletionTime); different heights can still
+			// share CompletionTime when block header times match, leaving multiple entries — crediting
+			// only the first would under-count.
+			tripleBalance := math.ZeroInt()
+			found := false
+			for _, entry := range ubd.Entries {
+				if completionTimeMatches(entry.CompletionTime, key.completionTime) {
+					tripleBalance = tripleBalance.Add(entry.Balance)
+					found = true
+				}
+			}
+			if !found {
+				return fmt.Errorf("missing unbonding entry for (%s,%s,%s)", key.delegator, key.validator, key.completionTime.Format(time.RFC3339Nano))
+			}
+			creditSum = creditSum.Add(tripleBalance)
+		}
+	}
+
+	return k.setMaturedPoolUndelegationCreditSum(ctx, creditSum)
+}
+
 // addPendingUndelegation records an undelegation until its completion time.
 // It appends to the (completionTime, delegator) queue and writes a by-validator index entry.
 func (k Keeper) addPendingUndelegation(ctx context.Context, del sdk.AccAddress, val sdk.ValAddress, coin sdk.Coin, completionTime time.Time) error {
@@ -112,15 +231,9 @@ type maturedUndelegationBatch struct {
 	queued         types.QueuedUndelegation
 }
 
-// CompletePendingUndelegations credits CommunityPool stakeable principal for matured module-tracked
-// undelegations, then deletes queue and index entries. The EVM call also reduces CommunityPool.totalStaked
-// by the credited amount so principal NAV matches module undelegations that bypass withdraw().
-// Credit runs before deletes so a failed EVM call retains queue state for retry. The staking module pays
-// out liquid tokens before this runs (staking EndBlock).
-func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	blockTime := sdkCtx.BlockTime()
-
+// loadMaturedUndelegationBatches returns queued undelegation batches whose completion time is at or before blockTime.
+// Iterator bounds match CompletePendingUndelegations: [PendingUndelegationQueueKey, GetPendingUndelegationQueueKeyByTime(blockTime)+0xFF).
+func (k Keeper) loadMaturedUndelegationBatches(ctx context.Context, blockTime time.Time) ([]maturedUndelegationBatch, error) {
 	coreStore := k.storeService.OpenKVStore(ctx)
 	iterStore := runtime.KVStoreAdapter(coreStore)
 
@@ -129,19 +242,19 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 	endExclusive := append(append([]byte{}, end...), 0xFF)
 
 	iter := iterStore.Iterator(start, endExclusive)
+	defer iter.Close() //nolint:errcheck
+
 	var batches []maturedUndelegationBatch
 	for ; iter.Valid(); iter.Next() {
 		key := append([]byte(nil), iter.Key()...)
 		completionTime, err := types.ParsePendingUndelegationQueueKeyForCompletionTime(key)
 		if err != nil {
-			iter.Close() //nolint:errcheck
-			return err
+			return nil, err
 		}
 
 		var queued types.QueuedUndelegation
 		if err := k.cdc.Unmarshal(iter.Value(), &queued); err != nil {
-			iter.Close() //nolint:errcheck
-			return err
+			return nil, err
 		}
 		batches = append(batches, maturedUndelegationBatch{
 			queueKey:       key,
@@ -149,31 +262,40 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 			queued:         queued,
 		})
 	}
-	iter.Close() //nolint:errcheck
+	return batches, nil
+}
+
+// CompletePendingUndelegations credits CommunityPool stakeable principal using the slash-adjusted sum
+// written by PrepareMaturedPoolUndelegationCredits (transient store), then deletes queue and index entries.
+// If there are no matured batches, it returns after validating params. When batches exist, a missing
+// transient snapshot is an error. On full success, the transient entry is reset to zero for idempotency.
+// The EVM call also reduces CommunityPool.totalStaked by the credited amount. Credit runs before deletes
+// so a failed EVM call retains queue state for retry. The staking module pays out liquid tokens before
+// this runs (staking EndBlock).
+func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime()
+
+	coreStore := k.storeService.OpenKVStore(ctx)
+	iterStore := runtime.KVStoreAdapter(coreStore)
+
+	batches, err := k.loadMaturedUndelegationBatches(ctx, blockTime)
+	if err != nil {
+		return err
+	}
 
 	poolDel, err := k.GetPoolDelegatorAddress(ctx)
 	if err != nil {
 		return err
 	}
 
-	var bondDenom string
-	if !poolDel.Empty() {
-		bondDenom, err = k.stakingKeeper.BondDenom(ctx)
-		if err != nil {
-			return fmt.Errorf("bond denom: %w", err)
-		}
+	if len(batches) == 0 {
+		return nil
 	}
 
-	creditSum := math.ZeroInt()
-	if !poolDel.Empty() {
-		poolBech := poolDel.String()
-		for _, b := range batches {
-			for _, e := range b.queued.Entries {
-				if e.DelegatorAddress == poolBech && e.Balance.Denom == bondDenom {
-					creditSum = creditSum.Add(e.Balance.Amount)
-				}
-			}
-		}
+	creditSum, err := k.getMaturedPoolUndelegationCreditSum(ctx)
+	if err != nil {
+		return err
 	}
 
 	if creditSum.IsPositive() {
@@ -218,5 +340,5 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 		)
 	}
 
-	return nil
+	return k.setMaturedPoolUndelegationCreditSum(ctx, math.ZeroInt())
 }

@@ -18,6 +18,9 @@ const (
 	// StoreKey is the default store key for the poolrebalancer module (same as ModuleName).
 	StoreKey = ModuleName
 
+	// TransientStoreKey holds per-block scratch data (e.g. matured pool undelegation credit totals for EndBlock).
+	TransientStoreKey = "transient_poolrebalancer"
+
 	// RouterKey is the top-level router key for the module.
 	RouterKey = ModuleName
 )

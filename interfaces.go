@@ -45,6 +45,7 @@ type TestApp interface {
 	ChainID() string
 	DefaultGenesis() map[string]json.RawMessage
 	GetKey(storeKey string) *storetypes.KVStoreKey
+	GetTKey(storeKey string) *storetypes.TransientStoreKey
 	GetBaseApp() *baseapp.BaseApp
 	LastCommitID() storetypes.CommitID
 	LastBlockHeight() int64
@@ -132,6 +133,8 @@ type (
 	}
 	KeyProvider interface {
 		GetKey(storeKey string) *storetypes.KVStoreKey
+		// GetTKey returns a registered TransientStoreKey (e.g. poolrebalancer per-block snapshot store).
+		GetTKey(storeKey string) *storetypes.TransientStoreKey
 	}
 	MempoolProvider interface {
 		GetMempool() mempool.ExtMempool

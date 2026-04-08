@@ -31,6 +31,7 @@ var (
 	_ module.AppModuleBasic   = AppModuleBasic{}
 	_ module.HasABCIGenesis   = AppModule{}
 	_ appmodule.AppModule     = AppModule{}
+	_ appmodule.HasBeginBlocker = AppModule{}
 	_ appmodule.HasEndBlocker = AppModule{}
 )
 
@@ -115,6 +116,11 @@ func (am AppModule) Name() string {
 func (am AppModule) RegisterServices(cfg module.Configurator) {
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServer(am.keeper))
 	types.RegisterMsgServer(cfg.MsgServer(), &am.keeper)
+}
+
+// BeginBlock runs the module BeginBlocker.
+func (am AppModule) BeginBlock(ctx context.Context) error {
+	return BeginBlocker(sdk.UnwrapSDKContext(ctx), am.keeper)
 }
 
 // EndBlock runs the module EndBlocker.

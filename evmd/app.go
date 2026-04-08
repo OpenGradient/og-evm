@@ -164,6 +164,7 @@ type EVMD struct {
 	// keys to access the substores
 	keys  map[string]*storetypes.KVStoreKey
 	oKeys map[string]*storetypes.ObjectStoreKey
+	tKeys map[string]*storetypes.TransientStoreKey
 
 	// keepers
 	AccountKeeper         authkeeper.AccountKeeper
@@ -245,6 +246,9 @@ func NewExampleApp(
 		poolrebalancertypes.StoreKey,
 	)
 	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
+	tKeys := storetypes.NewTransientStoreKeys(
+		poolrebalancertypes.TransientStoreKey,
+	)
 
 	var nonTransientKeys []storetypes.StoreKey
 	for _, k := range keys {
@@ -273,6 +277,7 @@ func NewExampleApp(
 		interfaceRegistry: interfaceRegistry,
 		keys:              keys,
 		oKeys:             oKeys,
+		tKeys:             tKeys,
 	}
 
 	// removed x/params: no ParamsKeeper initialization
@@ -485,6 +490,7 @@ func NewExampleApp(
 	app.PoolRebalancerKeeper = poolrebalancerkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[poolrebalancertypes.StoreKey]),
+		tKeys[poolrebalancertypes.TransientStoreKey],
 		app.StakingKeeper,
 		authtypes.NewModuleAddress(govtypes.ModuleName),
 		app.EVMKeeper,
@@ -642,7 +648,14 @@ func NewExampleApp(
 
 		// TODO: remove no-ops? check if all are no-ops before removing
 		distrtypes.ModuleName, slashingtypes.ModuleName,
-		evidencetypes.ModuleName, stakingtypes.ModuleName,
+		// Slashing and evidence BeginBlock can change bonded or unbonding balances in the same block.
+		// Poolrebalancer BeginBlock reads staking UBD for matured pool-tracked undelegations, so it runs after
+		// both. Staking BeginBlock (x/staking BeginBlocker) only persists/prunes HistoricalInfo; delegator UBD
+		// completion runs in staking EndBlock, so ordering staking after poolrebalancer here does not affect UBD
+		// balances for the snapshot.
+		evidencetypes.ModuleName,
+		poolrebalancertypes.ModuleName,
+		stakingtypes.ModuleName,
 		authtypes.ModuleName, banktypes.ModuleName, govtypes.ModuleName, genutiltypes.ModuleName,
 		authz.ModuleName, feegrant.ModuleName,
 		consensusparamtypes.ModuleName,
@@ -735,6 +748,7 @@ func NewExampleApp(
 	// initialize stores
 	app.MountKVStores(keys)
 	app.MountObjectStores(oKeys)
+	app.MountTransientStores(tKeys)
 
 	maxGasWanted := cast.ToUint64(appOpts.Get(srvflags.EVMMaxTxGasWanted))
 
@@ -933,6 +947,14 @@ func (app *EVMD) DefaultGenesis() map[string]json.RawMessage {
 // NOTE: This is solely to be used for testing purposes.
 func (app *EVMD) GetKey(storeKey string) *storetypes.KVStoreKey {
 	return app.keys[storeKey]
+}
+
+// GetTKey returns the TransientStoreKey for the provided store key.
+//
+// NOTE: Same intent as GetKey—primarily for tests and helpers that must build module keepers with the
+// app's real store keys (e.g. integration suites wiring poolrebalancer.Keeper next to the app).
+func (app *EVMD) GetTKey(storeKey string) *storetypes.TransientStoreKey {
+	return app.tKeys[storeKey]
 }
 
 // SimulationManager implements the SimulationApp interface
