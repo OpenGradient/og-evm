@@ -87,6 +87,16 @@ const (
 	TLSKeyPath  = "tls.key-path"
 )
 
+// OpenTelemetry flags
+const (
+	OTelEnable     = "otel.enable"
+	OTelEndpoint   = "otel.endpoint"
+	OTelInsecure   = "otel.insecure"
+	OTelSampleRate = "otel.sample-rate"
+	OTelChainID    = "otel.chain-id"
+	OTelInstanceID = "otel.instance-id"
+)
+
 // AddTxFlags adds common flags for commands to post tx
 func AddTxFlags(cmd *cobra.Command) (*cobra.Command, error) {
 	cmd.PersistentFlags().String(flags.FlagChainID, "", "Specify Chain ID for sending Tx")

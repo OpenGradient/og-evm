@@ -5,19 +5,31 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/hashicorp/go-metrics"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
+	evmtrace "github.com/cosmos/evm/trace"
 	"github.com/cosmos/evm/x/precisebank/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
 
 	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 
-	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 )
+
+var (
+	precisebankMeter = otel.Meter("evm/x/precisebank/keeper")
+	sendGauge        metric.Float64Gauge
+)
+
+func init() {
+	sendGauge = evmtrace.MustFloat64Gauge(precisebankMeter, "evm.tx.msg.send",
+		metric.WithDescription("Send transaction amount"))
+}
 
 // IsSendEnabledCoins uses the parent x/bank keeper to check the coins provided
 // and returns an ErrSendDisabled if any of the coins are not configured for
@@ -471,10 +483,8 @@ func (k Keeper) Send(goCtx context.Context, msg *banktypes.MsgSend) (*banktypes.
 	defer func() {
 		for _, a := range msg.Amount {
 			if a.Amount.IsInt64() {
-				telemetry.SetGaugeWithLabels( //nolint:staticcheck // TODO: fix
-					[]string{"tx", "msg", "send"},
-					float32(a.Amount.Int64()),
-					[]metrics.Label{telemetry.NewLabel("denom", a.Denom)}, //nolint:staticcheck // TODO: fix
+				sendGauge.Record(goCtx, float64(a.Amount.Int64()),
+					metric.WithAttributes(attribute.String("denom", a.Denom)),
 				)
 			}
 		}

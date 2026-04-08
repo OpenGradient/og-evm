@@ -3,11 +3,11 @@ package keeper
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"strconv"
 
-	"github.com/hashicorp/go-metrics"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	cmttypes "github.com/cometbft/cometbft/types"
@@ -16,12 +16,26 @@ import (
 	"github.com/cosmos/evm/x/vm/types"
 
 	errorsmod "cosmossdk.io/errors"
-	"cosmossdk.io/math"
 
-	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
+
+var (
+	vmMeter        = otel.Meter("evm/x/vm/keeper")
+	ethTxCounter   metric.Int64Counter
+	ethGasCounter  metric.Float64Counter
+	ethGasRatio    metric.Float64Gauge
+)
+
+func init() {
+	ethTxCounter = evmtrace.MustInt64Counter(vmMeter, "evm.tx.ethereum_tx",
+		metric.WithDescription("Total number of Ethereum transactions"))
+	ethGasCounter = evmtrace.MustFloat64Counter(vmMeter, "evm.tx.ethereum_tx.gas_used",
+		metric.WithDescription("Total gas used by Ethereum transactions"))
+	ethGasRatio = evmtrace.MustFloat64Gauge(vmMeter, "evm.tx.ethereum_tx.gas_ratio",
+		metric.WithDescription("Gas limit to gas used ratio"))
+}
 
 var _ types.MsgServer = &Keeper{}
 
@@ -38,13 +52,10 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (_ 
 
 	tx := msg.AsTransaction()
 
-	labels := []metrics.Label{
-		telemetry.NewLabel("tx_type", fmt.Sprintf("%d", tx.Type())), //nolint:staticcheck // TODO: fix
-	}
+	txType := strconv.FormatUint(uint64(tx.Type()), 10)
+	execution := "call"
 	if tx.To() == nil {
-		labels = append(labels, telemetry.NewLabel("execution", "create")) //nolint:staticcheck // TODO: fix
-	} else {
-		labels = append(labels, telemetry.NewLabel("execution", "call")) //nolint:staticcheck // TODO: fix
+		execution = "create"
 	}
 
 	response, err := k.ApplyTransaction(ctx, msg.AsTransaction())
@@ -53,30 +64,19 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (_ 
 	}
 
 	defer func() {
-		telemetry.IncrCounterWithLabels( //nolint:staticcheck // TODO: fix
-			[]string{"tx", "msg", "ethereum_tx", "total"},
-			1,
-			labels,
+		attrs := metric.WithAttributes(
+			attribute.String("tx_type", txType),
+			attribute.String("execution", execution),
 		)
 
-		if response.GasUsed != 0 {
-			telemetry.IncrCounterWithLabels( //nolint:staticcheck // TODO: fix
-				[]string{"tx", "msg", "ethereum_tx", "gas_used", "total"},
-				float32(response.GasUsed),
-				labels,
-			)
+		ethTxCounter.Add(goCtx, 1, attrs)
 
-			// Observe which users define a gas limit >> gas used. Note, that
-			// gas_limit and gas_used are always > 0
-			gasLimit := math.LegacyNewDec(int64(tx.Gas()))                        //#nosec G115 -- int overflow is not a concern here -- tx gas is not going to exceed int64 max value
-			gasRatio, err := gasLimit.QuoInt64(int64(response.GasUsed)).Float64() //#nosec G115 -- int overflow is not a concern here -- gas used is not going to exceed int64 max value
-			if err == nil {
-				telemetry.SetGaugeWithLabels( //nolint:staticcheck // TODO: fix
-					[]string{"tx", "msg", "ethereum_tx", "gas_limit", "per", "gas_used"},
-					float32(gasRatio),
-					labels,
-				)
-			}
+		if response.GasUsed != 0 {
+			ethGasCounter.Add(goCtx, float64(response.GasUsed), attrs)
+
+			// Observe which users define a gas limit >> gas used
+			gasRatioVal := float64(tx.Gas()) / float64(response.GasUsed)
+			ethGasRatio.Record(goCtx, gasRatioVal, attrs)
 		}
 	}()
 
@@ -112,7 +112,7 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (_ 
 			sdk.EventTypeMessage,
 			sdk.NewAttribute(sdk.AttributeKeyModule, types.AttributeValueCategory),
 			sdk.NewAttribute(sdk.AttributeKeySender, types.HexAddress(msg.From)),
-			sdk.NewAttribute(types.AttributeKeyTxType, fmt.Sprintf("%d", tx.Type())),
+			sdk.NewAttribute(types.AttributeKeyTxType, txType),
 		),
 	})
 
