@@ -21,7 +21,7 @@ func (s *KeeperIntegrationTestSuite) TestBoundedOpsPerBlock_MaxOpsIsRespected() 
 	s.DelegateExtraToValidator(src)
 	s.T().Logf("bounded-ops: drift pushed to %s with maxOps=%d", src.OperatorAddress, params.MaxOpsPerBlock)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	pending := s.PendingRedelegations()
 	s.T().Logf("bounded-ops: pending redelegations=%d", len(pending))

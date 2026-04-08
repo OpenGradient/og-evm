@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	abci "github.com/cometbft/cometbft/abci/types"
 	storetypes "cosmossdk.io/store/types"
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/math"
@@ -22,15 +22,32 @@ import (
 	"github.com/cosmos/evm/x/poolrebalancer/types"
 )
 
+type recordedBeginRedelegation struct {
+	del            sdk.AccAddress
+	srcVal, dstVal sdk.ValAddress
+	shares         math.LegacyDec
+}
+
+type recordedUndelegate struct {
+	del     sdk.AccAddress
+	valAddr sdk.ValAddress
+	shares  math.LegacyDec
+}
+
 type mockStakingKeeper struct {
 	vals                  []stakingtypes.Validator
 	validatorByAddr       map[string]stakingtypes.Validator
 	delegations           []stakingtypes.Delegation
 	delegationByValAddr   map[string]stakingtypes.Delegation
+	ubdByDelVal           map[string]stakingtypes.UnbondingDelegation
+	getUBDCalls           int
 	failBeginRedelegation bool
 	failUndelegate        bool
 	// undelegateFailVals, if non-nil, makes Undelegate fail only for these validator addresses (unless failUndelegate is true).
 	undelegateFailVals map[string]struct{}
+
+	beginRedelegationRecords []recordedBeginRedelegation
+	undelegateRecords        []recordedUndelegate
 }
 
 func (m *mockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error) {
@@ -57,7 +74,22 @@ func (m *mockStakingKeeper) GetDelegation(ctx context.Context, delegatorAddr sdk
 	return delegation, nil
 }
 
+func (m *mockStakingKeeper) GetUnbondingDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (stakingtypes.UnbondingDelegation, error) {
+	m.getUBDCalls++
+	if m.ubdByDelVal == nil {
+		return stakingtypes.UnbondingDelegation{}, stakingtypes.ErrNoUnbondingDelegation
+	}
+	ubd, ok := m.ubdByDelVal[delAddr.String()+"|"+valAddr.String()]
+	if !ok {
+		return stakingtypes.UnbondingDelegation{}, stakingtypes.ErrNoUnbondingDelegation
+	}
+	return ubd, nil
+}
+
 func (m *mockStakingKeeper) BeginRedelegation(ctx context.Context, delAddr sdk.AccAddress, valSrcAddr, valDstAddr sdk.ValAddress, sharesAmount math.LegacyDec) (completionTime time.Time, err error) {
+	m.beginRedelegationRecords = append(m.beginRedelegationRecords, recordedBeginRedelegation{
+		del: delAddr, srcVal: valSrcAddr, dstVal: valDstAddr, shares: sharesAmount,
+	})
 	if m.failBeginRedelegation {
 		return time.Time{}, errors.New("mock begin redelegation failed")
 	}
@@ -65,6 +97,9 @@ func (m *mockStakingKeeper) BeginRedelegation(ctx context.Context, delAddr sdk.A
 }
 
 func (m *mockStakingKeeper) Undelegate(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress, sharesAmount math.LegacyDec) (completionTime time.Time, amount math.Int, err error) {
+	m.undelegateRecords = append(m.undelegateRecords, recordedUndelegate{
+		del: delAddr, valAddr: valAddr, shares: sharesAmount,
+	})
 	if m.failUndelegate {
 		return time.Time{}, math.ZeroInt(), errors.New("mock undelegate failed")
 	}
@@ -95,7 +130,7 @@ func newProcessRebalanceKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Contex
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := NewKeeper(cdc, storeService, sk, authority, &mockEVMKeeper{}, nil)
+	k := NewKeeper(cdc, storeService, tKey, sk, authority, &mockEVMKeeper{}, nil)
 
 	return ctx, k
 }
@@ -319,3 +354,86 @@ func TestProcessRebalance_UndelegationSkipsFailedValidator(t *testing.T) {
 	require.Equal(t, 1, successOps, "expected one successful op (undelegation from valB)")
 }
 
+// TestProcessRebalance_HappyPath_SingleRedelegation asserts one successful scheduling op maps to exactly
+// one staking BeginRedelegation with the shares implied by token amount (equal-weight target, max_ops=1).
+func TestProcessRebalance_HappyPath_SingleRedelegation(t *testing.T) {
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	srcVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	dstVal := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+
+	srcValidator := stakingtypes.Validator{
+		OperatorAddress: srcVal.String(),
+		Tokens:          math.NewInt(100),
+		DelegatorShares: math.LegacyNewDec(100),
+	}
+	dstValidator := stakingtypes.Validator{
+		OperatorAddress: dstVal.String(),
+		Tokens:          math.NewInt(100),
+		DelegatorShares: math.LegacyNewDec(100),
+	}
+
+	sk := &mockStakingKeeper{
+		vals: []stakingtypes.Validator{srcValidator, dstValidator},
+		validatorByAddr: map[string]stakingtypes.Validator{
+			srcVal.String(): srcValidator,
+			dstVal.String(): dstValidator,
+		},
+		delegations: []stakingtypes.Delegation{
+			{
+				DelegatorAddress: del.String(),
+				ValidatorAddress: srcVal.String(),
+				Shares:           math.LegacyNewDec(100),
+			},
+		},
+		delegationByValAddr: map[string]stakingtypes.Delegation{
+			srcVal.String(): {
+				DelegatorAddress: del.String(),
+				ValidatorAddress: srcVal.String(),
+				Shares:           math.LegacyNewDec(100),
+			},
+		},
+	}
+
+	ctx, k := newProcessRebalanceKeeper(t, sk)
+	gotDel, gotSrc, gotDst := setupBasicRebalanceState(t, ctx, k)
+	require.Equal(t, del.String(), gotDel.String())
+	require.Equal(t, srcVal.String(), gotSrc.String())
+	require.Equal(t, dstVal.String(), gotDst.String())
+
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	// Default params use undelegate fallback; force redelegate-only so this case records BeginRedelegation.
+	params.UseUndelegateFallback = false
+	require.NoError(t, k.SetParams(ctx, params))
+
+	require.NoError(t, k.ProcessRebalance(ctx))
+
+	require.Len(t, sk.beginRedelegationRecords, 1, "expected exactly one BeginRedelegation")
+	require.Empty(t, sk.undelegateRecords, "redelegate path should not Undelegate")
+
+	rec := sk.beginRedelegationRecords[0]
+	require.Equal(t, del.String(), rec.del.String())
+	require.Equal(t, srcVal.String(), rec.srcVal.String())
+	require.Equal(t, dstVal.String(), rec.dstVal.String())
+	// 100 stake total, 2 validators → target 50 each; move 50 tokens from src → dst; 1:1 token/share.
+	require.True(t, rec.shares.Equal(math.LegacyNewDec(50)), "shares=%s", rec.shares.String())
+
+	events := sdk.UnwrapSDKContext(ctx).EventManager().Events()
+	var sawStart, sawSummary bool
+	for _, ev := range events {
+		switch ev.Type {
+		case types.EventTypeRedelegationStarted:
+			sawStart = true
+			attrs := attrsToMap(ev.Attributes)
+			require.Equal(t, "50", attrs[types.AttributeKeyAmount])
+			require.Equal(t, "stake", attrs[types.AttributeKeyDenom])
+		case types.EventTypeRebalanceSummary:
+			sawSummary = true
+			attrs := attrsToMap(ev.Attributes)
+			require.Equal(t, "1", attrs[types.AttributeKeyOpsDone])
+			require.Equal(t, "false", attrs[types.AttributeKeyUseFallback])
+		}
+	}
+	require.True(t, sawStart, "expected redelegation started event")
+	require.True(t, sawSummary, "expected rebalance summary event")
+}

@@ -54,6 +54,9 @@ func (s *KeeperIntegrationTestSuite) SetupTest() {
 	s.keyring = testkeyring.New(2)
 	opts := []network.ConfigOption{
 		network.WithPreFundedAccounts(s.keyring.GetAllAccAddrs()...),
+		// Short unbonding belongs in genesis: tests that call Commit/FinalizeBlock need the value in
+		// loaded state, not only from a later SetParams on an in-memory ctx.
+		network.WithStakingUnbondingTime(30 * time.Second),
 	}
 	opts = append(opts, s.options...)
 
@@ -84,12 +87,12 @@ func (s *KeeperIntegrationTestSuite) configurePoolKeeper() {
 	storeService := runtime.NewKVStoreService(poolKey)
 
 	authority := authtypes.NewModuleAddress(govtypes.ModuleName)
-	// nil account keeper: avoid rejecting the prefunded keyring account (pubkey) in
-	// validatePoolDelegatorAddress. Stub EVM reports IsContract true so params still match the
-	// "non-empty pool needs EVM attestation" path without CommunityPool deploy.
+	// No account keeper: skips validatePoolDelegatorAddress account/pubkey checks that would reject the
+	// prefunded test keyring. Stub EVM still reports IsContract true for the pool address.
 	s.poolKeeper = poolrebalancerkeeper.NewKeeper(
 		s.network.App.AppCodec(),
 		storeService,
+		s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 		s.network.App.GetStakingKeeper(),
 		authority,
 		rebalanceIntegrationStubEVM{},
@@ -115,9 +118,11 @@ func (s *KeeperIntegrationTestSuite) captureBaselineInfo() {
 	s.Require().True(total.IsPositive(), "expected pool delegator stake to be > 0")
 }
 
-// NextBlock0 advances one block with no extra time offset.
+// NextBlock0 advances one block with no extra time offset (block time unchanged) and refreshes s.ctx
+// from the network so keeper calls see the new height and committed state.
 func (s *KeeperIntegrationTestSuite) NextBlock0() {
 	s.Require().NoError(s.network.NextBlockAfter(0))
+	s.ctx = s.network.GetContext()
 }
 
 // EnableRebalancer writes module params for the current test.

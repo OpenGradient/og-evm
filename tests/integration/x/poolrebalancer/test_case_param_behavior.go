@@ -32,7 +32,7 @@ func (s *KeeperIntegrationTestSuite) TestMaxMovePerOp_CapsScheduledRedelegationA
 		src.OperatorAddress, maxMove.String(), params.MaxOpsPerBlock,
 	)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	// Read queue entries (per-op view), not primary entries (which can merge).
 	storeService := runtime.NewKVStoreService(s.network.App.GetKey(poolrebalancertypes.StoreKey))
@@ -86,7 +86,7 @@ func (s *KeeperIntegrationTestSuite) TestMaxTargetValidators_LimitsRedelegationD
 		allowedDst[v.String()] = struct{}{}
 	}
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	pending := s.PendingRedelegations()
 	s.Require().NotEmpty(pending, "expected pending redelegations to be scheduled")
@@ -110,7 +110,7 @@ func (s *KeeperIntegrationTestSuite) TestPendingRedelegationsQuery_PaginatesAndR
 
 	src := s.validators[0]
 	s.DelegateExtraToValidator(src)
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	qs := poolrebalancerkeeper.NewQueryServer(s.poolKeeper)
 	res, err := qs.PendingRedelegations(s.ctx, &poolrebalancertypes.QueryPendingRedelegationsRequest{
@@ -138,7 +138,7 @@ func (s *KeeperIntegrationTestSuite) TestPendingUndelegationsAndParamsQuery_Inte
 		CompletionTime:      immatureCompletion,
 	})
 	s.DelegateExtraToValidator(xVal)
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	qs := poolrebalancerkeeper.NewQueryServer(s.poolKeeper)
 

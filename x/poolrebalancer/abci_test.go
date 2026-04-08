@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/math"
+	storetypes "cosmossdk.io/store/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -53,7 +53,7 @@ func newEndBlockerTestKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context,
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 
-	k := keeper.NewKeeper(cdc, storeService, sk, authority, endBlockerMockEVM{}, nil)
+	k := keeper.NewKeeper(cdc, storeService, tKey, sk, authority, endBlockerMockEVM{}, nil)
 	return ctx, k, storeKey
 }
 
@@ -76,6 +76,10 @@ func (stakingKeeperOpError) GetDelegation(ctx context.Context, delegatorAddr sdk
 	return stakingtypes.Delegation{}, errors.New("delegation not found")
 }
 
+func (stakingKeeperOpError) GetUnbondingDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (stakingtypes.UnbondingDelegation, error) {
+	return stakingtypes.UnbondingDelegation{}, stakingtypes.ErrNoUnbondingDelegation
+}
+
 func (stakingKeeperOpError) BeginRedelegation(ctx context.Context, delAddr sdk.AccAddress, valSrcAddr, valDstAddr sdk.ValAddress, sharesAmount math.LegacyDec) (time.Time, error) {
 	return time.Time{}, errors.New("not implemented")
 }
@@ -90,6 +94,24 @@ func (stakingKeeperOpError) UnbondingTime(ctx context.Context) (time.Duration, e
 
 func (stakingKeeperOpError) BondDenom(ctx context.Context) (string, error) {
 	return "stake", nil
+}
+
+// stakingKeeperBeginEndFlow stubs GetUnbondingDelegation for BeginBlocker/EndBlocker tests that need
+// a matching UBD in staking state (pool Del|val key).
+type stakingKeeperBeginEndFlow struct {
+	stakingKeeperOpError
+	ubdByDelVal map[string]stakingtypes.UnbondingDelegation
+}
+
+func (m stakingKeeperBeginEndFlow) GetUnbondingDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (stakingtypes.UnbondingDelegation, error) {
+	if m.ubdByDelVal == nil {
+		return stakingtypes.UnbondingDelegation{}, stakingtypes.ErrNoUnbondingDelegation
+	}
+	ubd, ok := m.ubdByDelVal[delAddr.String()+"|"+valAddr.String()]
+	if !ok {
+		return stakingtypes.UnbondingDelegation{}, stakingtypes.ErrNoUnbondingDelegation
+	}
+	return ubd, nil
 }
 
 func TestEndBlocker_ProcessRebalanceErrorIsNonHalting(t *testing.T) {
@@ -124,4 +146,66 @@ func TestEndBlocker_CleanupErrorRemainsHalting(t *testing.T) {
 
 	err := EndBlocker(ctx, k)
 	require.Error(t, err, "cleanup failures should remain halting")
+}
+
+func TestBeginThenEndBlocker_MaturedPoolUndelegationFlow_Succeeds(t *testing.T) {
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+
+	now := time.Now().UTC()
+	completion := now.Add(-time.Second)
+	sk := stakingKeeperBeginEndFlow{
+		ubdByDelVal: map[string]stakingtypes.UnbondingDelegation{
+			poolDel.String() + "|" + val.String(): {
+				DelegatorAddress: poolDel.String(),
+				ValidatorAddress: val.String(),
+				Entries: []stakingtypes.UnbondingDelegationEntry{
+					{
+						CompletionTime: completion,
+						Balance:        math.NewInt(25),
+					},
+				},
+			},
+		},
+	}
+	ctx, k, _ := newEndBlockerTestKeeper(t, sk)
+	ctx = ctx.WithBlockTime(now)
+
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	entry := types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(50)), // queue differs from staking balance
+		CompletionTime:   completion,
+	}
+	require.NoError(t, k.SetPendingUndelegation(ctx, entry))
+
+	require.NoError(t, BeginBlocker(ctx, k))
+	require.NoError(t, EndBlocker(ctx, k))
+}
+
+func TestBeginBlocker_HaltsWhenMaturedPoolUndelegationMissingUBD(t *testing.T) {
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+
+	now := time.Now().UTC()
+	ctx, k, _ := newEndBlockerTestKeeper(t, stakingKeeperBeginEndFlow{})
+	ctx = ctx.WithBlockTime(now)
+
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(1)),
+		CompletionTime:   now.Add(-time.Second),
+	}))
+
+	err := BeginBlocker(ctx, k)
+	require.Error(t, err, "missing matured UBD must halt BeginBlock snapshot")
 }

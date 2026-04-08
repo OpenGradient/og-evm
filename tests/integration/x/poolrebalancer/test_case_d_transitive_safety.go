@@ -49,7 +49,7 @@ func (s *KeeperIntegrationTestSuite) TestTransitiveSafety_BlockedWhileDstImmatur
 		xVal.OperatorAddress, yVal.OperatorAddress, xDelta.String(), s.HasPositiveDelta(deltas), len(s.PendingRedelegations()),
 	)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	pending := s.PendingRedelegations()
 
@@ -106,12 +106,13 @@ func (s *KeeperIntegrationTestSuite) TestTransitiveSafety_UnblocksAfterDstMaturi
 	)
 
 	// First pass: still blocked by immature dst=xVal.
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 	s.Require().True(s.poolKeeper.HasImmatureRedelegationTo(s.ctx, s.poolDel, xSDKValAddr, s.bondDenom))
 
 	// Move past completion so the seed can mature and get cleaned up.
+	// Only redelegation queue entries mature at this time; undelegation queue remains empty.
 	s.WithBlockTime(immatureCompletion.Add(1 * time.Second))
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	// Immature block should now be gone.
 	s.Require().False(s.poolKeeper.HasImmatureRedelegationTo(s.ctx, s.poolDel, xSDKValAddr, s.bondDenom))

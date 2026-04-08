@@ -51,7 +51,7 @@ func (s *KeeperIntegrationTestSuite) TestUpdateParams_ValidAuthorityChangesSched
 	})
 	s.Require().NoError(err)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 	s.Require().Len(s.PendingRedelegations(), 0, "expected no scheduling under high threshold")
 	s.Require().Len(s.PendingUndelegations(), 0, "expected no fallback scheduling under high threshold")
 	s.T().Logf("update-params flow: high threshold kept queues empty")
@@ -65,7 +65,7 @@ func (s *KeeperIntegrationTestSuite) TestUpdateParams_ValidAuthorityChangesSched
 	})
 	s.Require().NoError(err)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 	s.Require().NotEmpty(s.PendingRedelegations(), "expected scheduling after lowering threshold")
 	s.T().Logf("update-params flow: low threshold scheduled %d redelegations", len(s.PendingRedelegations()))
 }

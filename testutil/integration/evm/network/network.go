@@ -140,9 +140,10 @@ func (n *IntegrationNetwork) configureAndInitChain(evmApp evm.EvmApp) error {
 	delegations := createDelegations(validators, genAccounts[0].GetAddress())
 
 	stakingParams := StakingCustomGenesisState{
-		denom:       n.cfg.chainCoins.BaseDenom(),
-		validators:  validators,
-		delegations: delegations,
+		denom:         n.cfg.chainCoins.BaseDenom(),
+		unbondingTime: n.cfg.stakingUnbondingTime,
+		validators:    validators,
+		delegations:   delegations,
 	}
 	govParams := GovCustomGenesisState{
 		denom: n.cfg.chainCoins.BaseDenom(),

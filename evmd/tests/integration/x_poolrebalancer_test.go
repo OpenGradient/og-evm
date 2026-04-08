@@ -1,3 +1,7 @@
+// Pool rebalancer integration tests must be built with -tags=test (singular) so x/evm’s test-only
+// EVMConfigurator.ResetTestConfig is included (see x/vm/types/config.go).
+//
+// Example: go test -tags=test ./evmd/tests/integration -run TestPoolRebalancerKeeperIntegrationTestSuite -count=1
 package integration
 
 import (

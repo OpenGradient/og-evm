@@ -23,7 +23,7 @@ func (s *KeeperIntegrationTestSuite) TestSchedulingA_DriftCreatesPendingRedelega
 	s.DelegateExtraToValidator(src)
 	s.T().Logf("scheduling-case: drift pushed to %s", src.OperatorAddress)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 	pending := s.PendingRedelegations()
 	s.T().Logf("scheduling-case: pending redelegations=%d", len(pending))
 
@@ -64,7 +64,7 @@ func (s *KeeperIntegrationTestSuite) TestSchedulingA_ReducesSourceOverweightInSt
 	beforeSrc := before[srcAddr]
 	s.Require().True(beforeSrc.IsPositive(), "expected positive source stake before scheduling")
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	after, _, err := s.poolKeeper.GetDelegatorStakeByValidator(s.ctx, s.poolDel)
 	s.Require().NoError(err)

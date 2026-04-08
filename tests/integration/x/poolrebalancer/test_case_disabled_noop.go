@@ -15,7 +15,7 @@ func (s *KeeperIntegrationTestSuite) TestDisabledNoOp_NoPendingQueues() {
 	s.EnableRebalancer(p)
 	s.T().Logf("disabled-case: pool delegator=%q", p.PoolDelegatorAddress)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	red := s.PendingRedelegations()
 	und := s.PendingUndelegations()

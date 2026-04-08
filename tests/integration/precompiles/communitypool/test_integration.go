@@ -29,8 +29,8 @@ import (
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
-// TestCommunityPoolIntegrationSuite scaffolds the CommunityPool integration suite.
-// Detailed behavior scenarios are implemented in subsequent test steps.
+// TestCommunityPoolIntegrationSuite registers Ginkgo specs for CommunityPool (and poolrebalancer hooks
+// where needed). Concrete scenarios live in the Describe/It blocks in this file.
 func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp, options ...network.ConfigOption) {
 	_ = Describe("CommunityPool integration scaffold", func() {
 		var s *IntegrationTestSuite
@@ -708,7 +708,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
-			// Authorize the module EVM address so EndBlock can call stake/harvest.
+			// Module EVM address is allowed to call stake/harvest when poolrebalancer runs EndBlock.
 			s.execTxExpectSuccess(
 				owner.Priv,
 				buildTxArgs(poolAddr),
@@ -720,8 +720,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			moduleAcc := sdk.AccAddress(poolrebalancertypes.ModuleEVMAddress.Bytes())
 			accountKeeper := s.network.App.GetAccountKeeper()
 			if accountKeeper.GetAccount(ctx, moduleAcc) == nil {
-				// This integration harness uses a custom genesis setup that may omit
-				// the module account, so seed it explicitly for deterministic E2E coverage.
+				// Genesis may not create this module account; create it so keeper/EVM calls are deterministic.
 				accountKeeper.SetAccount(ctx, accountKeeper.NewAccountWithAddress(ctx, moduleAcc))
 			}
 
@@ -732,6 +731,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			rebalancerKeeper := poolrebalancerkeeper.NewKeeper(
 				s.network.App.AppCodec(),
 				storeService,
+				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 				s.network.App.GetStakingKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
@@ -748,6 +748,8 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(afterStaked.Cmp(beforeStaked)).To(BeNumerically(">", 0))
 		})
 
+		// Stake via module EndBlock, undelegate with BeginTrackedUndelegation, advance time so UBD matures;
+		// normal blocks run BeginBlock+EndBlock and credit stakeablePrincipalLedger while principalAssets stays NAV-stable.
 		It("credits ledger and restores principal NAV after a module-tracked undelegation matures (app EndBlock)", func() {
 			ctx := s.network.GetContext()
 			sk := s.network.App.GetStakingKeeper()
@@ -788,6 +790,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			rebalancerKeeper := poolrebalancerkeeper.NewKeeper(
 				s.network.App.AppCodec(),
 				storeService,
+				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 				s.network.App.GetStakingKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
@@ -828,6 +831,219 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(s.network.NextBlock()).To(BeNil())
 
 			Expect(s.network.NextBlockAfter(40 * time.Second)).To(BeNil())
+
+			principalAfterMaturity := s.queryPoolUint(0, poolAddr, "principalAssets")
+			Expect(principalAfterMaturity.Cmp(principalAfterStake)).To(Equal(0))
+
+			ledger := s.queryPoolUint(0, poolAddr, "stakeablePrincipalLedger")
+			stakedNow := s.queryPoolUint(0, poolAddr, "totalStaked")
+			sum := new(big.Int).Add(new(big.Int).Set(ledger), stakedNow)
+			Expect(sum.Cmp(stakedAfterStake)).To(Equal(0))
+		})
+
+		// Duplicate pending-undelegation rows for the same (delegator, validator, completion) must not
+		// increase the credit: CompletePendingUndelegations sums staking UBD balances once per triple.
+		It("dedupes duplicated matured queue rows and credits staking reality once", func() {
+			ctx := s.network.GetContext()
+			sk := s.network.App.GetStakingKeeper()
+			sp, err := sk.GetParams(ctx)
+			Expect(err).To(BeNil())
+			sp.UnbondingTime = 30 * time.Second
+			Expect(sk.SetParams(ctx, sp)).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			depositor := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(10_000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				depositor.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", poolrebalancertypes.ModuleEVMAddress),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			ctx = s.network.GetContext()
+			moduleAcc := sdk.AccAddress(poolrebalancertypes.ModuleEVMAddress.Bytes())
+			accountKeeper := s.network.App.GetAccountKeeper()
+			if accountKeeper.GetAccount(ctx, moduleAcc) == nil {
+				accountKeeper.SetAccount(ctx, accountKeeper.NewAccountWithAddress(ctx, moduleAcc))
+			}
+
+			storeService := runtime.NewKVStoreService(s.network.App.GetKey(poolrebalancertypes.StoreKey))
+			rebalancerKeeper := poolrebalancerkeeper.NewKeeper(
+				s.network.App.AppCodec(),
+				storeService,
+				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
+				s.network.App.GetStakingKeeper(),
+				authtypes.NewModuleAddress(govtypes.ModuleName),
+				s.network.App.GetEVMKeeper(),
+				s.network.App.GetAccountKeeper(),
+			)
+
+			params := poolrebalancertypes.DefaultParams()
+			params.PoolDelegatorAddress = sdk.AccAddress(poolAddr.Bytes()).String()
+			Expect(rebalancerKeeper.SetParams(ctx, params)).To(BeNil())
+
+			Expect(poolrebalancer.EndBlocker(ctx, rebalancerKeeper)).To(BeNil())
+
+			stakedAfterStake := s.queryPoolUint(0, poolAddr, "totalStaked")
+			Expect(stakedAfterStake.Sign()).To(BeNumerically(">", 0))
+			principalAfterStake := s.queryPoolUint(0, poolAddr, "principalAssets")
+			Expect(principalAfterStake.Cmp(stakedAfterStake)).To(Equal(0))
+
+			poolDel := sdk.AccAddress(poolAddr.Bytes())
+			vals := s.network.GetValidators()
+			Expect(vals).ToNot(BeEmpty())
+			valAddr, vErr := sdk.ValAddressFromBech32(vals[0].OperatorAddress)
+			Expect(vErr).To(BeNil())
+
+			bonded, bErr := sk.GetDelegatorBonded(ctx, poolDel)
+			Expect(bErr).To(BeNil())
+			Expect(bonded.IsPositive()).To(BeTrue())
+			undelegAmt := bonded.Quo(sdkmath.NewInt(5))
+			if undelegAmt.IsZero() {
+				undelegAmt = sdkmath.NewInt(1)
+			}
+			undelegCoin := sdk.NewCoin(s.bondDenom, undelegAmt)
+
+			goCtx := sdk.WrapSDKContext(ctx)
+			completion, amountUB, uErr := rebalancerKeeper.BeginTrackedUndelegation(goCtx, poolDel, valAddr, undelegCoin)
+			Expect(uErr).To(BeNil())
+			Expect(amountUB.IsPositive()).To(BeTrue())
+
+			// Second row: same triple, inflated balance — must not be summed into the credit amount.
+			Expect(rebalancerKeeper.SetPendingUndelegation(sdk.UnwrapSDKContext(goCtx), poolrebalancertypes.PendingUndelegation{
+				DelegatorAddress: poolDel.String(),
+				ValidatorAddress: valAddr.String(),
+				Balance:          sdk.NewCoin(s.bondDenom, amountUB.MulRaw(3)),
+				CompletionTime:   completion,
+			})).To(BeNil())
+			pendingBefore, pbErr := rebalancerKeeper.GetAllPendingUndelegations(sdk.UnwrapSDKContext(goCtx))
+			Expect(pbErr).To(BeNil())
+			Expect(len(pendingBefore)).To(BeNumerically(">", 0))
+
+			Expect(s.network.NextBlock()).To(BeNil())
+			Expect(s.network.NextBlockAfter(40 * time.Second)).To(BeNil())
+
+			principalAfterMaturity := s.queryPoolUint(0, poolAddr, "principalAssets")
+			Expect(principalAfterMaturity.Cmp(principalAfterStake)).To(Equal(0))
+
+			pendingAfter, paErr := rebalancerKeeper.GetAllPendingUndelegations(s.network.GetContext())
+			Expect(paErr).To(BeNil())
+			Expect(pendingAfter).To(BeEmpty())
+
+			ledger := s.queryPoolUint(0, poolAddr, "stakeablePrincipalLedger")
+			stakedNow := s.queryPoolUint(0, poolAddr, "totalStaked")
+			sum := new(big.Int).Add(new(big.Int).Set(ledger), stakedNow)
+			Expect(sum.Cmp(stakedAfterStake)).To(Equal(0))
+		})
+
+		// Matured undelegation credits need the transient snapshot from poolrebalancer BeginBlock; calling
+		// EndBlocker alone errors. Later network.NextBlock calls run the app’s full BeginBlock/EndBlock order,
+		// so staking matures the UBD and poolrebalancer can credit the contract on a normal block.
+		It("fails poolrebalancer EndBlock alone on matured undelegations then clears via full block progression", func() {
+			ctx := s.network.GetContext()
+			sk := s.network.App.GetStakingKeeper()
+			sp, err := sk.GetParams(ctx)
+			Expect(err).To(BeNil())
+			sp.UnbondingTime = 30 * time.Second
+			Expect(sk.SetParams(ctx, sp)).To(BeNil())
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			depositor := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(10_000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				depositor.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", poolrebalancertypes.ModuleEVMAddress),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			ctx = s.network.GetContext()
+			moduleAcc := sdk.AccAddress(poolrebalancertypes.ModuleEVMAddress.Bytes())
+			accountKeeper := s.network.App.GetAccountKeeper()
+			if accountKeeper.GetAccount(ctx, moduleAcc) == nil {
+				accountKeeper.SetAccount(ctx, accountKeeper.NewAccountWithAddress(ctx, moduleAcc))
+			}
+
+			storeService := runtime.NewKVStoreService(s.network.App.GetKey(poolrebalancertypes.StoreKey))
+			rebalancerKeeper := poolrebalancerkeeper.NewKeeper(
+				s.network.App.AppCodec(),
+				storeService,
+				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
+				s.network.App.GetStakingKeeper(),
+				authtypes.NewModuleAddress(govtypes.ModuleName),
+				s.network.App.GetEVMKeeper(),
+				s.network.App.GetAccountKeeper(),
+			)
+
+			params := poolrebalancertypes.DefaultParams()
+			params.PoolDelegatorAddress = sdk.AccAddress(poolAddr.Bytes()).String()
+			Expect(rebalancerKeeper.SetParams(ctx, params)).To(BeNil())
+
+			Expect(poolrebalancer.EndBlocker(ctx, rebalancerKeeper)).To(BeNil())
+
+			stakedAfterStake := s.queryPoolUint(0, poolAddr, "totalStaked")
+			Expect(stakedAfterStake.Sign()).To(BeNumerically(">", 0))
+			principalAfterStake := s.queryPoolUint(0, poolAddr, "principalAssets")
+			Expect(principalAfterStake.Cmp(stakedAfterStake)).To(Equal(0))
+
+			poolDel := sdk.AccAddress(poolAddr.Bytes())
+			vals := s.network.GetValidators()
+			Expect(vals).ToNot(BeEmpty())
+			valAddr, vErr := sdk.ValAddressFromBech32(vals[0].OperatorAddress)
+			Expect(vErr).To(BeNil())
+
+			bonded, bErr := sk.GetDelegatorBonded(ctx, poolDel)
+			Expect(bErr).To(BeNil())
+			Expect(bonded.IsPositive()).To(BeTrue())
+			undelegAmt := bonded.Quo(sdkmath.NewInt(10))
+			if undelegAmt.IsZero() {
+				undelegAmt = sdkmath.NewInt(1)
+			}
+			undelegCoin := sdk.NewCoin(s.bondDenom, undelegAmt)
+
+			goCtx := sdk.WrapSDKContext(ctx)
+			completion, amountUB, uErr := rebalancerKeeper.BeginTrackedUndelegation(goCtx, poolDel, valAddr, undelegCoin)
+			Expect(uErr).To(BeNil())
+			Expect(amountUB.IsPositive()).To(BeTrue())
+
+			// Do not call NextBlock here: full blocks run the app's poolrebalancer and could clear the
+			// queue before we assert failure from EndBlocker alone at a synthetic post-maturity time.
+			matureCtx := s.network.GetContext().WithBlockTime(completion.UTC().Add(2 * time.Second))
+			errEB := poolrebalancer.EndBlocker(matureCtx, rebalancerKeeper)
+			Expect(errEB).To(HaveOccurred())
+
+			pendingMid, pmErr := rebalancerKeeper.GetAllPendingUndelegations(matureCtx)
+			Expect(pmErr).To(BeNil())
+			Expect(pendingMid).ToNot(BeEmpty())
+
+			Expect(s.network.NextBlockAfter(40 * time.Second)).To(BeNil())
+
+			pendingAfter, paErr := rebalancerKeeper.GetAllPendingUndelegations(s.network.GetContext())
+			Expect(paErr).To(BeNil())
+			Expect(pendingAfter).To(BeEmpty())
 
 			principalAfterMaturity := s.queryPoolUint(0, poolAddr, "principalAssets")
 			Expect(principalAfterMaturity.Cmp(principalAfterStake)).To(Equal(0))

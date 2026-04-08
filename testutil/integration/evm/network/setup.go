@@ -274,6 +274,9 @@ func getValidatorsSlashingGen(validators []stakingtypes.Validator, sk slashingty
 type StakingCustomGenesisState struct {
 	denom string
 
+	// unbondingTime, when > 0, overrides stakingtypes.DefaultParams().UnbondingTime.
+	unbondingTime time.Duration
+
 	validators  []stakingtypes.Validator
 	delegations []stakingtypes.Delegation
 }
@@ -283,6 +286,9 @@ func setDefaultStakingGenesisState(cosmosEVMApp evm.EvmApp, genesisState testuti
 	// Set staking params
 	stakingParams := stakingtypes.DefaultParams()
 	stakingParams.BondDenom = overwriteParams.denom
+	if overwriteParams.unbondingTime > 0 {
+		stakingParams.UnbondingTime = overwriteParams.unbondingTime
+	}
 
 	stakingGenesis := stakingtypes.NewGenesisState(
 		stakingParams,

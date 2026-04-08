@@ -1,6 +1,9 @@
 # Compiled contracts
 artifacts/
 
+# Foundry (`forge test` / `forge build` in contracts/)
+out/
+
 # Cached files
 cache/
 

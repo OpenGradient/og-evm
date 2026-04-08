@@ -18,14 +18,16 @@ func maxAbsDelta(deltas map[string]sdkmath.Int) sdkmath.Int {
 	return max
 }
 
-// TestLongHorizonConvergence_RedelegationOnly verifies that repeated EndBlock passes
+// TestLongHorizonConvergence_RedelegationOnly verifies repeated Begin+End passes
 // with periodic maturity windows reduce drift to a small tolerance using redelegations only.
+// Fallback is off so scheduling uses redelegations only (no undelegation queue); each iteration still calls
+// BeginBlock (idle for credits when nothing matured, same as production ordering before EndBlock).
 func (s *KeeperIntegrationTestSuite) TestLongHorizonConvergence_RedelegationOnly() {
 	params := s.DefaultEnabledParams(
-		0, // threshold: schedule on any drift
-		1, // force gradual per-pass progress to exercise long-horizon behavior
+		0,                                  // threshold: schedule on any drift
+		1,                                  // force gradual per-pass progress to exercise long-horizon behavior
 		sdkmath.NewInt(100000000000000000), // cap per-op movement to require multiple iterations
-		false, // redelegation-only mode
+		false,                              // redelegation-only mode
 	)
 	s.EnableRebalancer(params)
 
@@ -60,7 +62,7 @@ func (s *KeeperIntegrationTestSuite) TestLongHorizonConvergence_RedelegationOnly
 	convergedAt := 0
 	sawProgress := false
 	for i := 1; i <= maxIters; i++ {
-		s.Require().NoError(s.RunEndBlock())
+		s.Require().NoError(s.RunBeginThenEndBlock())
 
 		// Periodically move past unbonding window so queued ops can mature and cleanup can proceed.
 		if i%maturityJumpEvery == 0 {
@@ -109,6 +111,6 @@ func (s *KeeperIntegrationTestSuite) TestLongHorizonConvergence_RedelegationOnly
 
 	// Final maturity pass to ensure no stale queue buildup remains.
 	s.WithBlockTime(s.ctx.BlockTime().Add(s.unbondingSec + time.Second))
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 	s.Require().Empty(s.PendingUndelegations(), "undelegation queue should remain empty in redelegation-only mode")
 }

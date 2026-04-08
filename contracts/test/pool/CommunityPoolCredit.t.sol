@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 pragma solidity ^0.8.20;
 
+// Unit tests for CommunityPool.creditStakeableFromRebalance (MockBond + real contract).
+// CI may not invoke Foundry; run locally after installing contracts/ deps. Map @openzeppelin for solc:
+//
+//   cd contracts && npm ci && forge test --root . --contracts solidity/pool \
+//     -R '@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/' \
+//     --use 0.8.20 --evm-version paris --match-contract CommunityPoolCreditTest
+
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {CommunityPool} from "../../solidity/pool/CommunityPool.sol";
@@ -127,5 +134,65 @@ contract CommunityPoolCreditTest {
             }
             require(sel == CommunityPool.Unauthorized.selector, "wrong err");
         }
+    }
+
+    /// @dev Explicit boundary: `amount == totalStaked` must succeed (strict `>` check in contract).
+    function test_CreditStakeableFromRebalance_amountEqualsTotalStaked_drainsStaked() public {
+        bond.mint(address(pool), 100 ether);
+        pool.syncTotalStaked(1);
+        uint256 assetsBefore = pool.principalAssets();
+        pool.creditStakeableFromRebalance(1);
+        require(pool.stakeablePrincipalLedger() == 1, "ledger1");
+        require(pool.totalStaked() == 0, "staked0");
+        require(pool.principalAssets() == assetsBefore, "assets");
+    }
+
+    /// @dev Multiple credits in one test document cumulative ledger; Go integration focuses on E2E module path.
+    function test_CreditStakeableFromRebalance_sequentialCredits_accumulateLedger() public {
+        bond.mint(address(pool), 100 ether);
+        pool.syncTotalStaked(100 ether);
+        uint256 assets0 = pool.principalAssets();
+        pool.creditStakeableFromRebalance(30 ether);
+        pool.creditStakeableFromRebalance(25 ether);
+        pool.creditStakeableFromRebalance(20 ether);
+        require(pool.stakeablePrincipalLedger() == 75 ether, "ledger75");
+        require(pool.totalStaked() == 25 ether, "staked25");
+        require(pool.principalAssets() == assets0, "assets");
+    }
+
+    /// @dev Owner-only `syncTotalStaked` can bump accounting staked before another credit (slash / reconcile).
+    function test_CreditStakeableFromRebalance_afterSyncTotalStaked_preservesPrincipalAssets() public {
+        bond.mint(address(pool), 200 ether);
+        pool.syncTotalStaked(50 ether);
+        uint256 assets0 = pool.principalAssets();
+        pool.creditStakeableFromRebalance(20 ether);
+        require(pool.totalStaked() == 30 ether, "staked30");
+        // Owner bumps on-chain reconciled stake upward; credit again uses new `totalStaked` cap.
+        pool.syncTotalStaked(100 ether);
+        require(pool.principalAssets() == assets0 + 70 ether, "assetsAfterSync");
+        pool.creditStakeableFromRebalance(40 ether);
+        require(pool.stakeablePrincipalLedger() == 60 ether, "ledger60");
+        require(pool.totalStaked() == 60 ether, "staked60");
+        require(pool.principalAssets() == assets0 + 70 ether, "assetsStable");
+    }
+
+    /// @dev Second call must respect *remaining* `totalStaked`, not the original headline amount.
+    function test_CreditStakeableFromRebalance_secondCreditExceedingRemainingTotalStaked_reverts() public {
+        bond.mint(address(pool), 100 ether);
+        pool.syncTotalStaked(30 ether);
+        pool.creditStakeableFromRebalance(25 ether);
+        require(pool.totalStaked() == 5 ether, "staked5");
+        try pool.creditStakeableFromRebalance(6 ether) {
+            revert("expected revert second credit");
+        } catch (bytes memory err) {
+            require(err.length >= 4, "short err");
+            bytes4 sel;
+            assembly {
+                sel := mload(add(err, 0x20))
+            }
+            require(sel == CommunityPool.InvalidAmount.selector, "wrong err");
+        }
+        require(pool.stakeablePrincipalLedger() == 25 ether, "ledger unchanged");
+        require(pool.totalStaked() == 5 ether, "staked unchanged");
     }
 }

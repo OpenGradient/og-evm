@@ -3,6 +3,7 @@ package network
 import (
 	"fmt"
 	"math/big"
+	"time"
 
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
@@ -45,6 +46,9 @@ type Config struct {
 	otherCoinDenoms   []string
 	preFundedAccounts []sdktypes.AccAddress
 	balances          []banktypes.Balance
+
+	// If > 0, overrides staking genesis UnbondingTime (DefaultParams uses the SDK default, ~21d).
+	stakingUnbondingTime time.Duration
 }
 
 type CustomGenesisState map[string]interface{}
@@ -211,5 +215,15 @@ func WithConsensusParams(params *cmtproto.ConsensusParams) ConfigOption {
 		if params != nil {
 			cfg.customConsensusParams = params
 		}
+	}
+}
+
+// WithStakingUnbondingTime sets staking UnbondingTime in the integration network genesis.
+// Poolrebalancer and other suites that call FinalizeBlock between setup steps need a short
+// unbonding window here: post-init keeper SetParams may not survive Commit the way direct
+// EndBlock/DeliverTx paths do.
+func WithStakingUnbondingTime(d time.Duration) ConfigOption {
+	return func(cfg *Config) {
+		cfg.stakingUnbondingTime = d
 	}
 }

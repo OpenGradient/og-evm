@@ -33,6 +33,9 @@ This document captures assumptions that the `communitypool` integration suite de
 
 ## Stability notes
 
+- Integration suites built on `network.NewUnitTestNetwork` (CommunityPool Ginkgo, poolrebalancer stub-EVM, etc.) need **`-tags=test`** (singular, not `tests`) so the `test`-tag build of `x/vm/types` provides `EVMConfigurator.ResetTestConfig`.
+- Two UBD entries sharing `CompletionTime` but differing `CreationHeight`: logic is covered in `x/poolrebalancer/keeper` unit tests; `TestUndelegationMultiEntry_SameCompletionDifferentCreationHeight` adds a real-staking integration path when genesis `UnbondingTime` is short and the second leg uses `NextBlockAfter(0)` to share the completion instant with the first.
+
 - If staking precompile validator ordering or bonded-set query semantics change, staking-path tests may fail and need expectation updates.
 - If default gas behavior changes in factory or precompiles, tx helper gas defaults may need adjustment.
 - If ownership/permissions policy changes, tests must be updated to reflect the new access model.

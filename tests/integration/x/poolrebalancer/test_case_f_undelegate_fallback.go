@@ -48,7 +48,7 @@ func (s *KeeperIntegrationTestSuite) TestUndelegateFallback_FillsPendingUndelega
 		xVal.OperatorAddress, yVal.OperatorAddress, xDelta.String(), len(overweightBefore), len(s.PendingRedelegations()), len(s.PendingUndelegations()),
 	)
 
-	s.Require().NoError(s.RunEndBlock())
+	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	undelegations := s.PendingUndelegations()
 	s.Require().NotEmpty(undelegations, "expected pending undelegations to be scheduled by fallback")
