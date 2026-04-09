@@ -12,7 +12,8 @@ var (
 	//go:embed communitypool_abi.json
 	communityPoolABIBz []byte
 
-	// CommunityPoolABI contains the minimal ABI required by EndBlock automation.
+	// CommunityPoolABI contains the minimal ABI for pool automation: stake, harvest, credit,
+	// reconcileStakedBuckets, and view getters for totalStaked / pendingRebalanceUnbondReserve.
 	CommunityPoolABI abi.ABI
 )
 

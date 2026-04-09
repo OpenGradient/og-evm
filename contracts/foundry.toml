@@ -1,0 +1,18 @@
+# Scope to pool + tests only so older Solidity under solidity/x/ does not force multi-solc resolution.
+[profile.default]
+src = "solidity/pool"
+test = "test/pool"
+# Avoid scanning all of node_modules (Hardhat templates pin ^0.8.28 and break solc resolution).
+# forge-std: reuse submodule tests/evm-tools-compatibility/foundry/lib/forge-std
+#   (git submodule update --init tests/evm-tools-compatibility/foundry/lib/forge-std).
+libs = [
+    "../tests/evm-tools-compatibility/foundry/lib/forge-std",
+    "node_modules/@openzeppelin/contracts",
+]
+solc_version = "0.8.20"
+evm_version = "paris"
+
+remappings = [
+    "forge-std/=../tests/evm-tools-compatibility/foundry/lib/forge-std/src/",
+    "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+]

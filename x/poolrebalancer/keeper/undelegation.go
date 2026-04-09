@@ -27,6 +27,36 @@ func completionTimeMatches(a, b time.Time) bool {
 	return normalizeCompletionTime(a).Equal(normalizeCompletionTime(b))
 }
 
+// sumStakingUnbondingEntriesMatchingCompletion returns the sum of balances on staking unbonding
+// delegation entries for (del, val) whose completion matches keyCompletion (normalized). Used for
+// module-queue credit and expected pending-rebalance accounting; matches merged UBD rows.
+func (k Keeper) sumStakingUnbondingEntriesMatchingCompletion(
+	ctx context.Context,
+	del sdk.AccAddress,
+	valAddr sdk.ValAddress,
+	keyCompletion time.Time,
+) (math.Int, error) {
+	ubd, err := k.stakingKeeper.GetUnbondingDelegation(ctx, del, valAddr)
+	if err != nil {
+		return math.Int{}, fmt.Errorf("get unbonding delegation: %w", err)
+	}
+	tripleBalance := math.ZeroInt()
+	found := false
+	for _, entry := range ubd.Entries {
+		if completionTimeMatches(entry.CompletionTime, keyCompletion) {
+			tripleBalance = tripleBalance.Add(entry.Balance)
+			found = true
+		}
+	}
+	if !found {
+		return math.Int{}, fmt.Errorf(
+			"missing unbonding entry for completion %s",
+			normalizeCompletionTime(keyCompletion).Format(time.RFC3339Nano),
+		)
+	}
+	return tripleBalance, nil
+}
+
 func (k Keeper) setMaturedPoolUndelegationCreditSum(ctx context.Context, sum math.Int) error {
 	if k.transientKey == nil {
 		return errors.New("poolrebalancer: transient key is nil")
@@ -108,25 +138,9 @@ func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error
 			if err != nil {
 				return err
 			}
-			ubd, err := k.stakingKeeper.GetUnbondingDelegation(ctx, poolDel, valAddr)
+			tripleBalance, err := k.sumStakingUnbondingEntriesMatchingCompletion(ctx, poolDel, valAddr, key.completionTime)
 			if err != nil {
 				return fmt.Errorf("get unbonding delegation for (%s,%s,%s): %w", key.delegator, key.validator, key.completionTime.Format(time.RFC3339Nano), err)
-			}
-
-			// Sum every staking entry whose completion matches this triple. Same-block undelegations
-			// merge into one entry (same CreationHeight+CompletionTime); different heights can still
-			// share CompletionTime when block header times match, leaving multiple entries — crediting
-			// only the first would under-count.
-			tripleBalance := math.ZeroInt()
-			found := false
-			for _, entry := range ubd.Entries {
-				if completionTimeMatches(entry.CompletionTime, key.completionTime) {
-					tripleBalance = tripleBalance.Add(entry.Balance)
-					found = true
-				}
-			}
-			if !found {
-				return fmt.Errorf("missing unbonding entry for (%s,%s,%s)", key.delegator, key.validator, key.completionTime.Format(time.RFC3339Nano))
 			}
 			creditSum = creditSum.Add(tripleBalance)
 		}
@@ -208,6 +222,9 @@ func (k Keeper) BeginTrackedUndelegation(ctx context.Context, del sdk.AccAddress
 	if err := k.addPendingUndelegation(ctx, del, valAddr, sdk.NewCoin(bondDenom, amountUnbonded), completionTime); err != nil {
 		return time.Time{}, math.ZeroInt(), fmt.Errorf("add pending undelegation: %w", err)
 	}
+	if err := k.markCommunityPoolReconcileDirtyIfPoolDelegator(ctx, del); err != nil {
+		return time.Time{}, math.ZeroInt(), err
+	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvent(
@@ -265,13 +282,50 @@ func (k Keeper) loadMaturedUndelegationBatches(ctx context.Context, blockTime ti
 	return batches, nil
 }
 
-// CompletePendingUndelegations credits CommunityPool stakeable principal using the slash-adjusted sum
-// written by PrepareMaturedPoolUndelegationCredits (transient store), then deletes queue and index entries.
-// If there are no matured batches, it returns after validating params. When batches exist, a missing
-// transient snapshot is an error. On full success, the transient entry is reset to zero for idempotency.
-// The EVM call also reduces CommunityPool.totalStaked by the credited amount. Credit runs before deletes
-// so a failed EVM call retains queue state for retry. The staking module pays out liquid tokens before
-// this runs (staking EndBlock).
+// loadImmatureUndelegationBatches returns queued undelegation batches whose completion time is strictly
+// after blockTime. Iterator range is (matured upper bound, PendingUndelegationByValIndexKey) so only
+// 0x21 queue keys are included (not 0x22 validator index keys).
+func (k Keeper) loadImmatureUndelegationBatches(ctx context.Context, blockTime time.Time) ([]maturedUndelegationBatch, error) {
+	coreStore := k.storeService.OpenKVStore(ctx)
+	iterStore := runtime.KVStoreAdapter(coreStore)
+
+	blockTime = normalizeCompletionTime(blockTime)
+	maturedEnd := types.GetPendingUndelegationQueueKeyByTime(blockTime)
+	start := append(append([]byte(nil), maturedEnd...), 0xFF)
+	endExclusive := append([]byte(nil), types.PendingUndelegationByValIndexKey...)
+
+	iter := iterStore.Iterator(start, endExclusive)
+	defer iter.Close() //nolint:errcheck
+
+	var batches []maturedUndelegationBatch
+	for ; iter.Valid(); iter.Next() {
+		key := append([]byte(nil), iter.Key()...)
+		completionTime, err := types.ParsePendingUndelegationQueueKeyForCompletionTime(key)
+		if err != nil {
+			return nil, err
+		}
+		if !normalizeCompletionTime(completionTime).After(blockTime) {
+			continue
+		}
+
+		var queued types.QueuedUndelegation
+		if err := k.cdc.Unmarshal(iter.Value(), &queued); err != nil {
+			return nil, err
+		}
+		batches = append(batches, maturedUndelegationBatch{
+			queueKey:       key,
+			completionTime: completionTime,
+			queued:         queued,
+		})
+	}
+	return batches, nil
+}
+
+// CompletePendingUndelegations credits stakeable principal via creditStakeableFromRebalance using the
+// slash-adjusted sum from PrepareMaturedPoolUndelegationCredits, then deletes queue and index entries.
+// creditStakeableFromRebalance reduces pendingRebalanceUnbondReserve only (not totalStaked). Reverts if
+// contract pending < creditSum. Credit runs before deletes. A positive credit sets the reconcile-dirty flag.
+// Staking EndBlock runs before this module so unbonded tokens are liquid.
 func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
@@ -306,6 +360,9 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 			return fmt.Errorf("poolrebalancer: matured pool undelegations %s require PoolDelegatorAddress", creditSum)
 		}
 		if err := k.creditCommunityPoolStakeableFromRebalance(sdkCtx, poolDel, creditSum); err != nil {
+			return err
+		}
+		if err := k.setCommunityPoolReconcileDirty(ctx, true); err != nil {
 			return err
 		}
 	}

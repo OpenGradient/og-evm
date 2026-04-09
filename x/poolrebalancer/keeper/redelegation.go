@@ -122,6 +122,9 @@ func (k Keeper) BeginTrackedRedelegation(ctx context.Context, del sdk.AccAddress
 	if err := k.addPendingRedelegation(ctx, del, srcVal, dstVal, coin, completionTime); err != nil {
 		return time.Time{}, fmt.Errorf("add pending redelegation: %w", err)
 	}
+	if err := k.markCommunityPoolReconcileDirtyIfPoolDelegator(ctx, del); err != nil {
+		return time.Time{}, err
+	}
 
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(

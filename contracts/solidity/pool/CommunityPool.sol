@@ -8,15 +8,14 @@ import "../precompiles/distribution/DistributionI.sol" as distribution;
 /// @title CommunityPool
 /// @notice Pooled staking contract with internal ownership units.
 /// @dev
-/// - Users deposit `bondToken` and receive pool units (`unitsOf`) representing proportional ownership.
-/// - Principal accounting separates:
-///   (a) liquid principal available for staking/deposit pricing,
-///   (b) staked principal tracked in `totalStaked`,
-///   (c) pending unbonding reserve, and
-///   (d) matured withdraw reserve reserved for claims.
-/// - `totalStaked` is accounting-only and can drift from real chain state (e.g. slashing), so
-///   owner can reconcile it via `syncTotalStaked`.
-/// - Withdrawals are async and staked-only in this MVP: requests undelegate first, then users claim after maturity.
+/// - Units (`unitsOf`) represent proportional ownership of bondToken principal.
+/// - Principal: stakeablePrincipalLedger (liquid stakeable), totalStaked (bonded), pendingRebalanceUnbondReserve
+///   (module rebalance unbond in flight until credited to stakeable), withdraw reserves (async user exits).
+/// - Bookkeeping buckets can lag staking until reconcileStakedBuckets (automationCaller only). syncTotalStaked
+///   adjusts bonded only (owner). To set bonded and pending together, automation must call reconcileStakedBuckets.
+/// - principalAssets (= stakeable + bonded + pending reserve) drives deposit minting and pricePerUnit.
+///   withdraw sizes on totalStaked only, not pendingRebalanceUnbondReserve.
+/// - User withdraw: undelegate then claim after maturity.
 contract CommunityPool {
     /// @dev Native token contract used for deposits/withdrawals.
     IERC20 public immutable bondToken;
@@ -28,8 +27,10 @@ contract CommunityPool {
     address public automationCaller;
     /// @dev Total ownership units minted by the pool.
     uint256 public totalUnits;
-    /// @dev Accounting value of delegated principal (not auto-reconciled with staking state).
+    /// @dev Bonded delegated principal only (not module rebalance unbond-in-flight). Not auto-reconciled with staking.
     uint256 public totalStaked;
+    /// @dev Principal that left bonded via module rebalance undelegation but is not yet credited to stakeable (unbonding on staking).
+    uint256 public pendingRebalanceUnbondReserve;
     /// @dev Accumulated rewards per ownership unit (scaled by PRECISION).
     uint256 public accRewardPerUnit;
     /// @dev Total liquid rewards reserved for reward claims.
@@ -106,8 +107,19 @@ contract CommunityPool {
         uint256 maturedWithdrawReserveAfter
     );
     event TotalStakedSynced(uint256 previousTotalStaked, uint256 newTotalStaked);
-    /// @dev Emitted when automation/owner credits principal from module-tracked rebalance undelegations.
-    event CreditStakeableFromRebalance(uint256 amount, uint256 stakeablePrincipalLedgerAfter);
+    /// @dev Emitted when bonded and rebalance-unbond buckets are set together (`automationCaller` only).
+    event StakedBucketsReconciled(
+        uint256 previousTotalStaked,
+        uint256 newTotalStaked,
+        uint256 previousPendingRebalanceUnbondReserve,
+        uint256 newPendingRebalanceUnbondReserve
+    );
+    /// @dev Emitted when automation/owner credits principal from matured module-tracked rebalance undelegations.
+    event CreditStakeableFromRebalance(
+        uint256 amount,
+        uint256 stakeablePrincipalLedgerAfter,
+        uint256 pendingRebalanceUnbondReserveAfter
+    );
 
     modifier onlyOwner() {
         if (msg.sender != owner) {
@@ -118,6 +130,13 @@ contract CommunityPool {
 
     modifier onlyAutomationOrOwner() {
         if (msg.sender != owner && msg.sender != automationCaller) {
+            revert Unauthorized();
+        }
+        _;
+    }
+
+    modifier onlyAutomationCaller() {
+        if (msg.sender != automationCaller) {
             revert Unauthorized();
         }
         _;
@@ -163,7 +182,7 @@ contract CommunityPool {
         emit OwnershipTransferred(previousOwner, newOwner);
     }
 
-    /// @notice Sets the automation caller allowed to run stake/harvest besides owner.
+    /// @notice Sets the automation caller for `stake`/`harvest`/`reconcileStakedBuckets` (owner may still run stake/harvest).
     function setAutomationCaller(address newAutomationCaller) external onlyOwner {
         if (newAutomationCaller == address(0)) {
             revert InvalidAddress();
@@ -192,8 +211,8 @@ contract CommunityPool {
         emit ConfigUpdated(newMaxRetrieve, newMaxValidators, newMinStakeAmount);
     }
 
-    /// @notice Manual reconciliation hook for staking accounting drift.
-    /// @dev Intended for operational correction after slashing/reconciliation.
+    /// @notice Sets bonded totalStaked only (owner).
+    /// @dev Does not change pendingRebalanceUnbondReserve; use reconcileStakedBuckets for both buckets.
     function syncTotalStaked(uint256 newTotalStaked) external onlyOwner {
         uint256 previous = totalStaked;
         totalStaked = newTotalStaked;
@@ -212,9 +231,9 @@ contract CommunityPool {
     }
 
     /// @notice Total principal assets used for ownership pricing.
-    /// @dev In strict staked-withdraw mode this tracks liquid principal plus currently staked principal.
+    /// @dev Stakeable liquid + bonded principal + module rebalance unbond-in-flight (until credited to stakeable).
     function principalAssets() public view returns (uint256) {
-        return principalLiquid() + totalStaked;
+        return principalLiquid() + totalStaked + pendingRebalanceUnbondReserve;
     }
 
     /// @notice Total principal currently committed to pending or matured async withdraw requests.
@@ -268,7 +287,7 @@ contract CommunityPool {
 
     /// @notice Requests an async staked-principal withdrawal by burning ownership units now.
     /// @dev
-    /// - Withdrawal sizing is based only on `totalStaked` (strict unbonding-only model).
+    /// - Withdrawal sizing uses bonded `totalStaked` only; `pendingRebalanceUnbondReserve` is not reduced here.
     /// - Final payout happens via `claimWithdraw` after maturity.
     /// - Undelegation source validators are selected internally by staking precompile.
     function withdraw(uint256 userUnits) external nonReentrant returns (uint256 requestId) {
@@ -373,7 +392,7 @@ contract CommunityPool {
     }
 
     /// @notice Delegates available principal liquid to bonded validators via staking precompile.
-    /// @dev Callable by owner or automation caller; uses one precompile call for bonded-set selection and equal split.
+    /// @dev Increments bonded `totalStaked` only; does not modify `pendingRebalanceUnbondReserve`.
     function stake() external nonReentrant onlyAutomationOrOwner returns (uint256 delegatedAmount) {
         uint256 liquidBefore = stakeablePrincipalLedger;
         if (liquidBefore < minStakeAmount) {
@@ -392,22 +411,36 @@ contract CommunityPool {
         emit Stake(liquidBefore, delegatedAmount, uint256(validatorsCount), totalStaked);
     }
 
-    /// @notice Credits liquid principal from module-tracked rebalance undelegations into `stakeablePrincipalLedger`.
-    /// @dev Intended for poolrebalancer after staking unbond payouts land on this contract. Decrements `totalStaked`
-    /// by the same `amount` so `principalAssets` stays consistent when undelegation bypasses `withdraw()` (module path).
-    /// The caller must pass the exact aggregate `amount` for matured entries only; incorrect values break accounting.
+    /// @notice Credits liquid principal from matured module-tracked rebalance undelegations into `stakeablePrincipalLedger`.
+    /// @dev Decrements `pendingRebalanceUnbondReserve` by `amount`; does not modify bonded `totalStaked`.
+    /// `principalAssets` is unchanged. Callable after unbond payouts are liquid on this contract.
     /// Not used for user `withdraw` flows. Callable by owner or `automationCaller` (same as `stake` / `harvest`).
     function creditStakeableFromRebalance(uint256 amount) external nonReentrant onlyAutomationOrOwner {
         if (amount == 0) {
             return;
         }
-        if (amount > totalStaked) {
+        if (amount > pendingRebalanceUnbondReserve) {
             revert InvalidAmount();
         }
+        pendingRebalanceUnbondReserve -= amount;
         stakeablePrincipalLedger += amount;
-        totalStaked -= amount;
         _assertReserveInvariant();
-        emit CreditStakeableFromRebalance(amount, stakeablePrincipalLedger);
+        emit CreditStakeableFromRebalance(amount, stakeablePrincipalLedger, pendingRebalanceUnbondReserve);
+    }
+
+    /// @notice Sets bonded `totalStaked` and `pendingRebalanceUnbondReserve` atomically to match staking-side truth.
+    /// @dev Poolrebalancer `CallEVM` uses `automationCaller` as sender. Owner cannot call this; use `syncTotalStaked`
+    /// for bonded-only fixes, or temporarily `setAutomationCaller` to a controlled address for full bucket repair.
+    function reconcileStakedBuckets(uint256 newTotalStaked, uint256 newPendingRebalanceUnbondReserve)
+        external
+        nonReentrant
+        onlyAutomationCaller
+    {
+        uint256 prevStaked = totalStaked;
+        uint256 prevPending = pendingRebalanceUnbondReserve;
+        totalStaked = newTotalStaked;
+        pendingRebalanceUnbondReserve = newPendingRebalanceUnbondReserve;
+        emit StakedBucketsReconciled(prevStaked, newTotalStaked, prevPending, newPendingRebalanceUnbondReserve);
     }
 
     /// @notice Claims staking rewards to this contract's liquid balance.

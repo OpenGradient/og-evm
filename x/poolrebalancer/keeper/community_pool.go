@@ -26,14 +26,19 @@ func (k Keeper) ensurePoolRebalancerModuleEVMAccount(ctx sdk.Context) {
 	}
 }
 
-// callCommunityPoolEVM invokes a CommunityPool method using the minimal embedded ABI (commit=true).
-func (k Keeper) callCommunityPoolEVM(ctx sdk.Context, poolDel sdk.AccAddress, method string, args ...any) (*evmtypes.MsgEthereumTxResponse, error) {
+// callCommunityPoolEVMWithCommit calls CommunityPool; commit=false is a static call.
+func (k Keeper) callCommunityPoolEVMWithCommit(ctx sdk.Context, poolDel sdk.AccAddress, commit bool, method string, args ...any) (*evmtypes.MsgEthereumTxResponse, error) {
 	if k.evmKeeper == nil {
 		return nil, errors.New("evm keeper is nil")
 	}
 	k.ensurePoolRebalancerModuleEVMAccount(ctx)
 	poolContract := common.BytesToAddress(poolDel.Bytes())
-	return k.evmKeeper.CallEVM(ctx, types.CommunityPoolABI, types.ModuleEVMAddress, poolContract, true, nil, method, args...)
+	return k.evmKeeper.CallEVM(ctx, types.CommunityPoolABI, types.ModuleEVMAddress, poolContract, commit, nil, method, args...)
+}
+
+// callCommunityPoolEVM state-changing CommunityPool call.
+func (k Keeper) callCommunityPoolEVM(ctx sdk.Context, poolDel sdk.AccAddress, method string, args ...any) (*evmtypes.MsgEthereumTxResponse, error) {
+	return k.callCommunityPoolEVMWithCommit(ctx, poolDel, true, method, args...)
 }
 
 // creditCommunityPoolStakeableFromRebalance calls CommunityPool.creditStakeableFromRebalance(amount).
@@ -41,7 +46,11 @@ func (k Keeper) creditCommunityPoolStakeableFromRebalance(ctx sdk.Context, poolD
 	if !amount.IsPositive() {
 		return nil
 	}
-	res, err := k.callCommunityPoolEVM(ctx, poolDel, "creditStakeableFromRebalance", amount.BigInt())
+	creditArg, err := coerceEVMUint256BigInt(amount.BigInt())
+	if err != nil {
+		return fmt.Errorf("creditStakeableFromRebalance amount for EVM: %w", err)
+	}
+	res, err := k.callCommunityPoolEVM(ctx, poolDel, "creditStakeableFromRebalance", creditArg)
 	if err != nil {
 		return fmt.Errorf("creditStakeableFromRebalance: %w", err)
 	}
@@ -51,11 +60,7 @@ func (k Keeper) creditCommunityPoolStakeableFromRebalance(ctx sdk.Context, poolD
 	return nil
 }
 
-// MaybeRunCommunityPoolAutomation best-effort executes CommunityPool harvest/stake.
-// Assumptions:
-// - pool params PoolDelegatorAddress points to the CommunityPool contract account,
-// - CommunityPool automationCaller is set to types.ModuleEVMAddress.
-// It never returns operational call failures; those are logged and retried next block.
+// MaybeRunCommunityPoolAutomation runs harvest then stake on PoolDelegatorAddress (best-effort; errors logged).
 func (k Keeper) MaybeRunCommunityPoolAutomation(ctx sdk.Context) error {
 	del, err := k.GetPoolDelegatorAddress(ctx)
 	if err != nil {

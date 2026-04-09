@@ -46,6 +46,9 @@ var (
 	PendingUndelegationQueueKey = []byte{0x21}
 	// Index by validator: (validator, completionTime, denom, delegator)
 	PendingUndelegationByValIndexKey = []byte{0x22}
+
+	// When set, EndBlock should run CommunityPool bucket reconcile (also triggered on periodic sweep).
+	CommunityPoolReconcileDirtyKey = []byte{0x31}
 )
 
 func init() {
