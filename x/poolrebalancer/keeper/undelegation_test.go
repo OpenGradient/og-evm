@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"bytes"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -170,6 +171,62 @@ func TestPrepareMaturedPoolUndelegationCredits_WritesZeroWhenPoolDelegatorEmpty(
 	require.True(t, sum.IsZero())
 }
 
+// TestPrepareAndComplete_PoolDelegatorEmpty_SkipsCreditAndClearsMaturedQueue covers the case where
+// PoolDelegatorAddress is unset (DefaultParams): Prepare writes a zero transient snapshot without reading
+// staking UBDs; Complete still iterates all matured module-queue batches and removes them without calling
+// the EVM (creditSum is not positive).
+//
+// Production assumes only poolrebalancer-tracked undelegations use this queue (typically the pool
+// delegator). If other delegators' rows could appear while the pool address is unset, they would be
+// cleared here without a contract credit—this test documents that behavior.
+func TestPrepareAndComplete_PoolDelegatorEmpty_SkipsCreditAndClearsMaturedQueue(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	mockEVM := &mockEVMKeeper{}
+	k.evmKeeper = mockEVM
+
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	del := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{0xCD}, 20))
+	completion := ctx.BlockTime().Add(-time.Second)
+	denom := "stake"
+	coin := sdk.NewCoin(denom, math.NewInt(42))
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: del.String(),
+		ValidatorAddress: val.String(),
+		Balance:          coin,
+		CompletionTime:   completion,
+	}))
+
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	require.Empty(t, params.PoolDelegatorAddress)
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx))
+
+	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
+	prepared := readPreparedMaturedUndelegationCreditSum(t, sdk.UnwrapSDKContext(ctx), k)
+	require.True(t, prepared.IsZero())
+
+	require.NoError(t, k.CompletePendingUndelegations(ctx))
+
+	require.Empty(t, mockEVM.methods, "no EVM credit when transient credit sum is zero")
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx), "skipped credit must not set reconcile dirty")
+
+	store := k.storeService.OpenKVStore(ctx)
+	queueKey := types.GetPendingUndelegationQueueKey(completion, del)
+	bz, err := store.Get(queueKey)
+	require.NoError(t, err)
+	require.Nil(t, bz)
+
+	indexKey := types.GetPendingUndelegationByValIndexKey(val, completion, denom, del)
+	idxBz, err := store.Get(indexKey)
+	require.NoError(t, err)
+	require.Nil(t, idxBz)
+
+	final := readPreparedMaturedUndelegationCreditSum(t, sdk.UnwrapSDKContext(ctx), k)
+	require.True(t, final.IsZero())
+}
+
+// Transient sum is credited via creditStakeableFromRebalance (pending reserve), not by lowering totalStaked.
 func TestPrepareMaturedPoolUndelegationCredits_UsesStakingBalanceForSlashAlignment(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
@@ -400,6 +457,7 @@ func TestPrepareMaturedPoolUndelegationCredits_ErrOnMissingUBD(t *testing.T) {
 }
 
 func TestCompletePendingUndelegations_CreditsPoolBeforeDelete(t *testing.T) {
+	// Mock EVM has no storage; on-chain, pendingRebalanceUnbondReserve must cover the credit (prior reconciles).
 	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{}
 	k.evmKeeper = mockEVM
@@ -462,6 +520,7 @@ func TestCompletePendingUndelegations_RetainsQueueOnCreditVMFailure(t *testing.T
 	params := types.DefaultParams()
 	params.PoolDelegatorAddress = poolDel.String()
 	require.NoError(t, k.SetParams(ctx, params))
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx), "dirty only after successful credit")
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
@@ -488,14 +547,164 @@ func TestCompletePendingUndelegations_RetainsQueueOnCreditVMFailure(t *testing.T
 	}
 
 	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	preparedSum := readPreparedMaturedUndelegationCreditSum(t, sdkCtx, k)
+	require.Equal(t, "50", preparedSum.String())
+
 	err := k.CompletePendingUndelegations(ctx)
 	require.Error(t, err)
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx), "failed credit must not set reconcile dirty")
 
 	store := k.storeService.OpenKVStore(ctx)
 	queueKey := types.GetPendingUndelegationQueueKey(completion, poolDel)
 	bz, err := store.Get(queueKey)
 	require.NoError(t, err)
 	require.NotNil(t, bz)
+
+	indexKey := types.GetPendingUndelegationByValIndexKey(val, completion, coin.Denom, poolDel)
+	idxBz, err := store.Get(indexKey)
+	require.NoError(t, err)
+	require.NotNil(t, idxBz, "validator index entry must remain until credit+delete succeed")
+
+	afterFailSum := readPreparedMaturedUndelegationCreditSum(t, sdkCtx, k)
+	require.True(t, afterFailSum.Equal(preparedSum), "transient snapshot must not be cleared on Complete error")
+}
+
+// TestCompletePendingUndelegations_RetainsQueueOnCreditCallEVMError covers CallEVM returning (nil, err)
+// before MsgEthereumTxResponse is inspected (transport / keeper error path). Transient credit sums are
+// cosmossdk.io/math.Int (256-bit bounded); values that do not fit a Solidity uint256 cannot be stored and
+// are covered at the coercion helper level in TestCommunityPoolStakeBucketBigInt.
+func TestCompletePendingUndelegations_RetainsQueueOnCreditCallEVMError(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	mockEVM := &mockEVMKeeper{
+		errByMethod: map[string]error{
+			"creditStakeableFromRebalance": errors.New("mock call evm transport failure"),
+		},
+	}
+	k.evmKeeper = mockEVM
+
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx))
+
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	completion := ctx.BlockTime().Add(-time.Second)
+	coin := sdk.NewCoin("stake", math.NewInt(77))
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          coin,
+		CompletionTime:   completion,
+	}))
+
+	mockSK, ok := k.stakingKeeper.(*mockStakingKeeper)
+	require.True(t, ok)
+	mockSK.ubdByDelVal = map[string]stakingtypes.UnbondingDelegation{
+		poolDel.String() + "|" + val.String(): {
+			DelegatorAddress: poolDel.String(),
+			ValidatorAddress: val.String(),
+			Entries: []stakingtypes.UnbondingDelegationEntry{
+				{CompletionTime: completion, Balance: math.NewInt(77)},
+			},
+		},
+	}
+
+	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	preparedSum := readPreparedMaturedUndelegationCreditSum(t, sdkCtx, k)
+	require.Equal(t, "77", preparedSum.String())
+
+	err := k.CompletePendingUndelegations(ctx)
+	require.Error(t, err)
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx), "transport error before credit must not set dirty")
+
+	store := k.storeService.OpenKVStore(ctx)
+	queueKey := types.GetPendingUndelegationQueueKey(completion, poolDel)
+	bz, err := store.Get(queueKey)
+	require.NoError(t, err)
+	require.NotNil(t, bz)
+
+	indexKey := types.GetPendingUndelegationByValIndexKey(val, completion, coin.Denom, poolDel)
+	idxBz, err := store.Get(indexKey)
+	require.NoError(t, err)
+	require.NotNil(t, idxBz)
+
+	afterFailSum := readPreparedMaturedUndelegationCreditSum(t, sdkCtx, k)
+	require.True(t, afterFailSum.Equal(preparedSum))
+}
+
+// TestCompletePendingUndelegations_RetryAfterCreditVMFailureSucceeds proves the same BeginBlock transient
+// snapshot can complete after the EVM credit path starts succeeding (e.g. same EndBlock retry is not required
+// to re-run Prepare if the context still holds the prepared sum).
+func TestCompletePendingUndelegations_RetryAfterCreditVMFailureSucceeds(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	mockEVM := &mockEVMKeeper{
+		failedVM: map[string]string{
+			"creditStakeableFromRebalance": "execution reverted",
+		},
+	}
+	k.evmKeeper = mockEVM
+
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx))
+
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	completion := ctx.BlockTime().Add(-time.Second)
+	coin := sdk.NewCoin("stake", math.NewInt(33))
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          coin,
+		CompletionTime:   completion,
+	}))
+
+	mockSK, ok := k.stakingKeeper.(*mockStakingKeeper)
+	require.True(t, ok)
+	mockSK.ubdByDelVal = map[string]stakingtypes.UnbondingDelegation{
+		poolDel.String() + "|" + val.String(): {
+			DelegatorAddress: poolDel.String(),
+			ValidatorAddress: val.String(),
+			Entries: []stakingtypes.UnbondingDelegationEntry{
+				{CompletionTime: completion, Balance: math.NewInt(33)},
+			},
+		},
+	}
+
+	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
+	require.Error(t, k.CompletePendingUndelegations(ctx))
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx), "first failed credit must not set dirty")
+
+	mockEVM.failedVM = nil
+	require.NoError(t, k.CompletePendingUndelegations(ctx))
+
+	require.Equal(t, []string{
+		"creditStakeableFromRebalance",
+		"creditStakeableFromRebalance",
+	}, mockEVM.methods)
+	amt0, ok := mockEVM.args[0][0].(*big.Int)
+	require.True(t, ok)
+	require.Equal(t, "33", amt0.String())
+	amt1, ok := mockEVM.args[1][0].(*big.Int)
+	require.True(t, ok)
+	require.Equal(t, "33", amt1.String())
+
+	store := k.storeService.OpenKVStore(ctx)
+	queueKey := types.GetPendingUndelegationQueueKey(completion, poolDel)
+	bz, err := store.Get(queueKey)
+	require.NoError(t, err)
+	require.Nil(t, bz)
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	finalSum := readPreparedMaturedUndelegationCreditSum(t, sdkCtx, k)
+	require.True(t, finalSum.IsZero(), "transient cleared after successful Complete")
+	require.True(t, k.getCommunityPoolReconcileDirty(ctx), "successful credit sets reconcile dirty")
 }
 
 func TestCompletePendingUndelegations_SumsOnlyPoolDelegatorBondDenom(t *testing.T) {

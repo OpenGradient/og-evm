@@ -18,12 +18,16 @@ import (
 
 type mockEVMKeeper struct {
 	methods   []string
+	commits   []bool
 	froms     []common.Address
 	contracts []common.Address
 	args      [][]any
 
 	errByMethod map[string]error
 	failedVM    map[string]string // method -> VmError (non-empty => Failed())
+
+	// ViewRetEncoder, when set, supplies Ret for commit=false eth_call-style invocations (e.g. uint256 getters).
+	ViewRetEncoder func(method string) ([]byte, error)
 
 	// isContractFn optionally gates IsContract; nil means all addresses are treated as contracts.
 	isContractFn func(common.Address) bool
@@ -46,6 +50,7 @@ func (m *mockEVMKeeper) CallEVM(
 	args ...any,
 ) (*evmtypes.MsgEthereumTxResponse, error) {
 	m.methods = append(m.methods, method)
+	m.commits = append(m.commits, commit)
 	m.froms = append(m.froms, from)
 	m.contracts = append(m.contracts, contract)
 	m.args = append(m.args, append([]any(nil), args...))
@@ -56,7 +61,15 @@ func (m *mockEVMKeeper) CallEVM(
 	if m.failedVM != nil {
 		vmErr = m.failedVM[method]
 	}
-	return &evmtypes.MsgEthereumTxResponse{VmError: vmErr}, nil
+	var ret []byte
+	if !commit && m.ViewRetEncoder != nil {
+		enc, err := m.ViewRetEncoder(method)
+		if err != nil {
+			return nil, err
+		}
+		ret = enc
+	}
+	return &evmtypes.MsgEthereumTxResponse{VmError: vmErr, Ret: ret}, nil
 }
 
 func TestMaybeRunCommunityPoolAutomation_SkipsWhenPoolDelegatorUnset(t *testing.T) {

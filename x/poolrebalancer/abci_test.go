@@ -57,6 +57,50 @@ func newEndBlockerTestKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context,
 	return ctx, k, storeKey
 }
 
+// recordingEndBlockerEVM appends each invoked CommunityPool method name for ordering assertions.
+type recordingEndBlockerEVM struct {
+	methods []string
+}
+
+func (m *recordingEndBlockerEVM) CallEVM(
+	_ sdk.Context,
+	_ abi.ABI,
+	_, _ common.Address,
+	_ bool,
+	_ *big.Int,
+	method string,
+	_ ...any,
+) (*evmtypes.MsgEthereumTxResponse, error) {
+	m.methods = append(m.methods, method)
+	return &evmtypes.MsgEthereumTxResponse{}, nil
+}
+
+func (recordingEndBlockerEVM) IsContract(sdk.Context, common.Address) bool { return true }
+
+func newEndBlockerTestKeeperWithRecordingEVM(t *testing.T, sk types.StakingKeeper, evm *recordingEndBlockerEVM) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey) {
+	t.Helper()
+
+	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
+	tKey := storetypes.NewTransientStoreKey("transient_test")
+	ctx := testutil.DefaultContext(storeKey, tKey)
+
+	storeService := runtime.NewKVStoreService(storeKey)
+	cdc := moduletestutil.MakeTestEncodingConfig().Codec
+	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
+
+	k := keeper.NewKeeper(cdc, storeService, tKey, sk, authority, evm, nil)
+	return ctx, k, storeKey
+}
+
+func indexOfMethod(methods []string, name string) int {
+	for i, m := range methods {
+		if m == name {
+			return i
+		}
+	}
+	return -1
+}
+
 // stakingKeeperOpError implements types.StakingKeeper for EndBlocker tests; fails GetBondedValidatorsByPower.
 type stakingKeeperOpError struct{}
 
@@ -146,6 +190,98 @@ func TestEndBlocker_CleanupErrorRemainsHalting(t *testing.T) {
 
 	err := EndBlocker(ctx, k)
 	require.Error(t, err, "cleanup failures should remain halting")
+}
+
+// stakingEndBlockSecondPass makes ProcessRebalance a no-op (no pool stake) while bonded targets exist.
+type stakingEndBlockSecondPass struct {
+	stakingKeeperOpError
+}
+
+func (stakingEndBlockSecondPass) GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error) {
+	valAddr := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	return []stakingtypes.Validator{{
+		OperatorAddress: valAddr.String(),
+		Tokens:          math.NewInt(1000),
+		DelegatorShares: math.LegacyNewDec(1000),
+		Status:          stakingtypes.Bonded,
+	}}, nil
+}
+
+func (stakingEndBlockSecondPass) GetDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress, maxRetrieve uint16) ([]stakingtypes.Delegation, error) {
+	return nil, nil
+}
+
+func countMethod(methods []string, name string) int {
+	n := 0
+	for _, m := range methods {
+		if m == name {
+			n++
+		}
+	}
+	return n
+}
+
+func TestEndBlocker_SecondReconcileAfterProcessRebalanceWhenSecondPassEnabled(t *testing.T) {
+	rec := &recordingEndBlockerEVM{}
+	ctx, k, _ := newEndBlockerTestKeeperWithRecordingEVM(t, stakingEndBlockSecondPass{}, rec)
+	k.SetCommunityPoolReconcileSecondPassForTesting(true)
+	t.Cleanup(func() { k.SetCommunityPoolReconcileSecondPassForTesting(false) })
+	ctx = ctx.WithBlockHeight(40)
+
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	require.NoError(t, EndBlocker(ctx, k))
+
+	require.GreaterOrEqual(t, countMethod(rec.methods, "reconcileStakedBuckets"), 2,
+		"expected first reconcile after cleanup and second after successful ProcessRebalance no-op: %v", rec.methods)
+}
+
+func TestEndBlocker_CreditStakeableBeforeReconcileStakedBuckets(t *testing.T) {
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+
+	now := time.Now().UTC()
+	completion := now.Add(-time.Second)
+	sk := stakingKeeperBeginEndFlow{
+		ubdByDelVal: map[string]stakingtypes.UnbondingDelegation{
+			poolDel.String() + "|" + val.String(): {
+				DelegatorAddress: poolDel.String(),
+				ValidatorAddress: val.String(),
+				Entries: []stakingtypes.UnbondingDelegationEntry{
+					{
+						CompletionTime: completion,
+						Balance:        math.NewInt(25),
+					},
+				},
+			},
+		},
+	}
+	rec := &recordingEndBlockerEVM{}
+	ctx, k, _ := newEndBlockerTestKeeperWithRecordingEVM(t, sk, rec)
+	ctx = ctx.WithBlockTime(now)
+
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	entry := types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(50)),
+		CompletionTime:   completion,
+	}
+	require.NoError(t, k.SetPendingUndelegation(ctx, entry))
+
+	require.NoError(t, BeginBlocker(ctx, k))
+	require.NoError(t, EndBlocker(ctx, k))
+
+	iCredit := indexOfMethod(rec.methods, "creditStakeableFromRebalance")
+	iRecon := indexOfMethod(rec.methods, "reconcileStakedBuckets")
+	require.NotEqual(t, -1, iCredit, "expected credit: %v", rec.methods)
+	require.NotEqual(t, -1, iRecon, "expected reconcile: %v", rec.methods)
+	require.Less(t, iCredit, iRecon, "credit must run before bucket reconcile: %v", rec.methods)
 }
 
 func TestBeginThenEndBlocker_MaturedPoolUndelegationFlow_Succeeds(t *testing.T) {

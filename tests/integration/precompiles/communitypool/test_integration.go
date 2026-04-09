@@ -31,6 +31,10 @@ import (
 
 // TestCommunityPoolIntegrationSuite registers Ginkgo specs for CommunityPool (and poolrebalancer hooks
 // where needed). Concrete scenarios live in the Describe/It blocks in this file.
+//
+// Credit-path failure semantics (EVM revert / transport error, queue+index+transient retention, retry) are
+// covered in unit tests under x/poolrebalancer/keeper (e.g. undelegation_test.go); this suite focuses on
+// real network + contract behavior where a full misaligned snapshot vs contract credit is impractical to stage.
 func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp, options ...network.ConfigOption) {
 	_ = Describe("CommunityPool integration scaffold", func() {
 		var s *IntegrationTestSuite
@@ -1032,8 +1036,18 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			// Do not call NextBlock here: full blocks run the app's poolrebalancer and could clear the
 			// queue before we assert failure from EndBlocker alone at a synthetic post-maturity time.
 			matureCtx := s.network.GetContext().WithBlockTime(completion.UTC().Add(2 * time.Second))
+			// CompletePendingUndelegations errors before any EVM credit when the BeginBlock transient snapshot
+			// is missing; CommunityPool accounting must be unchanged (same guarantee as keeper credit-failure tests).
+			pendingOnPoolBefore := s.queryPoolUint(0, poolAddr, "pendingRebalanceUnbondReserve")
+			ledgerBefore := s.queryPoolUint(0, poolAddr, "stakeablePrincipalLedger")
+			stakedOnPoolBefore := s.queryPoolUint(0, poolAddr, "totalStaked")
+			principalBefore := s.queryPoolUint(0, poolAddr, "principalAssets")
 			errEB := poolrebalancer.EndBlocker(matureCtx, rebalancerKeeper)
 			Expect(errEB).To(HaveOccurred())
+			Expect(s.queryPoolUint(0, poolAddr, "pendingRebalanceUnbondReserve").String()).To(Equal(pendingOnPoolBefore.String()))
+			Expect(s.queryPoolUint(0, poolAddr, "stakeablePrincipalLedger").String()).To(Equal(ledgerBefore.String()))
+			Expect(s.queryPoolUint(0, poolAddr, "totalStaked").String()).To(Equal(stakedOnPoolBefore.String()))
+			Expect(s.queryPoolUint(0, poolAddr, "principalAssets").String()).To(Equal(principalBefore.String()))
 
 			pendingMid, pmErr := rebalancerKeeper.GetAllPendingUndelegations(matureCtx)
 			Expect(pmErr).To(BeNil())
@@ -1618,6 +1632,105 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(beforePPU.String()).To(Equal("1000000000000000000"))
 			Expect(afterAssets.String()).To(Equal("2000"))
 			Expect(afterPPU.String()).To(Equal("2000000000000000000"))
+		})
+
+		It("reconcileStakedBuckets pending reserve updates principalAssets and pricePerUnit", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			user := s.keyring.GetKey(1)
+			automation := s.keyring.GetKey(2)
+
+			depositAmount := big.NewInt(1000)
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			Expect(s.queryPoolUint(0, poolAddr, "pendingRebalanceUnbondReserve").String()).To(Equal("0"))
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", automation.Addr),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				automation.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(
+					s.communityPoolContract,
+					"reconcileStakedBuckets",
+					big.NewInt(0),
+					big.NewInt(500),
+				),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			Expect(s.queryPoolUint(0, poolAddr, "pendingRebalanceUnbondReserve").String()).To(Equal("500"))
+			Expect(s.queryPoolUint(0, poolAddr, "principalAssets").String()).To(Equal("1500"))
+			Expect(s.queryPoolUint(0, poolAddr, "pricePerUnit").String()).To(Equal("1500000000000000000"))
+		})
+
+		It("withdraw does not reduce pendingRebalanceUnbondReserve when operator sets pending", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			user := s.keyring.GetKey(1)
+			automation := s.keyring.GetKey(2)
+
+			depositAmount := big.NewInt(10_000)
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			staked := s.queryPoolUint(0, poolAddr, "totalStaked")
+			Expect(staked.Sign()).To(BeNumerically(">", 0))
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "setAutomationCaller", automation.Addr),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				automation.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(
+					s.communityPoolContract,
+					"reconcileStakedBuckets",
+					staked,
+					big.NewInt(3000),
+				),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			Expect(s.queryPoolUint(0, poolAddr, "pendingRebalanceUnbondReserve").String()).To(Equal("3000"))
+
+			withdrawUnits := big.NewInt(5000)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			Expect(s.queryPoolUint(0, poolAddr, "pendingRebalanceUnbondReserve").String()).To(Equal("3000"))
+			s.assertPoolInvariants(poolAddr)
 		})
 
 		It("syncTotalStaked does not create staking delegation side effects", func() {
