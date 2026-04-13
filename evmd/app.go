@@ -492,6 +492,7 @@ func NewExampleApp(
 		runtime.NewKVStoreService(keys[poolrebalancertypes.StoreKey]),
 		tKeys[poolrebalancertypes.TransientStoreKey],
 		app.StakingKeeper,
+		app.DistrKeeper,
 		authtypes.NewModuleAddress(govtypes.ModuleName),
 		app.EVMKeeper,
 		app.AccountKeeper,

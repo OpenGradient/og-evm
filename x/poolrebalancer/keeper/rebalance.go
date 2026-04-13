@@ -152,6 +152,24 @@ func minInt(a, b math.Int) math.Int {
 	return b
 }
 
+// filterTargetValidators excludes validators from same-block rebalance destinations.
+// When a validator was slashed in the previous block, poolrebalancer avoids targeting it in the
+// current block and recomputes equal-weight targets across the remaining candidates.
+func filterTargetValidators(targetValidators []sdk.ValAddress, excluded map[string]struct{}) []sdk.ValAddress {
+	if len(excluded) == 0 {
+		return targetValidators
+	}
+
+	out := make([]sdk.ValAddress, 0, len(targetValidators))
+	for _, val := range targetValidators {
+		if _, skip := excluded[val.String()]; skip {
+			continue
+		}
+		out = append(out, val)
+	}
+	return out
+}
+
 func (k Keeper) emitRedelegationFailureEvent(ctx context.Context, del sdk.AccAddress, srcVal, dstVal sdk.ValAddress, coin sdk.Coin, reason string) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvent(
@@ -189,18 +207,42 @@ func (k Keeper) PickBestRedelegation(
 	blocked map[string]map[string]struct{},
 	maxMove math.Int,
 ) (src string, dst string, amt math.Int, ok bool) {
+	return k.pickBestRedelegationWithRestrictions(deltas, keys, blocked, maxMove, nil, nil)
+}
+
+// pickBestRedelegationWithRestrictions optionally constrains source and destination validators.
+// Slash-priority scheduling uses this to force moves away from previously slashed validators before
+// falling back to the generic drift-based picker.
+func (k Keeper) pickBestRedelegationWithRestrictions(
+	deltas map[string]math.Int,
+	keys []string,
+	blocked map[string]map[string]struct{},
+	maxMove math.Int,
+	allowedSrc map[string]struct{},
+	excludedDst map[string]struct{},
+) (src string, dst string, amt math.Int, ok bool) {
 	bestAmt := math.ZeroInt()
 	bestDstNeed := math.ZeroInt()
 	bestSrc := ""
 	bestDst := ""
 
 	for _, s := range keys {
+		if allowedSrc != nil {
+			if _, ok := allowedSrc[s]; !ok {
+				continue
+			}
+		}
 		ds := deltas[s]
 		if !ds.IsNegative() {
 			continue
 		}
 		srcOver := ds.Abs()
 		for _, d := range keys {
+			if excludedDst != nil {
+				if _, excluded := excludedDst[d]; excluded {
+					continue
+				}
+			}
 			dd := deltas[d]
 			if !dd.IsPositive() {
 				continue
@@ -241,6 +283,18 @@ func (k Keeper) PickBestRedelegation(
 // It targets the most overweight validator among deltas, skipping any keys in skipVals (e.g. sources that
 // already failed undelegation this block). Amount is capped by MaxMovePerOp (if set).
 func (k Keeper) PickResidualUndelegation(ctx context.Context, deltas map[string]math.Int, skipVals map[string]struct{}) (val string, amt math.Int, ok bool, err error) {
+	return k.pickResidualUndelegationWithRestrictions(ctx, deltas, skipVals, nil)
+}
+
+// pickResidualUndelegationWithRestrictions mirrors PickResidualUndelegation but can restrict the
+// candidate validator set. Slash-priority fallback uses this to undelegate from previously slashed
+// validators first when redelegation is blocked.
+func (k Keeper) pickResidualUndelegationWithRestrictions(
+	ctx context.Context,
+	deltas map[string]math.Int,
+	skipVals map[string]struct{},
+	allowedVals map[string]struct{},
+) (val string, amt math.Int, ok bool, err error) {
 	maxMove, err := k.GetMaxMovePerOp(ctx)
 	if err != nil {
 		return "", math.ZeroInt(), false, err
@@ -256,6 +310,11 @@ func (k Keeper) PickResidualUndelegation(ctx context.Context, deltas map[string]
 	sort.Strings(keys)
 
 	for _, k := range keys {
+		if allowedVals != nil {
+			if _, ok := allowedVals[k]; !ok {
+				continue
+			}
+		}
 		if skipVals != nil {
 			if _, skip := skipVals[k]; skip {
 				continue
@@ -289,6 +348,12 @@ func (k Keeper) PickResidualUndelegation(ctx context.Context, deltas map[string]
 
 // ProcessRebalance compares current stake to target and applies up to MaxOpsPerBlock operations.
 // It is intended to be called from EndBlock after pending queues are cleaned up.
+//
+// Slash-aware behavior:
+// - previous-block slashed validators are excluded from same-block destinations/targets
+// - redelegation priority first tries to move stake away from those validators
+// - if fallback is enabled and redelegation is blocked, undelegation also prefers those validators
+// - if all target validators were slashed in the previous block, rebalance cleanly no-ops
 func (k Keeper) ProcessRebalance(ctx context.Context) error {
 	// Fast-path exits: not configured, no targets, or nothing bonded.
 	del, err := k.GetPoolDelegatorAddress(ctx)
@@ -298,11 +363,18 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 	if del.Empty() {
 		return nil
 	}
+	slashedVals, err := k.getPreviousBlockSlashedValidatorsOrEmpty(ctx)
+	if err != nil {
+		return err
+	}
 	targetVals, err := k.GetTargetBondedValidators(ctx)
 	if err != nil {
 		return err
 	}
+	targetVals = filterTargetValidators(targetVals, slashedVals)
 	if len(targetVals) == 0 {
+		// Conservatively do nothing for this block rather than forcing undelegation-only behavior when
+		// every same-block target was slashed in the previous block.
 		return nil
 	}
 	stakeByValidator, total, err := k.GetDelegatorStakeByValidator(ctx, del)
@@ -365,7 +437,13 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 
 	var opsDone uint32
 	for opsDone < maxOps {
-		srcKey, dstKey, amt, ok := k.PickBestRedelegation(deltas, keys, blocked, maxMove)
+		srcKey, dstKey, amt, ok := "", "", math.ZeroInt(), false
+		if len(slashedVals) > 0 {
+			srcKey, dstKey, amt, ok = k.pickBestRedelegationWithRestrictions(deltas, keys, blocked, maxMove, slashedVals, slashedVals)
+		}
+		if !ok {
+			srcKey, dstKey, amt, ok = k.PickBestRedelegation(deltas, keys, blocked, maxMove)
+		}
 
 		if ok {
 			srcVal, err := sdk.ValAddressFromBech32(srcKey)
@@ -400,7 +478,16 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 			break
 		}
 
-		valKey, undelAmt, ok, err := k.PickResidualUndelegation(ctx, deltas, undelSkipped)
+		valKey, undelAmt, ok, err := "", math.ZeroInt(), false, error(nil)
+		if len(slashedVals) > 0 {
+			valKey, undelAmt, ok, err = k.pickResidualUndelegationWithRestrictions(ctx, deltas, undelSkipped, slashedVals)
+		}
+		if err != nil {
+			return err
+		}
+		if !ok {
+			valKey, undelAmt, ok, err = k.PickResidualUndelegation(ctx, deltas, undelSkipped)
+		}
 		if err != nil {
 			return err
 		}

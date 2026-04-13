@@ -12,6 +12,7 @@ import (
 
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -26,6 +27,16 @@ type StakingKeeper interface {
 	Undelegate(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress, sharesAmount sdkmath.LegacyDec) (completionTime time.Time, amount sdkmath.Int, err error)
 	UnbondingTime(ctx context.Context) (time.Duration, error)
 	BondDenom(ctx context.Context) (string, error)
+}
+
+// DistributionKeeper defines the subset of distribution keeper methods used by poolrebalancer.
+type DistributionKeeper interface {
+	IterateValidatorSlashEventsBetween(
+		ctx context.Context,
+		val sdk.ValAddress,
+		startingHeight, endingHeight uint64,
+		handler func(height uint64, event distributiontypes.ValidatorSlashEvent) (stop bool),
+	)
 }
 
 // EVMKeeper defines the subset of vm keeper methods used by poolrebalancer.

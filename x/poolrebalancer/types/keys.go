@@ -25,6 +25,12 @@ const (
 	RouterKey = ModuleName
 )
 
+var (
+	// PreviousBlockSlashedValidatorsTransientKey stores the BeginBlock snapshot of relevant validators
+	// with slash events at height blockHeight-1 for EndBlock rebalance use.
+	PreviousBlockSlashedValidatorsTransientKey = []byte{0x02}
+)
+
 // Store key prefixes (single-byte prefixes).
 var (
 	// ModuleEVMAddress is the EVM address of the poolrebalancer module account.
