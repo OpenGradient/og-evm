@@ -1,0 +1,25 @@
+{
+  "messages": [
+    {
+      "@type": "/poa.MsgAddValidator",
+      "authority": "<GOV_AUTHORITY from Step 1>",
+      "validator_address": "<VALIDATOR_ADDRESS from Step 2a>",
+      "description": {
+        "moniker": "newvalidator",
+        "identity": "",
+        "website": "",
+        "security_contact": "",
+        "details": ""
+      },
+      "pubkey": {
+        "@type": "/cosmos.crypto.ed25519.PubKey",
+        "key": "<CONSENSUS_KEY from Step 2b>"
+      }
+    }
+  ],
+  "metadata": "Add PoA validator",
+  "deposit": "10000000ogwei",
+  "title": "Add validator",
+  "summary": "Add a second validator via PoA governance",
+  "expedited": false
+}
