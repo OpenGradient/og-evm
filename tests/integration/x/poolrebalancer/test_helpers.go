@@ -1,9 +1,12 @@
 package poolrebalancer
 
 import (
+	"cosmossdk.io/math"
+	"sort"
 	sdkmath "cosmossdk.io/math"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 
 	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 )
@@ -110,5 +113,48 @@ func (s *KeeperIntegrationTestSuite) MustValAddr(bech32 string) sdk.ValAddress {
 	val, err := sdk.ValAddressFromBech32(bech32)
 	s.Require().NoError(err)
 	return val
+}
+
+// RecordSlashEvent stores a distribution slash event for the validator at the current block height.
+func (s *KeeperIntegrationTestSuite) RecordSlashEvent(val stakingtypes.Validator) {
+	valAddr := s.MustValAddr(val.OperatorAddress)
+	err := s.network.App.GetDistrKeeper().SetValidatorSlashEvent(
+		s.ctx,
+		valAddr,
+		uint64(s.ctx.BlockHeight()),
+		1,
+		distributiontypes.ValidatorSlashEvent{
+			ValidatorPeriod: uint64(s.ctx.BlockHeight()),
+			Fraction:        math.LegacyNewDec(1),
+		},
+	)
+	s.Require().NoError(err)
+}
+
+// RedelegationSrcDstPairs returns queued redelegation pairs sorted by source then destination.
+func (s *KeeperIntegrationTestSuite) RedelegationSrcDstPairs() [][2]string {
+	redels := s.PendingRedelegations()
+	out := make([][2]string, 0, len(redels))
+	for _, r := range redels {
+		out = append(out, [2]string{r.SrcValidatorAddress, r.DstValidatorAddress})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i][0] == out[j][0] {
+			return out[i][1] < out[j][1]
+		}
+		return out[i][0] < out[j][0]
+	})
+	return out
+}
+
+// UndelegationValidators returns queued undelegation validators in sorted order.
+func (s *KeeperIntegrationTestSuite) UndelegationValidators() []string {
+	undels := s.PendingUndelegations()
+	out := make([]string, 0, len(undels))
+	for _, u := range undels {
+		out = append(out, u.ValidatorAddress)
+	}
+	sort.Strings(out)
+	return out
 }
 

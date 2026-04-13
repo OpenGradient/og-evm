@@ -34,3 +34,9 @@ func (s *KeeperIntegrationTestSuite) RunBeginThenEndBlock() error {
 func (s *KeeperIntegrationTestSuite) WithBlockTime(t time.Time) {
 	s.ctx = s.ctx.WithBlockTime(t)
 }
+
+// WithBlockHeight moves the suite context height without refreshing from the network.
+// It is used when tests need previous-block semantics over the same in-memory store view.
+func (s *KeeperIntegrationTestSuite) WithBlockHeight(h int64) {
+	s.ctx = s.ctx.WithBlockHeight(h)
+}

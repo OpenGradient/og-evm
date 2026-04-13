@@ -27,7 +27,7 @@ func newKeeperWithStaking(t *testing.T, sk types.StakingKeeper) (sdk.Context, Ke
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := NewKeeper(cdc, storeService, tKey, sk, authority, nil, newMockAccountKeeper())
+	k := NewKeeper(cdc, storeService, tKey, sk, nil, authority, nil, newMockAccountKeeper())
 	return ctx, k
 }
 

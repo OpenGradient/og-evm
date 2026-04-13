@@ -130,7 +130,7 @@ func newProcessRebalanceKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Contex
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := NewKeeper(cdc, storeService, tKey, sk, authority, &mockEVMKeeper{}, nil)
+	k := NewKeeper(cdc, storeService, tKey, sk, nil, authority, &mockEVMKeeper{}, nil)
 
 	return ctx, k
 }
@@ -436,4 +436,154 @@ func TestProcessRebalance_HappyPath_SingleRedelegation(t *testing.T) {
 	}
 	require.True(t, sawStart, "expected redelegation started event")
 	require.True(t, sawSummary, "expected rebalance summary event")
+}
+
+func TestProcessRebalance_PrioritizesSlashedValidatorSource(t *testing.T) {
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	valA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	valB := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	valC := sdk.ValAddress(bytes.Repeat([]byte{4}, 20))
+
+	mkVal := func(addr sdk.ValAddress, tokens int64) stakingtypes.Validator {
+		return stakingtypes.Validator{
+			OperatorAddress: addr.String(),
+			Tokens:          math.NewInt(tokens),
+			DelegatorShares: math.LegacyNewDec(tokens),
+		}
+	}
+
+	sk := &mockStakingKeeper{
+		vals: []stakingtypes.Validator{mkVal(valA, 100), mkVal(valB, 100), mkVal(valC, 100)},
+		validatorByAddr: map[string]stakingtypes.Validator{
+			valA.String(): mkVal(valA, 100),
+			valB.String(): mkVal(valB, 100),
+			valC.String(): mkVal(valC, 100),
+		},
+		delegations: []stakingtypes.Delegation{
+			{DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(50)},
+			{DelegatorAddress: del.String(), ValidatorAddress: valB.String(), Shares: math.LegacyNewDec(70)},
+		},
+		delegationByValAddr: map[string]stakingtypes.Delegation{
+			valA.String(): {DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(50)},
+			valB.String(): {DelegatorAddress: del.String(), ValidatorAddress: valB.String(), Shares: math.LegacyNewDec(70)},
+		},
+	}
+
+	ctx, k := newProcessRebalanceKeeper(t, sk)
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = del.String()
+	params.MaxTargetValidators = 3
+	params.RebalanceThresholdBp = 0
+	params.MaxOpsPerBlock = 1
+	params.MaxMovePerOp = math.ZeroInt()
+	params.UseUndelegateFallback = false
+	require.NoError(t, k.SetParams(ctx, params))
+	require.NoError(t, k.setPreviousBlockSlashedValidators(ctx, map[string]struct{}{valA.String(): {}}))
+
+	require.NoError(t, k.ProcessRebalance(ctx))
+
+	require.Len(t, sk.beginRedelegationRecords, 1)
+	rec := sk.beginRedelegationRecords[0]
+	require.Equal(t, valA.String(), rec.srcVal.String(), "slash-priority should move away from slashed validator first")
+	require.Equal(t, valC.String(), rec.dstVal.String())
+	require.True(t, rec.shares.Equal(math.LegacyNewDec(50)), "expected full move away from slashed validator after target exclusion")
+}
+
+func TestProcessRebalance_ExcludesSlashedValidatorFromDestinations(t *testing.T) {
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	valA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	valB := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	valC := sdk.ValAddress(bytes.Repeat([]byte{4}, 20))
+
+	mkVal := func(addr sdk.ValAddress, tokens int64) stakingtypes.Validator {
+		return stakingtypes.Validator{
+			OperatorAddress: addr.String(),
+			Tokens:          math.NewInt(tokens),
+			DelegatorShares: math.LegacyNewDec(tokens),
+		}
+	}
+
+	sk := &mockStakingKeeper{
+		vals: []stakingtypes.Validator{mkVal(valA, 100), mkVal(valB, 100), mkVal(valC, 100)},
+		validatorByAddr: map[string]stakingtypes.Validator{
+			valA.String(): mkVal(valA, 100),
+			valB.String(): mkVal(valB, 100),
+			valC.String(): mkVal(valC, 100),
+		},
+		delegations: []stakingtypes.Delegation{
+			{DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(100)},
+		},
+		delegationByValAddr: map[string]stakingtypes.Delegation{
+			valA.String(): {DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(100)},
+		},
+	}
+
+	ctx, k := newProcessRebalanceKeeper(t, sk)
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = del.String()
+	params.MaxTargetValidators = 3
+	params.RebalanceThresholdBp = 0
+	params.MaxOpsPerBlock = 1
+	params.MaxMovePerOp = math.ZeroInt()
+	params.UseUndelegateFallback = false
+	require.NoError(t, k.SetParams(ctx, params))
+	require.NoError(t, k.setPreviousBlockSlashedValidators(ctx, map[string]struct{}{valB.String(): {}}))
+
+	require.NoError(t, k.ProcessRebalance(ctx))
+
+	require.Len(t, sk.beginRedelegationRecords, 1)
+	rec := sk.beginRedelegationRecords[0]
+	require.Equal(t, valA.String(), rec.srcVal.String())
+	require.Equal(t, valC.String(), rec.dstVal.String(), "slashed validator must not be chosen as same-block destination")
+	require.True(t, rec.shares.Equal(math.LegacyNewDec(50)), "expected recomputed unslashed target split")
+}
+
+func TestProcessRebalance_PrioritizesSlashedValidatorForUndelegationFallback(t *testing.T) {
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	valA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	valB := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	valC := sdk.ValAddress(bytes.Repeat([]byte{4}, 20))
+
+	mkVal := func(addr sdk.ValAddress, tokens int64) stakingtypes.Validator {
+		return stakingtypes.Validator{
+			OperatorAddress: addr.String(),
+			Tokens:          math.NewInt(tokens),
+			DelegatorShares: math.LegacyNewDec(tokens),
+		}
+	}
+
+	sk := &mockStakingKeeper{
+		vals: []stakingtypes.Validator{mkVal(valA, 100), mkVal(valB, 100), mkVal(valC, 100)},
+		validatorByAddr: map[string]stakingtypes.Validator{
+			valA.String(): mkVal(valA, 100),
+			valB.String(): mkVal(valB, 100),
+			valC.String(): mkVal(valC, 100),
+		},
+		delegations: []stakingtypes.Delegation{
+			{DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(50)},
+			{DelegatorAddress: del.String(), ValidatorAddress: valB.String(), Shares: math.LegacyNewDec(70)},
+		},
+		delegationByValAddr: map[string]stakingtypes.Delegation{
+			valA.String(): {DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(50)},
+			valB.String(): {DelegatorAddress: del.String(), ValidatorAddress: valB.String(), Shares: math.LegacyNewDec(70)},
+		},
+		failBeginRedelegation: true,
+	}
+
+	ctx, k := newProcessRebalanceKeeper(t, sk)
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = del.String()
+	params.MaxTargetValidators = 3
+	params.RebalanceThresholdBp = 0
+	params.MaxOpsPerBlock = 1
+	params.MaxMovePerOp = math.ZeroInt()
+	params.UseUndelegateFallback = true
+	require.NoError(t, k.SetParams(ctx, params))
+	require.NoError(t, k.setPreviousBlockSlashedValidators(ctx, map[string]struct{}{valA.String(): {}}))
+
+	require.NoError(t, k.ProcessRebalance(ctx))
+
+	require.NotEmpty(t, sk.undelegateRecords, "expected slash-priority fallback undelegation")
+	require.Equal(t, valA.String(), sk.undelegateRecords[0].valAddr.String(), "fallback should undelegate slashed validator before larger unslashed overweight")
+	require.True(t, sk.undelegateRecords[0].shares.Equal(math.LegacyNewDec(50)), "expected full undelegation priority from slashed validator after target exclusion")
 }

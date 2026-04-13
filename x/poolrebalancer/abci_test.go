@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
+	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
 	"github.com/cosmos/evm/x/poolrebalancer/keeper"
@@ -43,6 +46,16 @@ func (endBlockerMockEVM) CallEVM(
 func (endBlockerMockEVM) IsContract(sdk.Context, common.Address) bool { return true }
 
 func newEndBlockerTestKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey) {
+	ctx, k, storeKey, _ := newEndBlockerTestKeeperWithDeps(t, sk, nil, endBlockerMockEVM{})
+	return ctx, k, storeKey
+}
+
+func newEndBlockerTestKeeperWithDeps(
+	t *testing.T,
+	sk types.StakingKeeper,
+	dq types.DistributionKeeper,
+	evm types.EVMKeeper,
+) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey, *storetypes.TransientStoreKey) {
 	t.Helper()
 
 	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
@@ -53,8 +66,8 @@ func newEndBlockerTestKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context,
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 
-	k := keeper.NewKeeper(cdc, storeService, tKey, sk, authority, endBlockerMockEVM{}, nil)
-	return ctx, k, storeKey
+	k := keeper.NewKeeper(cdc, storeService, tKey, sk, dq, authority, evm, nil)
+	return ctx, k, storeKey, tKey
 }
 
 // recordingEndBlockerEVM appends each invoked CommunityPool method name for ordering assertions.
@@ -78,17 +91,7 @@ func (m *recordingEndBlockerEVM) CallEVM(
 func (recordingEndBlockerEVM) IsContract(sdk.Context, common.Address) bool { return true }
 
 func newEndBlockerTestKeeperWithRecordingEVM(t *testing.T, sk types.StakingKeeper, evm *recordingEndBlockerEVM) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey) {
-	t.Helper()
-
-	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
-	tKey := storetypes.NewTransientStoreKey("transient_test")
-	ctx := testutil.DefaultContext(storeKey, tKey)
-
-	storeService := runtime.NewKVStoreService(storeKey)
-	cdc := moduletestutil.MakeTestEncodingConfig().Codec
-	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-
-	k := keeper.NewKeeper(cdc, storeService, tKey, sk, authority, evm, nil)
+	ctx, k, storeKey, _ := newEndBlockerTestKeeperWithDeps(t, sk, nil, evm)
 	return ctx, k, storeKey
 }
 
@@ -156,6 +159,49 @@ func (m stakingKeeperBeginEndFlow) GetUnbondingDelegation(ctx context.Context, d
 		return stakingtypes.UnbondingDelegation{}, stakingtypes.ErrNoUnbondingDelegation
 	}
 	return ubd, nil
+}
+
+type beginBlockSlashAwareStaking struct {
+	stakingKeeperOpError
+	vals        []stakingtypes.Validator
+	delegations []stakingtypes.Delegation
+}
+
+func (m beginBlockSlashAwareStaking) GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error) {
+	return m.vals, nil
+}
+
+func (m beginBlockSlashAwareStaking) GetDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress, maxRetrieve uint16) ([]stakingtypes.Delegation, error) {
+	return m.delegations, nil
+}
+
+type beginBlockDistributionQuerier struct {
+	slashHeightsByValidator map[string]map[uint64]struct{}
+}
+
+func (m beginBlockDistributionQuerier) IterateValidatorSlashEventsBetween(ctx context.Context, val sdk.ValAddress, startingHeight, endingHeight uint64, handler func(height uint64, event distributiontypes.ValidatorSlashEvent) (stop bool)) {
+	if heights, ok := m.slashHeightsByValidator[val.String()]; ok {
+		for h := startingHeight; h <= endingHeight; h++ {
+			if _, exists := heights[h]; exists {
+				if handler(h, distributiontypes.ValidatorSlashEvent{ValidatorPeriod: h, Fraction: math.LegacyNewDec(1)}) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func readSlashedSnapshot(ctx sdk.Context, tKey *storetypes.TransientStoreKey) []string {
+	bz := ctx.TransientStore(tKey).Get(types.PreviousBlockSlashedValidatorsTransientKey)
+	if bz == nil {
+		return nil
+	}
+	if len(bz) == 0 {
+		return []string{}
+	}
+	out := strings.Split(string(bz), "\n")
+	sort.Strings(out)
+	return out
 }
 
 func TestEndBlocker_ProcessRebalanceErrorIsNonHalting(t *testing.T) {
@@ -345,3 +391,37 @@ func TestBeginBlocker_HaltsWhenMaturedPoolUndelegationMissingUBD(t *testing.T) {
 	err := BeginBlocker(ctx, k)
 	require.Error(t, err, "missing matured UBD must halt BeginBlock snapshot")
 }
+
+func TestBeginBlocker_PreparesPreviousBlockSlashedValidatorsSnapshot(t *testing.T) {
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	targetA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	targetB := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	delegatedOnly := sdk.ValAddress(bytes.Repeat([]byte{4}, 20))
+
+	sk := beginBlockSlashAwareStaking{
+		vals: []stakingtypes.Validator{
+			{OperatorAddress: targetA.String(), Tokens: math.NewInt(100), DelegatorShares: math.LegacyNewDec(100)},
+			{OperatorAddress: targetB.String(), Tokens: math.NewInt(90), DelegatorShares: math.LegacyNewDec(90)},
+		},
+		delegations: []stakingtypes.Delegation{
+			{DelegatorAddress: poolDel.String(), ValidatorAddress: delegatedOnly.String(), Shares: math.LegacyNewDec(10)},
+		},
+	}
+	dq := beginBlockDistributionQuerier{
+		slashHeightsByValidator: map[string]map[uint64]struct{}{
+			targetB.String():      {9: {}},
+			delegatedOnly.String(): {8: {}},
+		},
+	}
+
+	ctx, k, _, tKey := newEndBlockerTestKeeperWithDeps(t, sk, dq, endBlockerMockEVM{})
+	ctx = ctx.WithBlockHeight(10)
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	params.MaxTargetValidators = 2
+	require.NoError(t, k.SetParams(ctx, params))
+
+	require.NoError(t, BeginBlocker(ctx, k))
+	require.Equal(t, []string{targetB.String()}, readSlashedSnapshot(ctx, tKey))
+}
+

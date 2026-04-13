@@ -94,6 +94,7 @@ func (s *KeeperIntegrationTestSuite) configurePoolKeeper() {
 		storeService,
 		s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 		s.network.App.GetStakingKeeper(),
+		s.network.App.GetDistrKeeper(),
 		authority,
 		rebalanceIntegrationStubEVM{},
 		nil,
