@@ -6,6 +6,7 @@ set -euo pipefail
 #
 # Scenarios: happy_path | caps | threshold_boundary | fallback | expansion | credit_focus
 # Watch: watch (queues + pool reads) | watch credit (ledger + pending undelegations)
+# user_flow_multikey: CommunityPool multi-account E2E (user_flow_multikey.sh); see usage() "user_flow_multikey — what it is for"
 #
 # Caveat: low minStake can let stake() drain stakeablePrincipalLedger in the same block as a credit; credit_focus
 # raises minStake on purpose. Undelegation maturity follows wall clock (header time vs completion), not block height.
@@ -138,6 +139,7 @@ usage() {
 Usage:
   $0 [options]
   $0 watch [options]
+  $0 user_flow_multikey [options]
   $0 help
 
 Runs an E2E test scenario for x/poolrebalancer:
@@ -175,7 +177,23 @@ Commands:
   run (default)                     Full test setup + scenario execution
   watch                             Live monitor for an already running test chain
   watch credit                      Same chain; focused on CommunityPool ledger + pending undelegation credit path
+  user_flow_multikey                CommunityPool multi-account E2E (see block below); then polls RPCs and runs the script.
   help                              Show this help
+
+user_flow_multikey — what it is for:
+  Purpose:  End-to-end check of the CommunityPool Solidity contract from multiple EOAs (dev0, dev1, …),
+            not the poolrebalancer scheduler. You verify deposit → withdraw queue → unbonding maturity →
+            claimWithdraw, and optionally a separate claimRewards() pass after claimWithdraws.
+  What runs:  For each configured dev account: bond approve + deposit; optional fractional withdraw();
+            wall-clock wait for staking unbonding + on-chain maturity; claimWithdraw(uint256) per request;
+            optional POST_CLAIMWITHDRAW claimRewards() on several users (tests reward accounting vs rewards
+            folded into withdraw()).
+  What you see:  Structured logs — pool aggregates (totalUnits, principalAssets, totalStaked,
+            stakeablePrincipalLedger), per-user snapshots (native balance, bond ERC20, pool units) before/after
+            each step, maturity waits, and native balance deltas when claimRewards runs.
+  Prerequisites:  Validators already running; \$BASEDIR/dev_accounts.txt; pool wired
+            (poolrebalancer.params.pool_delegator_address). This command waits until that param is set
+            (or use POOL_CONTRACT_ADDR=0x… to skip the wait). Does not start nodes or run gov.
 
 CLI options:
   -n, --nodes <count>               Number of validators/nodes to run
@@ -267,6 +285,10 @@ Environment variables:
   GOV_POLL_TIMEOUT                  Timeout waiting for params propagation seconds (default: 20)
   GOV_STATUS_TIMEOUT                Timeout waiting proposal to pass (default: 120)
 
+  USER_FLOW_POOL_DELEGATOR_POLL_INTERVAL_SECS  user_flow_multikey: seconds between checks when chain is up but address empty (default: 40)
+  USER_FLOW_CHAIN_NOT_READY_POLL_INTERVAL_SECS  user_flow_multikey: poll while evmd/not-ready or query errors (default: 5)
+  USER_FLOW_POOL_DELEGATOR_MAX_WAIT_SECS       user_flow_multikey: give up after this many seconds (default: 0 = no limit)
+
   STAKING_UNBONDING_TIME            Reduce so pending queues mature quickly (default: 30s; credit_focus defaults 15s)
   STAKING_MAX_ENTRIES               Raise/lower redelegation/undelegation entry pressure (default: 100)
 
@@ -305,7 +327,106 @@ Examples:
 
   bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh watch
 
+  # After happy_path (or any scenario) has started the chain and deployed the pool:
+  bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh user_flow_multikey
+
 EOF
+}
+
+# --- user_flow_multikey subcommand helpers (poll chain until pool is wired, then exec user_flow_multikey.sh) ---
+
+# First Error:/rpc line from evmd stderr (avoids dumping full Usage after failures).
+_user_flow_evmd_error_summary() {
+  printf '%s\n' "$1" | awk '
+    /^Error:/ { sub(/^Error:[[:space:]]*/, ""); print; exit }
+    /^rpc error:/ { print; exit }
+    NR==1 && length($0) { print }
+  '
+}
+
+_user_flow_tendermint_latest_height() {
+  curl -sS --max-time 2 "$(tendermint_status_url)" 2>/dev/null | jq -r '.result.sync_info.latest_block_height // empty' 2>/dev/null || echo ""
+}
+
+# Poll evmd query poolrebalancer params until pool_delegator_address is non-empty (or timeout).
+# Shorter interval while RPC returns "not ready" / no first block; longer once chain serves queries but gov not done.
+wait_for_pool_delegator_address_configured() {
+  local interval="${USER_FLOW_POOL_DELEGATOR_POLL_INTERVAL_SECS:-40}"
+  local interval_chain_not_ready="${USER_FLOW_CHAIN_NOT_READY_POLL_INTERVAL_SECS:-5}"
+  local max_wait="${USER_FLOW_POOL_DELEGATOR_MAX_WAIT_SECS:-0}"
+  local start del qerr sleep_s err1 sync_h
+  start="$(date +%s)"
+  echo "==> Waiting for poolrebalancer.params.pool_delegator_address to be set (needed before user_flow_multikey.sh)"
+  echo "    NODE_RPC=$NODE_RPC"
+  echo "    After the chain is ready: poll every ${interval}s if the address is still empty"
+  echo "    While evmd reports 'not ready' / no first block: poll every ${interval_chain_not_ready}s (USER_FLOW_CHAIN_NOT_READY_POLL_INTERVAL_SECS)"
+  if [[ "$max_wait" =~ ^[0-9]+$ ]] && (( max_wait > 0 )); then
+    echo "    Max wait ${max_wait}s (unset USER_FLOW_POOL_DELEGATOR_MAX_WAIT_SECS or set 0 for no limit)"
+  else
+    echo "    No max wait (interrupt with Ctrl+C); set USER_FLOW_POOL_DELEGATOR_MAX_WAIT_SECS to cap"
+  fi
+  while true; do
+    del=""
+    qerr=""
+    sleep_s="$interval"
+    sync_h="$(_user_flow_tendermint_latest_height)"
+    if ! qerr="$(evmd query poolrebalancer params --node "$NODE_RPC" -o json 2>&1)"; then
+      err1="$(_user_flow_evmd_error_summary "$qerr")"
+      if [[ "$qerr" == *"not ready"* ]] || [[ "$qerr" == *"first block"* ]] || [[ "$qerr" == *"invalid height"* ]]; then
+        echo "==> ($(date -u +%Y-%m-%dT%H:%M:%SZ)) still waiting: evmd app not ready yet (ABCI queries blocked until the first block is committed)"
+        echo "    tendermint latest_block_height=${sync_h:-unknown} — start or wait for validators, then this will clear"
+        echo "    evmd: ${err1:0:240}"
+        sleep_s="$interval_chain_not_ready"
+      else
+        echo "==> ($(date -u +%Y-%m-%dT%H:%M:%SZ)) still waiting: poolrebalancer query failed"
+        echo "    tendermint latest_block_height=${sync_h:-unknown}"
+        echo "    evmd: ${err1:0:240}"
+        sleep_s="$interval_chain_not_ready"
+      fi
+    else
+      del="$(printf '%s\n' "$qerr" | jq -r '.params.pool_delegator_address // empty' 2>/dev/null || echo "")"
+      if [[ -n "$del" && "$del" != "null" ]]; then
+        echo "==> pool_delegator_address is set: $del"
+        return 0
+      fi
+      echo "==> ($(date -u +%Y-%m-%dT%H:%M:%SZ)) still waiting: pool_delegator_address is empty (chain is up — finish CommunityPool deploy + gov pool_delegator_address update)"
+      sleep_s="$interval"
+    fi
+    if [[ "$max_wait" =~ ^[0-9]+$ ]] && (( max_wait > 0 )); then
+      if (( $(date +%s) - start >= max_wait )); then
+        echo "error: timed out after ${max_wait}s waiting for pool_delegator_address" >&2
+        return 1
+      fi
+    fi
+    sleep "$sleep_s"
+  done
+}
+
+# Preconditions: BASEDIR/dev_accounts.txt; chain up. Sets CHAIN_HOME=val0 for bech32 debug. Optional POOL_CONTRACT_ADDR skips wait.
+run_user_flow_multikey_subcommand() {
+  local script="$ROOT_DIR/tests/e2e/poolrebalancer/user_flow_multikey.sh"
+  if [[ ! -f "$script" ]]; then
+    echo "error: missing $script" >&2
+    exit 1
+  fi
+  if [[ ! -f "$BASEDIR/dev_accounts.txt" ]]; then
+    echo "error: missing $BASEDIR/dev_accounts.txt" >&2
+    echo "hint: start a devnet with this runner (or multi_node_startup) so dev accounts exist" >&2
+    exit 1
+  fi
+  # Runner defaults CHAIN_HOME to BASEDIR (repo root home); user_flow_multikey.sh expects val0 for evmd debug addr.
+  if [[ -z "${CHAIN_HOME:-}" ]] || [[ "${CHAIN_HOME}" == "${BASEDIR}" ]]; then
+    export CHAIN_HOME="$BASEDIR/val0"
+  fi
+  echo "==> user_flow_multikey: BASEDIR=$BASEDIR CHAIN_HOME=$CHAIN_HOME NODE_RPC=$NODE_RPC"
+  if [[ -n "${POOL_CONTRACT_ADDR:-}" ]]; then
+    echo "==> POOL_CONTRACT_ADDR is set; skipping wait for poolrebalancer.params.pool_delegator_address"
+  else
+    wait_for_pool_delegator_address_configured || exit 1
+  fi
+  ensure_evm_rpc_ready || exit 1
+  echo "==> EVM_RPC=$EVM_RPC — invoking user_flow_multikey.sh"
+  bash "$script"
 }
 
 parse_cli_args() {
@@ -322,6 +443,10 @@ parse_cli_args() {
         ;;
       help)
         subcommand="help"
+        shift
+        ;;
+      user_flow_multikey)
+        subcommand="user_flow_multikey"
         shift
         ;;
       -n|--nodes)
@@ -1997,6 +2122,15 @@ main() {
   fi
   if [[ "$PARSED_SUBCOMMAND" == "help" ]]; then
     usage
+    exit 0
+  fi
+  # Lightweight entry: no genesis/validators — assumes devnet already running.
+  if [[ "$PARSED_SUBCOMMAND" == "user_flow_multikey" ]]; then
+    require_bin jq
+    require_bin curl
+    require_bin evmd
+    require_bin cast
+    run_user_flow_multikey_subcommand
     exit 0
   fi
 
