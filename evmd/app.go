@@ -90,6 +90,7 @@ import (
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	testdata_pulsar "github.com/cosmos/cosmos-sdk/testutil/testdata/testpb"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/bech32"
 	sdkmempool "github.com/cosmos/cosmos-sdk/types/mempool"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/types/msgservice"
@@ -302,8 +303,14 @@ func NewExampleApp(
 	// Register subspace for PoA so GetSubspace(poatypes.ModuleName) returns a valid subspace.
 	app.ParamsKeeper.Subspace(poatypes.ModuleName).WithKeyTable(poatypes.ParamKeyTable())
 
-	// get authority address
-	authAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	// Authority string must use the current Bech32 prefix. Do not use AccAddress.String() here: the SDK
+	// address cache is keyed only by raw bytes, so if another package encoded the same module address
+	// under a different prefix first, String() would return the stale prefix.
+	govModAddr := authtypes.NewModuleAddress(govtypes.ModuleName)
+	authAddr, authAddrErr := bech32.ConvertAndEncode(sdk.GetConfig().GetBech32AccountAddrPrefix(), govModAddr)
+	if authAddrErr != nil {
+		panic(authAddrErr)
+	}
 
 	// set the BaseApp's parameter store
 	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
