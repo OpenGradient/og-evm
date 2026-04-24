@@ -87,6 +87,37 @@ func (k Keeper) getMaturedPoolUndelegationCreditSum(ctx context.Context) (math.I
 	return sum, nil
 }
 
+func (k Keeper) validatePendingUndelegationDelegator(ctx context.Context, del sdk.AccAddress) error {
+	poolDel, err := k.GetPoolDelegatorAddress(ctx)
+	if err != nil {
+		return err
+	}
+	if poolDel.Empty() {
+		return errors.New("poolrebalancer: pending undelegations require PoolDelegatorAddress")
+	}
+	if !del.Equals(poolDel) {
+		return fmt.Errorf("poolrebalancer: pending undelegation delegator %s must match PoolDelegatorAddress %s", del.String(), poolDel.String())
+	}
+	return nil
+}
+
+func validateMaturedUndelegationBatchOwners(batches []maturedUndelegationBatch, poolDel sdk.AccAddress) error {
+	poolBech := poolDel.String()
+	for _, b := range batches {
+		for _, e := range b.queued.Entries {
+			if e.DelegatorAddress != poolBech {
+				return fmt.Errorf(
+					"poolrebalancer: pending undelegation delegator %s must match PoolDelegatorAddress %s for completion %s",
+					e.DelegatorAddress,
+					poolBech,
+					normalizeCompletionTime(b.completionTime).Format(time.RFC3339Nano),
+				)
+			}
+		}
+	}
+	return nil
+}
+
 // PrepareMaturedPoolUndelegationCredits snapshots slash-adjusted staking unbonding balances for
 // matured pool-tracked undelegations and writes the sum into transient store for EndBlock use.
 // If matured batches exist while PoolDelegatorAddress is unset, this returns an error.
@@ -105,6 +136,9 @@ func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error
 			return errors.New("poolrebalancer: matured undelegations exist but PoolDelegatorAddress is empty")
 		}
 		return k.setMaturedPoolUndelegationCreditSum(ctx, math.ZeroInt())
+	}
+	if err := validateMaturedUndelegationBatchOwners(batches, poolDel); err != nil {
+		return err
 	}
 
 	bondDenom, err := k.stakingKeeper.BondDenom(ctx)
@@ -155,6 +189,10 @@ func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error
 // addPendingUndelegation records an undelegation until its completion time.
 // It appends to the (completionTime, delegator) queue and writes a by-validator index entry.
 func (k Keeper) addPendingUndelegation(ctx context.Context, del sdk.AccAddress, val sdk.ValAddress, coin sdk.Coin, completionTime time.Time) error {
+	if err := k.validatePendingUndelegationDelegator(ctx, del); err != nil {
+		return err
+	}
+
 	store := k.storeService.OpenKVStore(ctx)
 	denom := coin.Denom
 
@@ -186,6 +224,9 @@ func (k Keeper) addPendingUndelegation(ctx context.Context, del sdk.AccAddress, 
 func (k Keeper) BeginTrackedUndelegation(ctx context.Context, del sdk.AccAddress, valAddr sdk.ValAddress, coin sdk.Coin) (completionTime time.Time, amountUnbonded math.Int, err error) {
 	if !coin.Amount.IsPositive() {
 		return time.Time{}, math.ZeroInt(), errors.New("undelegate amount must be positive")
+	}
+	if err := k.validatePendingUndelegationDelegator(ctx, del); err != nil {
+		return time.Time{}, math.ZeroInt(), err
 	}
 
 	val, err := k.stakingKeeper.GetValidator(ctx, valAddr)
@@ -349,6 +390,12 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 	if len(batches) == 0 {
 		return nil
 	}
+	if poolDel.Empty() {
+		return errors.New("poolrebalancer: matured undelegations exist but PoolDelegatorAddress is empty")
+	}
+	if err := validateMaturedUndelegationBatchOwners(batches, poolDel); err != nil {
+		return err
+	}
 
 	creditSum, err := k.getMaturedPoolUndelegationCreditSum(ctx)
 	if err != nil {
@@ -358,9 +405,6 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 	if creditSum.IsPositive() {
 		if k.evmKeeper == nil {
 			return fmt.Errorf("poolrebalancer: matured pool undelegations %s require evm keeper", creditSum)
-		}
-		if poolDel.Empty() {
-			return fmt.Errorf("poolrebalancer: matured pool undelegations %s require PoolDelegatorAddress", creditSum)
 		}
 		if err := k.creditCommunityPoolStakeableFromRebalance(sdkCtx, poolDel, creditSum); err != nil {
 			return err

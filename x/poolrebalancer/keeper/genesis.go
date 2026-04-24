@@ -28,7 +28,7 @@ func (k Keeper) SetPendingRedelegation(ctx context.Context, entry types.PendingR
 	return k.addPendingRedelegation(ctx, del, srcVal, dstVal, entry.Amount, entry.CompletionTime)
 }
 
-// SetPendingUndelegation writes a pending undelegation entry to the store, including its queue and index keys.
+// SetPendingUndelegation writes a pool-owned pending undelegation entry to the store, including its queue and index keys.
 // This is intended for genesis import/export.
 func (k Keeper) SetPendingUndelegation(ctx context.Context, entry types.PendingUndelegation) error {
 	del, err := sdk.AccAddressFromBech32(entry.DelegatorAddress)

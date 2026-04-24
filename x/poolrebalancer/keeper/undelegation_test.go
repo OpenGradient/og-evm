@@ -30,16 +30,12 @@ func readPreparedMaturedUndelegationCreditSum(t *testing.T, ctx sdk.Context, k K
 
 func TestCompletePendingUndelegations_RemovesQueueAndIndex(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
-	k.evmKeeper = &mockEVMKeeper{}
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
-	poolDel := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	denom := "stake"
-	params := types.DefaultParams()
-	params.PoolDelegatorAddress = poolDel.String()
-	require.NoError(t, k.SetParams(ctx, params))
+	setPoolDelegatorForTest(t, ctx, &k, del)
 
 	completion := ctx.BlockTime().Add(-time.Second)
 	coin := sdk.NewCoin(denom, math.NewInt(123))
@@ -59,6 +55,18 @@ func TestCompletePendingUndelegations_RemovesQueueAndIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, bz)
 
+	mockSK, ok := k.stakingKeeper.(*mockStakingKeeper)
+	require.True(t, ok)
+	mockSK.ubdByDelVal = map[string]stakingtypes.UnbondingDelegation{
+		del.String() + "|" + val.String(): {
+			DelegatorAddress: del.String(),
+			ValidatorAddress: val.String(),
+			Entries: []stakingtypes.UnbondingDelegationEntry{
+				{CompletionTime: completion, Balance: coin.Amount},
+			},
+		},
+	}
+
 	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
 	require.NoError(t, k.CompletePendingUndelegations(ctx))
 
@@ -72,6 +80,108 @@ func TestCompletePendingUndelegations_RemovesQueueAndIndex(t *testing.T) {
 
 	// Idempotency.
 	require.NoError(t, k.CompletePendingUndelegations(ctx))
+}
+
+func TestSetPendingUndelegation_RejectsWithoutPoolDelegator(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+
+	err := k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: del.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(1)),
+		CompletionTime:   sdk.UnwrapSDKContext(ctx).BlockTime().Add(time.Hour),
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pending undelegations require PoolDelegatorAddress")
+}
+
+func TestSetPendingUndelegation_RejectsDifferentDelegator(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	otherDel := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
+
+	err := k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: otherDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(1)),
+		CompletionTime:   sdk.UnwrapSDKContext(ctx).BlockTime().Add(time.Hour),
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must match PoolDelegatorAddress")
+}
+
+func TestBeginTrackedUndelegation_RejectsDifferentDelegatorBeforeStakingMutation(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	otherDel := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
+
+	_, _, err := k.BeginTrackedUndelegation(ctx, otherDel, val, sdk.NewCoin("stake", math.NewInt(1)))
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must match PoolDelegatorAddress")
+	mockSK, ok := k.stakingKeeper.(*mockStakingKeeper)
+	require.True(t, ok)
+	require.Empty(t, mockSK.undelegateRecords)
+}
+
+func TestPrepareMaturedPoolUndelegationCredits_ErrWhenMaturedRowsContainDifferentDelegator(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	otherDel := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
+
+	completion := ctx.BlockTime().Add(-time.Second)
+	seedPendingUndelegationUnchecked(t, ctx, k, types.PendingUndelegation{
+		DelegatorAddress: otherDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(1)),
+		CompletionTime:   completion,
+	})
+
+	err := k.PrepareMaturedPoolUndelegationCredits(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must match PoolDelegatorAddress")
+}
+
+func TestCompletePendingUndelegations_ErrAndRetainsQueueWhenMaturedRowsContainDifferentDelegator(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	otherDel := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
+
+	completion := ctx.BlockTime().Add(-time.Second)
+	entry := types.PendingUndelegation{
+		DelegatorAddress: otherDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(1)),
+		CompletionTime:   completion,
+	}
+	seedPendingUndelegationUnchecked(t, ctx, k, entry)
+	require.NoError(t, k.setMaturedPoolUndelegationCreditSum(ctx, math.ZeroInt()))
+
+	err := k.CompletePendingUndelegations(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must match PoolDelegatorAddress")
+
+	store := k.storeService.OpenKVStore(ctx)
+	queueBz, err := store.Get(types.GetPendingUndelegationQueueKey(completion, otherDel))
+	require.NoError(t, err)
+	require.NotNil(t, queueBz)
+	indexBz, err := store.Get(types.GetPendingUndelegationByValIndexKey(val, completion, entry.Balance.Denom, otherDel))
+	require.NoError(t, err)
+	require.NotNil(t, indexBz)
 }
 
 func TestCompletionTimeMatches_NormalizesLocationAndMonotonic(t *testing.T) {
@@ -108,6 +218,7 @@ func TestLoadMaturedUndelegationBatches_IncludesMatureExcludesImmature(t *testin
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, del)
 
 	matureCompletion := ctx.BlockTime().Add(-time.Second)
 	immatureCompletion := ctx.BlockTime().Add(time.Hour)
@@ -141,18 +252,18 @@ func TestLoadMaturedUndelegationBatches_MultipleDelegatorsSameBlockTime(t *testi
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	completion := ctx.BlockTime().Add(-time.Second)
 
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+	seedPendingUndelegationUnchecked(t, ctx, k, types.PendingUndelegation{
 		DelegatorAddress: delA.String(),
 		ValidatorAddress: val.String(),
 		Balance:          sdk.NewCoin("stake", math.NewInt(1)),
 		CompletionTime:   completion,
-	}))
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+	})
+	seedPendingUndelegationUnchecked(t, ctx, k, types.PendingUndelegation{
 		DelegatorAddress: delB.String(),
 		ValidatorAddress: val.String(),
 		Balance:          sdk.NewCoin("stake", math.NewInt(2)),
 		CompletionTime:   completion,
-	}))
+	})
 
 	batches, err := k.loadMaturedUndelegationBatches(ctx, ctx.BlockTime())
 	require.NoError(t, err)
@@ -187,12 +298,12 @@ func TestPrepareMaturedPoolUndelegationCredits_ErrWhenPoolDelegatorEmptyWithMatu
 	completion := ctx.BlockTime().Add(-time.Second)
 	denom := "stake"
 	coin := sdk.NewCoin(denom, math.NewInt(42))
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+	seedPendingUndelegationUnchecked(t, ctx, k, types.PendingUndelegation{
 		DelegatorAddress: del.String(),
 		ValidatorAddress: val.String(),
 		Balance:          coin,
 		CompletionTime:   completion,
-	}))
+	})
 
 	params, err := k.GetParams(ctx)
 	require.NoError(t, err)
@@ -687,13 +798,12 @@ func TestCompletePendingUndelegations_RetryAfterCreditVMFailureSucceeds(t *testi
 	require.True(t, k.getCommunityPoolReconcileDirty(ctx), "successful credit sets reconcile dirty")
 }
 
-func TestCompletePendingUndelegations_SumsOnlyPoolDelegatorBondDenom(t *testing.T) {
+func TestCompletePendingUndelegations_SumsOnlyBondDenom(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{}
 	k.evmKeeper = mockEVM
 
 	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
-	otherDel := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))
 	params := types.DefaultParams()
 	params.PoolDelegatorAddress = poolDel.String()
 	require.NoError(t, k.SetParams(ctx, params))
@@ -708,12 +818,6 @@ func TestCompletePendingUndelegations_SumsOnlyPoolDelegatorBondDenom(t *testing.
 		ValidatorAddress: val.String(),
 		Balance:          sdk.NewCoin("stake", math.NewInt(40)),
 		CompletionTime:   completionA,
-	}))
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
-		DelegatorAddress: otherDel.String(),
-		ValidatorAddress: val.String(),
-		Balance:          sdk.NewCoin("stake", math.NewInt(999)),
-		CompletionTime:   completionB,
 	}))
 	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
 		DelegatorAddress: poolDel.String(),
@@ -787,6 +891,7 @@ func TestCompletePendingUndelegations_ErrWhenSnapshotMissing(t *testing.T) {
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, del)
 	completion := ctx.BlockTime().Add(-time.Second)
 	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
 		DelegatorAddress: del.String(),

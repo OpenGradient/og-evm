@@ -119,6 +119,7 @@ func TestMaybeReconcileCommunityPoolStakedBuckets_ReconcileUsesExpectedTuple(t *
 	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	bondedVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	immatureVal := sdk.ValAddress(bytes.Repeat([]byte{4}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
 
 	bondedV := stakingtypes.Validator{
 		OperatorAddress: bondedVal.String(),

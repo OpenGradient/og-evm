@@ -60,6 +60,7 @@ func TestQueryPendingUndelegations_PaginatesByQueueBuckets(t *testing.T) {
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, del)
 
 	// Bucket 1: earlier completion time, two entries in the same queue key.
 	completion1 := ctx.BlockTime().Add(time.Minute)

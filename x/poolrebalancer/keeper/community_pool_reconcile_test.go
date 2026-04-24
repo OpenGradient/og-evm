@@ -36,6 +36,7 @@ func TestLoadImmatureUndelegationBatches_ExcludesMatureIncludesFuture(t *testing
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, del)
 
 	matureCompletion := ctx.BlockTime().Add(-time.Second)
 	immatureCompletion := ctx.BlockTime().Add(time.Hour)
@@ -103,6 +104,7 @@ func TestComputeExpectedPendingRebalancePrincipal_UsesStakingUBDAndDedupes(t *te
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, del)
 
 	immatureCompletion := ctx.BlockTime().Add(time.Hour)
 	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
@@ -173,6 +175,7 @@ func TestComputeExpectedPendingRebalancePrincipal_SumsMergedUBDEntriesPerTriple(
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	immatureCT := ctx.BlockTime().Add(2 * time.Hour)
+	setPoolDelegatorForTest(t, ctx, &k, del)
 
 	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
 		DelegatorAddress: del.String(),
@@ -206,6 +209,7 @@ func TestComputeExpectedPendingRebalancePrincipal_DedupesDuplicateQueueRowsForSa
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	immatureCT := ctx.BlockTime().Add(time.Minute)
+	setPoolDelegatorForTest(t, ctx, &k, del)
 
 	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
 		DelegatorAddress: del.String(),
@@ -245,6 +249,7 @@ func TestComputeExpectedPendingRebalancePrincipal_IgnoresNonQueuedUnbondingValid
 	queuedVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	otherVal := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
 	immatureCT := ctx.BlockTime().Add(time.Hour)
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
 
 	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
 		DelegatorAddress: poolDel.String(),
