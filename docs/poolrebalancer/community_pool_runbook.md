@@ -39,7 +39,7 @@ User **`withdraw()`** on the contract uses staking undelegation but **does not**
 
 ### 3.1 Chain / module parameters
 
-- **`pool_delegator_address`**: Bech32 account address of the CommunityPool contract (same bytes as the contract’s EVM address). If empty, pool-specific automation and maturity credit paths tied to that address are skipped where applicable.
+- **`pool_delegator_address`**: Bech32 account address of the CommunityPool contract (same bytes as the contract’s EVM address). Empty is only safe when no pool-tracked pending undelegation state exists. Runtime/gov safeguards reject unsafe transitions and BeginBlock fails if matured queue rows exist while this is empty.
 - **`max_target_validators`**, **`rebalance_threshold_bp`**, **`max_ops_per_block`**, **`max_move_per_op`**, **`use_undelegate_fallback`**: control **validator rebalance** behavior (independent of CommunityPool deposit/withdraw UX).
 
 Defaults are defined in `x/poolrebalancer/types/helpers.go` (`DefaultParams`).
@@ -83,7 +83,8 @@ Defaults are defined in `x/poolrebalancer/types/helpers.go` (`DefaultParams`).
 - Iterates **matured** module undelegation batches (completion time ≤ block time).
 - For each **deduped** triple `(pool delegator, validator, completion time)`, sums **all** staking **`UnbondingDelegation`** entry balances matching that completion (handles merged/multiple entries and slash alignment).
 - Writes the **total** to **transient** store (`maturedPoolUndelegationCreditTransientKey`).
-- If **`pool_delegator_address`** is unset, writes **zero** (no-op for credit sum).
+- If **`pool_delegator_address`** is unset and there are **no matured batches**, writes **zero**.
+- If **`pool_delegator_address`** is unset and matured batches **exist**, returns an error and halts the block (strict invariant).
 
 **Errors**: returned to CometBFT and **halt** the block.
 

@@ -30,11 +30,16 @@ func readPreparedMaturedUndelegationCreditSum(t *testing.T, ctx sdk.Context, k K
 
 func TestCompletePendingUndelegations_RemovesQueueAndIndex(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
+	k.evmKeeper = &mockEVMKeeper{}
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	denom := "stake"
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
 
 	completion := ctx.BlockTime().Add(-time.Second)
 	coin := sdk.NewCoin(denom, math.NewInt(123))
@@ -171,15 +176,7 @@ func TestPrepareMaturedPoolUndelegationCredits_WritesZeroWhenPoolDelegatorEmpty(
 	require.True(t, sum.IsZero())
 }
 
-// TestPrepareAndComplete_PoolDelegatorEmpty_SkipsCreditAndClearsMaturedQueue covers the case where
-// PoolDelegatorAddress is unset (DefaultParams): Prepare writes a zero transient snapshot without reading
-// staking UBDs; Complete still iterates all matured module-queue batches and removes them without calling
-// the EVM (creditSum is not positive).
-//
-// Production assumes only poolrebalancer-tracked undelegations use this queue (typically the pool
-// delegator). If other delegators' rows could appear while the pool address is unset, they would be
-// cleared here without a contract credit—this test documents that behavior.
-func TestPrepareAndComplete_PoolDelegatorEmpty_SkipsCreditAndClearsMaturedQueue(t *testing.T) {
+func TestPrepareMaturedPoolUndelegationCredits_ErrWhenPoolDelegatorEmptyWithMaturedRows(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{}
 	k.evmKeeper = mockEVM
@@ -202,28 +199,11 @@ func TestPrepareAndComplete_PoolDelegatorEmpty_SkipsCreditAndClearsMaturedQueue(
 	require.Empty(t, params.PoolDelegatorAddress)
 	require.False(t, k.getCommunityPoolReconcileDirty(ctx))
 
-	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
-	prepared := readPreparedMaturedUndelegationCreditSum(t, sdk.UnwrapSDKContext(ctx), k)
-	require.True(t, prepared.IsZero())
-
-	require.NoError(t, k.CompletePendingUndelegations(ctx))
-
-	require.Empty(t, mockEVM.methods, "no EVM credit when transient credit sum is zero")
-	require.False(t, k.getCommunityPoolReconcileDirty(ctx), "skipped credit must not set reconcile dirty")
-
-	store := k.storeService.OpenKVStore(ctx)
-	queueKey := types.GetPendingUndelegationQueueKey(completion, del)
-	bz, err := store.Get(queueKey)
-	require.NoError(t, err)
-	require.Nil(t, bz)
-
-	indexKey := types.GetPendingUndelegationByValIndexKey(val, completion, denom, del)
-	idxBz, err := store.Get(indexKey)
-	require.NoError(t, err)
-	require.Nil(t, idxBz)
-
-	final := readPreparedMaturedUndelegationCreditSum(t, sdk.UnwrapSDKContext(ctx), k)
-	require.True(t, final.IsZero())
+	err = k.PrepareMaturedPoolUndelegationCredits(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "matured undelegations exist but PoolDelegatorAddress is empty")
+	require.Empty(t, mockEVM.methods)
+	require.False(t, k.getCommunityPoolReconcileDirty(ctx))
 }
 
 // Transient sum is credited via creditStakeableFromRebalance (pending reserve), not by lowering totalStaked.

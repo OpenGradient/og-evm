@@ -2,10 +2,13 @@ package poolrebalancer
 
 import (
 	"bytes"
+	"math/big"
 	"testing"
 	"time"
 
 	"cosmossdk.io/math"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
 	storetypes "cosmossdk.io/store/types"
 	"github.com/stretchr/testify/require"
 
@@ -14,10 +17,27 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
+	evmtypes "github.com/cosmos/evm/x/vm/types"
 
 	"github.com/cosmos/evm/x/poolrebalancer/keeper"
 	"github.com/cosmos/evm/x/poolrebalancer/types"
 )
+
+type genesisMockEVMKeeper struct{}
+
+func (genesisMockEVMKeeper) CallEVM(
+	_ sdk.Context,
+	_ abi.ABI,
+	_, _ common.Address,
+	_ bool,
+	_ *big.Int,
+	_ string,
+	_ ...any,
+) (*evmtypes.MsgEthereumTxResponse, error) {
+	return &evmtypes.MsgEthereumTxResponse{}, nil
+}
+
+func (genesisMockEVMKeeper) IsContract(sdk.Context, common.Address) bool { return true }
 
 func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
@@ -28,11 +48,15 @@ func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingK := &stakingkeeper.Keeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, nil, nil)
+	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	srcVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	dstVal := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = del.String()
+	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetPendingRedelegation(ctx, types.PendingRedelegation{
 		DelegatorAddress:    del.String(),
@@ -60,7 +84,7 @@ func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 	ctx2 := testutil.DefaultContext(storeKey2, tKey2).WithBlockTime(time.Unix(2_000, 0))
 
 	storeService2 := runtime.NewKVStoreService(storeKey2)
-	k2 := keeper.NewKeeper(cdc, storeService2, tKey2, stakingK, nil, authority, nil, nil)
+	k2 := keeper.NewKeeper(cdc, storeService2, tKey2, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
 	InitGenesis(ctx2, k2, exported)
 
@@ -131,6 +155,62 @@ func TestGenesis_RoundTripPreservesDistinctRedelegationSources(t *testing.T) {
 	_, hasB := srcSet[srcB.String()]
 	require.True(t, hasA)
 	require.True(t, hasB)
+}
+
+func TestInitGenesis_RejectsPendingUndelegationsWithoutPoolDelegator(t *testing.T) {
+	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
+	tKey := storetypes.NewTransientStoreKey("transient_test")
+	ctx := testutil.DefaultContext(storeKey, tKey).WithBlockTime(time.Unix(2_000, 0))
+
+	storeService := runtime.NewKVStoreService(storeKey)
+	cdc := moduletestutil.MakeTestEncodingConfig().Codec
+	stakingK := &stakingkeeper.Keeper{}
+	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
+	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
+
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	gs := types.DefaultGenesisState()
+	gs.PendingUndelegations = []types.PendingUndelegation{{
+		DelegatorAddress: del.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(5)),
+		CompletionTime:   ctx.BlockTime().Add(time.Hour),
+	}}
+
+	require.PanicsWithValue(t,
+		"failed to validate poolrebalancer pending undelegations: pending undelegations require params.pool_delegator_address to be set",
+		func() { InitGenesis(ctx, k, gs) },
+	)
+}
+
+func TestInitGenesis_RejectsPendingUndelegationsForDifferentDelegator(t *testing.T) {
+	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
+	tKey := storetypes.NewTransientStoreKey("transient_test")
+	ctx := testutil.DefaultContext(storeKey, tKey).WithBlockTime(time.Unix(2_000, 0))
+
+	storeService := runtime.NewKVStoreService(storeKey)
+	cdc := moduletestutil.MakeTestEncodingConfig().Codec
+	stakingK := &stakingkeeper.Keeper{}
+	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
+	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
+
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	otherDel := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	gs := types.DefaultGenesisState()
+	gs.Params.PoolDelegatorAddress = poolDel.String()
+	gs.PendingUndelegations = []types.PendingUndelegation{{
+		DelegatorAddress: otherDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(5)),
+		CompletionTime:   ctx.BlockTime().Add(time.Hour),
+	}}
+
+	require.PanicsWithValue(t,
+		`failed to validate poolrebalancer pending undelegations: pending_undelegations[0].delegator_address "`+otherDel.String()+`" must match params.pool_delegator_address "`+poolDel.String()+`"`,
+		func() { InitGenesis(ctx, k, gs) },
+	)
 }
 
 func TestGenesisState_Validate_PendingEntries(t *testing.T) {

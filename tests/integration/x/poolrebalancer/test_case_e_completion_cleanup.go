@@ -20,13 +20,26 @@ func normalizeUBDCompletion(t time.Time) time.Time {
 // TestCompletionCleanup_RemovesMatureRedelegationsAndUndelegations verifies that
 // mature pending redelegation and undelegation entries are removed during EndBlock.
 func (s *KeeperIntegrationTestSuite) TestCompletionCleanup_RemovesMatureRedelegationsAndUndelegations() {
-	// Disable rebalancer so this test only exercises cleanup paths.
-	s.EnableRebalancer(s.DisabledParams())
+	// Keep pool delegator configured (required for matured undelegation snapshot),
+	// but use a no-op-ish threshold profile so this test focuses on cleanup paths.
+	s.EnableRebalancer(s.DefaultEnabledParams(10_000, 1, sdkmath.NewInt(1), false))
 
 	xVal := s.validators[0]
 	yVal := s.validators[1]
+	valAddr := s.MustValAddr(xVal.OperatorAddress)
 
-	matureCompletion := s.ctx.BlockTime().Add(-1 * time.Second)
+	// Create a real tracked undelegation so staking UBD state exists and can be
+	// snapshot/credited by strict BeginBlock maturity logic.
+	completion, amountUBD, err := s.poolKeeper.BeginTrackedUndelegation(
+		sdk.WrapSDKContext(s.ctx),
+		s.poolDel,
+		valAddr,
+		sdk.NewCoin(s.bondDenom, sdkmath.NewInt(1)),
+	)
+	s.Require().NoError(err)
+	s.Require().True(amountUBD.IsPositive())
+
+	matureCompletion := completion.UTC()
 
 	// Seed mature entries (completion already in the past).
 	s.SeedPendingRedelegation(poolrebalancertypes.PendingRedelegation{
@@ -37,12 +50,7 @@ func (s *KeeperIntegrationTestSuite) TestCompletionCleanup_RemovesMatureRedelega
 		CompletionTime:      matureCompletion.UTC(),
 	})
 
-	s.SeedPendingUndelegation(poolrebalancertypes.PendingUndelegation{
-		DelegatorAddress: s.poolDel.String(),
-		ValidatorAddress: xVal.OperatorAddress,
-		Balance:          sdk.NewCoin(s.bondDenom, sdkmath.NewInt(7)),
-		CompletionTime:   matureCompletion.UTC(),
-	})
+	s.WithBlockTime(matureCompletion.Add(1 * time.Second))
 
 	s.Require().NotEmpty(s.PendingRedelegations())
 	s.Require().NotEmpty(s.PendingUndelegations())

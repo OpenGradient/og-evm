@@ -89,19 +89,22 @@ func (k Keeper) getMaturedPoolUndelegationCreditSum(ctx context.Context) (math.I
 
 // PrepareMaturedPoolUndelegationCredits snapshots slash-adjusted staking unbonding balances for
 // matured pool-tracked undelegations and writes the sum into transient store for EndBlock use.
+// If matured batches exist while PoolDelegatorAddress is unset, this returns an error.
 func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	batches, err := k.loadMaturedUndelegationBatches(ctx, sdkCtx.BlockTime())
+	if err != nil {
+		return err
+	}
 	poolDel, err := k.GetPoolDelegatorAddress(ctx)
 	if err != nil {
 		return err
 	}
 	if poolDel.Empty() {
+		if len(batches) > 0 {
+			return errors.New("poolrebalancer: matured undelegations exist but PoolDelegatorAddress is empty")
+		}
 		return k.setMaturedPoolUndelegationCreditSum(ctx, math.ZeroInt())
-	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	batches, err := k.loadMaturedUndelegationBatches(ctx, sdkCtx.BlockTime())
-	if err != nil {
-		return err
 	}
 
 	bondDenom, err := k.stakingKeeper.BondDenom(ctx)

@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
@@ -190,6 +191,79 @@ func TestSetParams_AcceptsBootstrapNoAuthAccount(t *testing.T) {
 	params.PoolDelegatorAddress = addr.String()
 
 	require.NoError(t, k.SetParams(ctx, params))
+}
+
+func TestSetParams_RejectsClearingPoolDelegatorWhenPendingUndelegationsExist(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	k.evmKeeper = &mockEVMKeeper{}
+
+	currentPool := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = currentPool.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	val := sdk.ValAddress(bytes.Repeat([]byte{0xCD}, 20))
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: currentPool.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(10)),
+		CompletionTime:   sdk.UnwrapSDKContext(ctx).BlockTime().Add(time.Hour),
+	}))
+
+	params.PoolDelegatorAddress = ""
+	err := k.SetParams(ctx, params)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot change pool_delegator_address while pending undelegations exist")
+}
+
+func TestSetParams_RejectsChangingPoolDelegatorWhenPendingUndelegationsExist(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	k.evmKeeper = &mockEVMKeeper{}
+
+	currentPool := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
+	nextPool := sdk.AccAddress(bytes.Repeat([]byte{0xBC}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = currentPool.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	val := sdk.ValAddress(bytes.Repeat([]byte{0xCD}, 20))
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: currentPool.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(10)),
+		CompletionTime:   sdk.UnwrapSDKContext(ctx).BlockTime().Add(time.Hour),
+	}))
+
+	params.PoolDelegatorAddress = nextPool.String()
+	err := k.SetParams(ctx, params)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot change pool_delegator_address while pending undelegations exist")
+}
+
+func TestSetParams_RejectsChangingPoolDelegatorWhenTrackedRedelegationsExist(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	k.evmKeeper = &mockEVMKeeper{}
+
+	currentPool := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
+	nextPool := sdk.AccAddress(bytes.Repeat([]byte{0xBC}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = currentPool.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	srcVal := sdk.ValAddress(bytes.Repeat([]byte{0xCD}, 20))
+	dstVal := sdk.ValAddress(bytes.Repeat([]byte{0xDE}, 20))
+	require.NoError(t, k.SetPendingRedelegation(ctx, types.PendingRedelegation{
+		DelegatorAddress:    currentPool.String(),
+		SrcValidatorAddress: srcVal.String(),
+		DstValidatorAddress: dstVal.String(),
+		Amount:              sdk.NewCoin("stake", math.NewInt(10)),
+		CompletionTime:      sdk.UnwrapSDKContext(ctx).BlockTime().Add(time.Hour),
+	}))
+
+	params.PoolDelegatorAddress = nextPool.String()
+	err := k.SetParams(ctx, params)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pending redelegations exist for current pool delegator")
 }
 
 func TestSetParams_RejectsNonContractWhenAccountExistsWithoutBootstrap(t *testing.T) {
