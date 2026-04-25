@@ -49,6 +49,7 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 - Callable only by `owner` or `automationCaller`.
 - No-op when `stakeablePrincipalLedger < minStakeAmount`.
 - Calls staking precompile `delegateToBondedValidators(address(this), liquid, maxValidators)`.
+- Validator choice and remainder ordering come from the staking precompile's bonded-validator query order; the poolrebalancer separately targets bonded-by-power order and corrects drift after staking.
 - Moves delegated amount from `stakeablePrincipalLedger` to `totalStaked` (does **not** change `pendingRebalanceUnbondReserve`).
 
 ### 3) Harvest and claim rewards

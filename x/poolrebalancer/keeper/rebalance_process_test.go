@@ -161,6 +161,32 @@ func attrsToMap(attrs []abci.EventAttribute) map[string]string {
 	return out
 }
 
+func TestGetTargetBondedValidators_UsesPowerOrderAndMaxTargetCap(t *testing.T) {
+	valLowAddr := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	valHighAddr := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	valMidAddr := sdk.ValAddress(bytes.Repeat([]byte{4}, 20))
+
+	valLow := stakingtypes.Validator{OperatorAddress: valLowAddr.String()}
+	valHigh := stakingtypes.Validator{OperatorAddress: valHighAddr.String()}
+	valMid := stakingtypes.Validator{OperatorAddress: valMidAddr.String()}
+
+	sk := &mockStakingKeeper{
+		// Mock the staking keeper's bonded-by-power query order directly. The rebalancer policy is to
+		// preserve this order and cap it, not to sort by operator address or mirror contract stake remainder order.
+		vals: []stakingtypes.Validator{valHigh, valMid, valLow},
+	}
+	ctx, k := newProcessRebalanceKeeper(t, sk)
+
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String()
+	params.MaxTargetValidators = 2
+	require.NoError(t, k.SetParams(ctx, params))
+
+	targets, err := k.GetTargetBondedValidators(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []sdk.ValAddress{valHighAddr, valMidAddr}, targets)
+}
+
 func TestProcessRebalance_EmitsRedelegationFailedEvent(t *testing.T) {
 	srcVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
 	dstVal := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))

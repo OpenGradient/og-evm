@@ -393,6 +393,9 @@ contract CommunityPool {
     }
 
     /// @notice Delegates available principal liquid to bonded validators via staking precompile.
+    /// @dev Validator selection is owned by the staking precompile's bonded-validator query order. The
+    ///      poolrebalancer later corrects drift against its own top-power target set, so exact remainder
+    ///      ordering here is not an accounting invariant.
     /// @dev Increments bonded `totalStaked` only; does not modify `pendingRebalanceUnbondReserve`.
     function stake() external nonReentrant onlyAutomationOrOwner returns (uint256 delegatedAmount) {
         uint256 liquidBefore = stakeablePrincipalLedger;

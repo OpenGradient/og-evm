@@ -198,6 +198,8 @@ func (p *Precompile) Delegate(
 }
 
 // DelegateToBondedValidators delegates equally across bonded validators.
+// The validator set and ordering come from the staking query layer. Callers that need a different
+// target policy should rebalance afterward rather than treating this remainder order as canonical.
 func (p *Precompile) DelegateToBondedValidators(
 	ctx sdk.Context,
 	contract *vm.Contract,

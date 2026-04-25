@@ -40,7 +40,7 @@ User **`withdraw()`** on the contract uses staking undelegation but **does not**
 ### 3.1 Chain / module parameters
 
 - **`pool_delegator_address`**: Bech32 account address of the CommunityPool contract (same bytes as the contract’s EVM address). Empty is only safe when no pool-tracked pending undelegation state exists. Runtime/gov safeguards reject unsafe transitions and BeginBlock fails if matured queue rows exist while this is empty.
-- **`max_target_validators`**, **`rebalance_threshold_bp`**, **`max_ops_per_block`**, **`max_move_per_op`**, **`use_undelegate_fallback`**: control **validator rebalance** behavior (independent of CommunityPool deposit/withdraw UX).
+- **`max_target_validators`**, **`rebalance_threshold_bp`**, **`max_ops_per_block`**, **`max_move_per_op`**, **`use_undelegate_fallback`**: control **validator rebalance** behavior (independent of CommunityPool deposit/withdraw UX). Rebalancing targets the staking keeper's **bonded-by-power** order, capped by **`max_target_validators`**; CommunityPool **`stake()`** delegates through the staking precompile's bonded-validator query order, then the module corrects any drift through rebalance.
 
 Defaults are defined in `x/poolrebalancer/types/helpers.go` (`DefaultParams`).
 
@@ -136,6 +136,8 @@ Logic:
 
 **Empty-pool harvest**: CommunityPool **`harvest()`** reverts with **`EmptyPool()`** when **`totalUnits == 0`**. EndBlock automation reads **`totalUnits`** first and skips **`harvest`** / **`stake`** while the pool is empty, preventing rewards from entering **`rewardReserve`** without an index owner.
 
+**Delegation scan bound**: keeper paths that compute bonded stake use a centralized delegation scan and fail closed if the staking keeper returns exactly the scan limit. That boundary means the account may have more delegations than the response contains, so reconciliation/rebalance refuses to use a possibly truncated view instead of silently undercounting stake.
+
 ---
 
 ## 6. Maturity credit vs BeginBlock snapshot
@@ -163,6 +165,7 @@ The full artifact used elsewhere (e.g. Go contract tests) is `contracts/solidity
 | `Unauthorized` on automation txs | **`automationCaller`** ≠ module EVM address, or wrong **`from`** in `CallEVM`. |
 | `EmptyPool` during direct `harvest` | Pool has **zero units**; EndBlock automation skips harvest until deposits create units. |
 | `poolrebalancer: community pool staked buckets reconcile failed` (recurring) | EVM gas, contract revert, or **`ComputeExpectedCommunityPoolStakedBuckets`** error (e.g. missing UBD for queued triple). |
+| `delegation scan reached maxRetrieve` | Pool delegator has reached the keeper scan boundary; reduce fragmentation or add true paginated keeper support before relying on reconciliation/rebalance accounting. |
 | `complete pending undelegations failed` / block halt | **Credit** reverted: **`pendingRebalanceUnbondReserve` < creditSum**, missing transient snapshot with matured batches, nil EVM, empty pool delegator. |
 | Contract **`totalStaked`** wrong but pending OK | Use **`syncTotalStaked`** (owner) for **bonded-only** fix; full two-bucket fix needs **automation** **`reconcileStakedBuckets`** (or temporary automation caller). |
 | Deposit / pricePerUnit “wrong” after rebalance | **`principalAssets`** includes **`pendingRebalanceUnbondReserve`**; large pending increases denominator for new mints until credit clears pending. |

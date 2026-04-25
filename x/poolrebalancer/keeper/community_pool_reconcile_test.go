@@ -99,6 +99,38 @@ func TestComputeExpectedBondedPrincipal_SkipsNonBondedValidators(t *testing.T) {
 	require.Equal(t, "100", sum.String())
 }
 
+func TestGetDelegatorDelegationsWithLimit_ErrorsAtScanLimit(t *testing.T) {
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	valA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	valB := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	sk := &mockStakingKeeper{
+		delegations: []stakingtypes.Delegation{
+			{DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(1)},
+			{DelegatorAddress: del.String(), ValidatorAddress: valB.String(), Shares: math.LegacyNewDec(1)},
+		},
+	}
+	ctx, k := newKeeperWithStaking(t, sk)
+
+	_, err := k.getDelegatorDelegationsWithLimit(ctx, del, 2)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "possibly truncated staking view")
+}
+
+func TestGetDelegatorDelegationsWithLimit_AllowsBelowScanLimit(t *testing.T) {
+	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	sk := &mockStakingKeeper{
+		delegations: []stakingtypes.Delegation{
+			{DelegatorAddress: del.String(), ValidatorAddress: val.String(), Shares: math.LegacyNewDec(1)},
+		},
+	}
+	ctx, k := newKeeperWithStaking(t, sk)
+
+	delegations, err := k.getDelegatorDelegationsWithLimit(ctx, del, 2)
+	require.NoError(t, err)
+	require.Len(t, delegations, 1)
+}
+
 func TestComputeExpectedPendingRebalancePrincipal_UsesStakingUBDAndDedupes(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))

@@ -15,6 +15,8 @@ import (
 
 // GetTargetBondedValidators returns the top bonded validators by power.
 // The result size is capped by the module param MaxTargetValidators and preserves staking's power ordering.
+// CommunityPool stake automation delegates through the staking precompile using the same bonded-validator
+// query family, while rebalancing intentionally uses this top-power target set for drift correction.
 func (k Keeper) GetTargetBondedValidators(ctx context.Context) ([]sdk.ValAddress, error) {
 	maxN, err := k.GetMaxTargetValidators(ctx)
 	if err != nil {
@@ -48,7 +50,7 @@ func (k Keeper) GetTargetBondedValidators(ctx context.Context) ([]sdk.ValAddress
 // GetDelegatorStakeByValidator returns the delegator's bonded stake per validator (in tokens, truncated).
 // The returned map is keyed by validator operator address (bech32), plus the total across all validators.
 func (k Keeper) GetDelegatorStakeByValidator(ctx context.Context, del sdk.AccAddress) (map[string]math.Int, math.Int, error) {
-	delegations, err := k.stakingKeeper.GetDelegatorDelegations(ctx, del, ^uint16(0))
+	delegations, err := k.getAllDelegatorDelegations(ctx, del)
 	if err != nil {
 		return nil, math.ZeroInt(), err
 	}

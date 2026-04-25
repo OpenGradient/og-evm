@@ -14,7 +14,7 @@ import (
 // ComputeExpectedBondedPrincipal sums bond tokens for del across validators in Bonded status
 // (TokensFromSharesTruncated). Target for CommunityPool totalStaked.
 func (k Keeper) ComputeExpectedBondedPrincipal(ctx context.Context, del sdk.AccAddress) (math.Int, error) {
-	delegations, err := k.stakingKeeper.GetDelegatorDelegations(ctx, del, ^uint16(0))
+	delegations, err := k.getAllDelegatorDelegations(ctx, del)
 	if err != nil {
 		return math.ZeroInt(), fmt.Errorf("get delegator delegations: %w", err)
 	}

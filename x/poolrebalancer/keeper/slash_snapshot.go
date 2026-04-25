@@ -96,7 +96,7 @@ func (k Keeper) PreparePreviousBlockSlashedValidators(ctx context.Context) error
 		return err
 	}
 	if !poolDel.Empty() {
-		delegations, err := k.stakingKeeper.GetDelegatorDelegations(ctx, poolDel, ^uint16(0))
+		delegations, err := k.getAllDelegatorDelegations(ctx, poolDel)
 		if err != nil {
 			return err
 		}
