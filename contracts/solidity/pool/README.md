@@ -71,6 +71,9 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 
 - Claims caller pending rewards first.
 - `amountOut = userUnits * totalStaked / totalUnits` (**bonded** principal only; **not** `pendingRebalanceUnbondReserve`).
+- Full-exit safety guard: burning all units is rejected when non-staked principal remains
+  in `stakeablePrincipalLedger` or `pendingRebalanceUnbondReserve`
+  (`FullExitLeavesNonStakedPrincipal(uint256,uint256)`), preventing orphaned value.
 - Calls `undelegateFromBondedValidators`; burns units; decreases `totalStaked`; increases `pendingWithdrawReserve`.
 
 `claimWithdraw(requestId)`:
@@ -158,6 +161,7 @@ See the runbook for halting vs best-effort behavior and **liveness** requirement
 ## Error model (selected)
 
 - Permissions / inputs: `InvalidAmount`, `InvalidUnits`, `InvalidConfig`, `EmptyPool`, `Unauthorized`.
+- Exit safety: `FullExitLeavesNonStakedPrincipal`.
 - External: `UnexpectedUndelegatedAmount`, `InvalidCompletionTime`, `HarvestFailed`.
 - Reserves: `InsufficientLiquid`, `RewardReserveInvariantViolation`, `LiquidReserveInvariantViolation`, `StakeablePrincipalInvariantViolation`.
 

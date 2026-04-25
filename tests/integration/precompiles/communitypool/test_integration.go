@@ -310,11 +310,35 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			)
 			Expect(s.network.NextBlock()).To(BeNil())
 
+			// Use a partial burn to avoid full-exit safety guard and exercise
+			// staked-only sizing path (`amountOut == 0` when totalStaked == 0).
+			s.execTxExpectCustomError(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", big.NewInt(1)),
+				"InvalidAmount()",
+			)
+		})
+
+		It("reverts full exit when non-staked principal remains", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			user := s.keyring.GetKey(1)
+
+			depositAmount := big.NewInt(1000)
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			// Full exit while stakeable principal remains must revert with the explicit safety error.
 			s.execTxExpectCustomError(
 				user.Priv,
 				buildTxArgs(poolAddr),
 				buildCallArgs(s.communityPoolContract, "withdraw", big.NewInt(1000)),
-				"InvalidAmount()",
+				"FullExitLeavesNonStakedPrincipal(uint256,uint256)",
 			)
 		})
 

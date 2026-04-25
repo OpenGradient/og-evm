@@ -86,6 +86,51 @@ contract CommunityPoolWithdrawStakeTest is Test {
         assertEq(pool.totalStaked(), 50 ether);
     }
 
+    function test_Withdraw_revertsOnFullExitWhenPendingRebalanceExists() public {
+        bond.mint(address(pool), 500 ether);
+        automation.reconcile(pool, 100 ether, 88 ether);
+
+        bond.mint(address(this), 200 ether);
+        bond.approve(address(pool), type(uint256).max);
+        pool.deposit(200 ether);
+
+        uint256 fullUnits = pool.totalUnits();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CommunityPool.FullExitLeavesNonStakedPrincipal.selector,
+                200 ether,
+                88 ether
+            )
+        );
+        pool.withdraw(fullUnits);
+    }
+
+    function test_Withdraw_allowsFullExitWhenNoNonStakedPrincipalRemains() public {
+        bond.mint(address(pool), 500 ether);
+        automation.reconcile(pool, 100 ether, 0);
+
+        bond.mint(address(this), 200 ether);
+        bond.approve(address(pool), type(uint256).max);
+        pool.deposit(200 ether);
+
+        _mockDelegate(address(pool), 200 ether, pool.maxValidators(), 200 ether, 2);
+        pool.stake();
+
+        uint256 fullUnits = pool.totalUnits();
+        uint256 amountOut = (fullUnits * pool.totalStaked()) / pool.totalUnits();
+        _mockUndelegate(
+            address(pool),
+            amountOut,
+            pool.maxValidators(),
+            int64(uint64(block.timestamp + 86_400))
+        );
+        pool.withdraw(fullUnits);
+
+        assertEq(pool.totalUnits(), 0);
+        assertEq(pool.stakeablePrincipalLedger(), 0);
+        assertEq(pool.pendingRebalanceUnbondReserve(), 0);
+    }
+
     function test_Stake_movesStakeableToBonded_only_notPendingReserve() public {
         bond.mint(address(this), 300 ether);
         bond.approve(address(pool), type(uint256).max);

@@ -81,6 +81,7 @@ contract CommunityPool {
     error InvalidRequest();
     error InvalidCompletionTime(int64 completionTime, uint64 currentTime);
     error UnexpectedUndelegatedAmount(uint256 requested, uint256 undelegated);
+    error FullExitLeavesNonStakedPrincipal(uint256 stakeablePrincipal, uint256 pendingRebalancePrincipal);
     error RewardReserveInvariantViolation(uint256 rewardReserve, uint256 liquidBalance);
     error LiquidReserveInvariantViolation(uint256 reservedAmount, uint256 liquidBalance);
     error StakeablePrincipalInvariantViolation(uint256 accountedLiquid, uint256 liquidBalance);
@@ -301,6 +302,13 @@ contract CommunityPool {
         uint256 userBalanceUnits = unitsOf[msg.sender];
         if (userUnits > userBalanceUnits || totalUnits == 0) {
             revert InvalidUnits();
+        }
+        if (userUnits == totalUnits) {
+            uint256 stakeable = stakeablePrincipalLedger;
+            uint256 pendingRebalance = pendingRebalanceUnbondReserve;
+            if (stakeable > 0 || pendingRebalance > 0) {
+                revert FullExitLeavesNonStakedPrincipal(stakeable, pendingRebalance);
+            }
         }
 
         uint256 amountOut = (userUnits * totalStaked) / totalUnits;

@@ -29,6 +29,9 @@ This document captures assumptions that the `communitypool` integration suite de
 - `reconcileStakedBuckets` is restricted to `automationCaller` only (not `owner`). On-chain bucket repair from staking truth is expected to use that caller (again, usually the module EVM address).
 - `principalAssets` is `stakeablePrincipalLedger + totalStaked + pendingRebalanceUnbondReserve`; `pricePerUnit` and deposit minting use that total.
 - User `withdraw` sizes `amountOut` from **`totalStaked` only** (proportional to units burned). It does **not** reduce `pendingRebalanceUnbondReserve`; that bucket tracks module rebalance unbond-in-flight until credited or reconciled.
+- Full-exit safety rule: `withdraw(userUnits == totalUnits)` reverts with
+  `FullExitLeavesNonStakedPrincipal(uint256,uint256)` when either
+  `stakeablePrincipalLedger > 0` or `pendingRebalanceUnbondReserve > 0`.
 - `stake()` delegates through `staking.delegateToBondedValidators(address(this), liquid, maxValidators)`.
 - The staking precompile path is atomic at transaction scope: if any internal per-validator delegate fails, no partial delegation state persists.
 - Validator selection policy for `stake()` is the first `maxValidators` bonded validators in staking precompile/keeper order.

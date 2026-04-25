@@ -70,6 +70,9 @@ Defaults are defined in `x/poolrebalancer/types/helpers.go` (`DefaultParams`).
 
 - **`principalAssets()`** = `stakeablePrincipalLedger` + `totalStaked` + `pendingRebalanceUnbondReserve` (drives **deposit** minting and **`pricePerUnit`**).
 - **`withdraw()`** sizes payouts from **`totalStaked` / `totalUnits`** only; it does **not** reduce **`pendingRebalanceUnbondReserve`**.
+- To prevent orphaning non-staked principal, full unit exits revert when either
+  `stakeablePrincipalLedger` or `pendingRebalanceUnbondReserve` is non-zero
+  (`FullExitLeavesNonStakedPrincipal`).
 - Module **maturity credit** reduces **`pendingRebalanceUnbondReserve`** and increases **`stakeablePrincipalLedger`** by the same amount, leaving **`principalAssets()`** unchanged.
 
 ---
