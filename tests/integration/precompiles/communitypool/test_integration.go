@@ -1427,6 +1427,148 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(delRes.DelegationResponse.Balance.Amount.IsPositive()).To(BeTrue())
 		})
 
+		It("stake delegates to the same bonded-validator prefix used by rebalancer targets", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 2, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			user := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(1001)
+
+			ctx := s.network.GetContext()
+			storeService := runtime.NewKVStoreService(s.network.App.GetKey(poolrebalancertypes.StoreKey))
+			rebalancerKeeper := poolrebalancerkeeper.NewKeeper(
+				s.network.App.AppCodec(),
+				storeService,
+				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
+				s.network.App.GetStakingKeeper(),
+				s.network.App.GetDistrKeeper(),
+				authtypes.NewModuleAddress(govtypes.ModuleName),
+				s.network.App.GetEVMKeeper(),
+				s.network.App.GetAccountKeeper(),
+			)
+			params := poolrebalancertypes.DefaultParams()
+			params.PoolDelegatorAddress = sdk.AccAddress(poolAddr.Bytes()).String()
+			params.MaxTargetValidators = 2
+			Expect(rebalancerKeeper.SetParams(ctx, params)).To(BeNil())
+			targetVals, err := rebalancerKeeper.GetTargetBondedValidators(ctx)
+			Expect(err).To(BeNil())
+			Expect(targetVals).To(HaveLen(2))
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			ctx = s.network.GetContext()
+			poolDel := sdk.AccAddress(poolAddr.Bytes())
+			sk := s.network.App.GetStakingKeeper()
+			for _, val := range targetVals {
+				delegation, dErr := sk.GetDelegation(ctx, poolDel, val)
+				Expect(dErr).To(BeNil(), "expected delegation to target validator %s", val.String())
+				Expect(delegation.Shares.IsPositive()).To(BeTrue())
+			}
+
+			bondedVals, err := sk.GetBondedValidatorsByPower(ctx)
+			Expect(err).To(BeNil())
+			if len(bondedVals) > len(targetVals) {
+				thirdVal, vErr := sdk.ValAddressFromBech32(bondedVals[len(targetVals)].OperatorAddress)
+				Expect(vErr).To(BeNil())
+				_, dErr := sk.GetDelegation(ctx, poolDel, thirdVal)
+				Expect(dErr).ToNot(BeNil(), "stake() must not skip ahead of the target prefix")
+			}
+		})
+
+		It("withdraw succeeds when pool stake is fragmented across bonded validators", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 3, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+			user := s.keyring.GetKey(1)
+			depositAmount := big.NewInt(9000)
+
+			s.approveBondToken(1, poolAddr, depositAmount)
+			s.execTxExpectSuccess(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "deposit", depositAmount),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			s.execTxExpectSuccess(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "stake"),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			ctx := s.network.GetContext()
+			poolDel := sdk.AccAddress(poolAddr.Bytes())
+			sk := s.network.App.GetStakingKeeper()
+			bondedVals, err := sk.GetBondedValidatorsByPower(ctx)
+			Expect(err).To(BeNil())
+			Expect(len(bondedVals)).To(BeNumerically(">=", 3))
+
+			fragmentedCount := 0
+			for i := 0; i < 3; i++ {
+				valAddr, vErr := sdk.ValAddressFromBech32(bondedVals[i].OperatorAddress)
+				Expect(vErr).To(BeNil())
+				delegation, dErr := sk.GetDelegation(ctx, poolDel, valAddr)
+				if dErr == nil && delegation.Shares.IsPositive() {
+					fragmentedCount++
+				}
+			}
+			Expect(fragmentedCount).To(BeNumerically(">=", 2), "precondition: stake must be fragmented")
+
+			withdrawUnits := big.NewInt(5000)
+			ethRes := s.execTxAndGetEthResponse(
+				user.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "withdraw", withdrawUnits),
+			)
+			Expect(s.network.NextBlock()).To(BeNil())
+
+			out, err := s.communityPoolContract.ABI.Unpack("withdraw", ethRes.Ret)
+			Expect(err).To(BeNil())
+			Expect(out).To(HaveLen(1))
+			requestID, ok := out[0].(*big.Int)
+			Expect(ok).To(BeTrue())
+			request := s.queryWithdrawRequest(poolAddr, requestID)
+			Expect(request.Owner.Hex()).To(Equal(user.Addr.Hex()))
+			Expect(request.AmountOut.String()).To(Equal(withdrawUnits.String()))
+			Expect(request.ReserveMoved).To(BeFalse())
+
+			Expect(s.queryPoolUint(0, poolAddr, "pendingWithdrawReserve").String()).To(Equal(withdrawUnits.String()))
+			Expect(s.queryPoolUint(0, poolAddr, "totalStaked").String()).To(Equal("4000"))
+			s.assertPoolInvariants(poolAddr)
+		})
+
+		It("harvest reverts when the pool has no units", func() {
+			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
+			owner := s.keyring.GetKey(0)
+
+			beforeRewardReserve := s.queryPoolUint(0, poolAddr, "rewardReserve")
+			beforeIndex := s.queryPoolUint(0, poolAddr, "accRewardPerUnit")
+			beforeLiquid := s.queryPoolUint(0, poolAddr, "liquidBalance")
+
+			s.execTxExpectCustomError(
+				owner.Priv,
+				buildTxArgs(poolAddr),
+				buildCallArgs(s.communityPoolContract, "harvest"),
+				"EmptyPool()",
+			)
+
+			Expect(s.queryPoolUint(0, poolAddr, "rewardReserve").String()).To(Equal(beforeRewardReserve.String()))
+			Expect(s.queryPoolUint(0, poolAddr, "accRewardPerUnit").String()).To(Equal(beforeIndex.String()))
+			Expect(s.queryPoolUint(0, poolAddr, "liquidBalance").String()).To(Equal(beforeLiquid.String()))
+		})
+
 		It("harvest executes successfully after staking", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 5, big.NewInt(1))
 			owner := s.keyring.GetKey(0)

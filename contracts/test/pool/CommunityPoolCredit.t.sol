@@ -211,6 +211,23 @@ contract CommunityPoolCreditTest {
         require(pool.principalAssets() == assetsAfterBump, "assetsStable");
     }
 
+    function test_ReconcileThenCredit_afterBucketDrift_preservesPrincipalAssetsAndMovesOnlyPending() public {
+        bond.mint(address(this), 200 ether);
+        bond.approve(address(pool), type(uint256).max);
+        pool.deposit(100 ether);
+
+        automation.reconcile(pool, 60 ether, 40 ether);
+        uint256 assetsAfterReconcile = pool.principalAssets();
+
+        bond.mint(address(pool), 40 ether);
+        pool.creditStakeableFromRebalance(40 ether);
+
+        require(pool.totalStaked() == 60 ether, "staked unchanged");
+        require(pool.pendingRebalanceUnbondReserve() == 0, "pending drained");
+        require(pool.stakeablePrincipalLedger() == 140 ether, "ledger credited");
+        require(pool.principalAssets() == assetsAfterReconcile, "principal assets stable");
+    }
+
     function test_CreditStakeableFromRebalance_secondCreditExceedingRemainingPending_reverts() public {
         bond.mint(address(pool), 100 ether);
         automation.reconcile(pool, 30 ether, 30 ether);

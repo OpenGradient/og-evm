@@ -317,6 +317,59 @@ func TestPrepareMaturedPoolUndelegationCredits_ErrWhenPoolDelegatorEmptyWithMatu
 	require.False(t, k.getCommunityPoolReconcileDirty(ctx))
 }
 
+func TestCompletePendingUndelegations_ErrWhenPoolDelegatorClearedAfterPrepareRetainsQueue(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	mockEVM := &mockEVMKeeper{}
+	k.evmKeeper = mockEVM
+
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	completion := ctx.BlockTime().Add(-time.Second)
+	coin := sdk.NewCoin("stake", math.NewInt(42))
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          coin,
+		CompletionTime:   completion,
+	}))
+
+	mockSK, ok := k.stakingKeeper.(*mockStakingKeeper)
+	require.True(t, ok)
+	mockSK.ubdByDelVal = map[string]stakingtypes.UnbondingDelegation{
+		poolDel.String() + "|" + val.String(): {
+			DelegatorAddress: poolDel.String(),
+			ValidatorAddress: val.String(),
+			Entries: []stakingtypes.UnbondingDelegationEntry{
+				{CompletionTime: completion, Balance: coin.Amount},
+			},
+		},
+	}
+
+	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
+
+	// Simulate a corrupted import/store mutation that bypassed SetParams' pending-state guard.
+	cleared := types.DefaultParams()
+	store := k.storeService.OpenKVStore(ctx)
+	require.NoError(t, store.Set(types.ParamsKey, k.cdc.MustMarshal(&cleared)))
+
+	err := k.CompletePendingUndelegations(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "matured undelegations exist but PoolDelegatorAddress is empty")
+	require.Empty(t, mockEVM.methods)
+
+	queueBz, err := store.Get(types.GetPendingUndelegationQueueKey(completion, poolDel))
+	require.NoError(t, err)
+	require.NotNil(t, queueBz, "queue must remain when config corruption halts cleanup")
+	indexBz, err := store.Get(types.GetPendingUndelegationByValIndexKey(val, completion, coin.Denom, poolDel))
+	require.NoError(t, err)
+	require.NotNil(t, indexBz, "index must remain when config corruption halts cleanup")
+}
+
 // Transient sum is credited via creditStakeableFromRebalance (pending reserve), not by lowering totalStaked.
 func TestPrepareMaturedPoolUndelegationCredits_UsesStakingBalanceForSlashAlignment(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
@@ -545,6 +598,47 @@ func TestPrepareMaturedPoolUndelegationCredits_ErrOnMissingUBD(t *testing.T) {
 
 	err := k.PrepareMaturedPoolUndelegationCredits(ctx)
 	require.Error(t, err)
+}
+
+func TestPrepareMaturedPoolUndelegationCredits_ErrWhenStakingUBDCompletionDesynced(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	k.evmKeeper = &mockEVMKeeper{}
+
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = poolDel.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	completion := ctx.BlockTime().Add(-time.Second)
+	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("stake", math.NewInt(10)),
+		CompletionTime:   completion,
+	}))
+
+	mockSK, ok := k.stakingKeeper.(*mockStakingKeeper)
+	require.True(t, ok)
+	mockSK.ubdByDelVal = map[string]stakingtypes.UnbondingDelegation{
+		poolDel.String() + "|" + val.String(): {
+			DelegatorAddress: poolDel.String(),
+			ValidatorAddress: val.String(),
+			Entries: []stakingtypes.UnbondingDelegationEntry{
+				{CompletionTime: completion.Add(time.Hour), Balance: math.NewInt(10)},
+			},
+		},
+	}
+
+	err := k.PrepareMaturedPoolUndelegationCredits(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing unbonding entry for completion")
+
+	store := k.storeService.OpenKVStore(ctx)
+	queueBz, err := store.Get(types.GetPendingUndelegationQueueKey(completion, poolDel))
+	require.NoError(t, err)
+	require.NotNil(t, queueBz, "desynced queue must remain for operator repair")
 }
 
 func TestCompletePendingUndelegations_CreditsPoolBeforeDelete(t *testing.T) {
