@@ -70,6 +70,14 @@ func (k Keeper) MaybeRunCommunityPoolAutomation(ctx sdk.Context) error {
 		return nil
 	}
 
+	totalUnits, err := k.callCommunityPoolViewUint256(ctx, del, "totalUnits")
+	if err != nil {
+		return fmt.Errorf("read community pool totalUnits: %w", err)
+	}
+	if !totalUnits.IsPositive() {
+		return nil
+	}
+
 	for _, method := range []string{"harvest", "stake"} {
 		res, callErr := k.callCommunityPoolEVM(ctx, del, method)
 		if callErr != nil {

@@ -56,8 +56,9 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 `harvest()`:
 
 - Callable only by `owner` or `automationCaller`.
+- Reverts with `EmptyPool()` when `totalUnits == 0`; rewards are not claimed into `rewardReserve` unless they can be distributed through the reward index.
 - Calls distribution precompile to claim validator rewards to the contract balance.
-- Updates `rewardReserve` and `accRewardPerUnit` when `totalUnits > 0`.
+- Updates `rewardReserve` and `accRewardPerUnit` for positive harvested rewards.
 
 `claimRewards()`:
 
@@ -155,7 +156,7 @@ See the runbook for halting vs best-effort behavior and **liveness** requirement
 
 ## Error model (selected)
 
-- Permissions / inputs: `InvalidAmount`, `InvalidUnits`, `InvalidConfig`, `Unauthorized`.
+- Permissions / inputs: `InvalidAmount`, `InvalidUnits`, `InvalidConfig`, `EmptyPool`, `Unauthorized`.
 - External: `UnexpectedUndelegatedAmount`, `InvalidCompletionTime`, `HarvestFailed`.
 - Reserves: `InsufficientLiquid`, `RewardReserveInvariantViolation`, `LiquidReserveInvariantViolation`, `StakeablePrincipalInvariantViolation`.
 

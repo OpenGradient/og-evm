@@ -70,6 +70,7 @@ contract CommunityPool {
     error InvalidAmount();
     error InvalidUnits();
     error InvalidConfig();
+    error EmptyPool();
     error InsufficientLiquid(uint256 requested, uint256 available);
     error TokenTransferFailed();
     error TokenTransferFromFailed();
@@ -444,8 +445,13 @@ contract CommunityPool {
     }
 
     /// @notice Claims staking rewards to this contract's liquid balance.
-    /// @dev Callable by owner or automation caller; does not modify `totalStaked` because rewards are liquid yield, not principal.
+    /// @dev Callable by owner or automation caller; reverts when no units exist because rewards would have no index owner.
+    /// Does not modify `totalStaked` because rewards are liquid yield, not principal.
     function harvest() external nonReentrant onlyAutomationOrOwner returns (uint256 harvestedAmount) {
+        if (totalUnits == 0) {
+            revert EmptyPool();
+        }
+
         uint256 liquidBefore = liquidBalance();
         bool success = distribution.DISTRIBUTION_CONTRACT.claimRewards(
             address(this),

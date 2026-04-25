@@ -134,6 +134,8 @@ Logic:
 - **`BeginTrackedUndelegation`** / **`BeginTrackedRedelegation`** run for the **pool delegator** (staking layout changed).
 - **`CompletePendingUndelegations`** performs a **positive** credit.
 
+**Empty-pool harvest**: CommunityPool **`harvest()`** reverts with **`EmptyPool()`** when **`totalUnits == 0`**. EndBlock automation reads **`totalUnits`** first and skips **`harvest`** / **`stake`** while the pool is empty, preventing rewards from entering **`rewardReserve`** without an index owner.
+
 ---
 
 ## 6. Maturity credit vs BeginBlock snapshot
@@ -159,6 +161,7 @@ The full artifact used elsewhere (e.g. Go contract tests) is `contracts/solidity
 | Symptom | Likely cause |
 |---------|----------------|
 | `Unauthorized` on automation txs | **`automationCaller`** ≠ module EVM address, or wrong **`from`** in `CallEVM`. |
+| `EmptyPool` during direct `harvest` | Pool has **zero units**; EndBlock automation skips harvest until deposits create units. |
 | `poolrebalancer: community pool staked buckets reconcile failed` (recurring) | EVM gas, contract revert, or **`ComputeExpectedCommunityPoolStakedBuckets`** error (e.g. missing UBD for queued triple). |
 | `complete pending undelegations failed` / block halt | **Credit** reverted: **`pendingRebalanceUnbondReserve` < creditSum**, missing transient snapshot with matured batches, nil EVM, empty pool delegator. |
 | Contract **`totalStaked`** wrong but pending OK | Use **`syncTotalStaked`** (owner) for **bonded-only** fix; full two-bucket fix needs **automation** **`reconcileStakedBuckets`** (or temporary automation caller). |

@@ -13,7 +13,7 @@ var (
 	communityPoolABIBz []byte
 
 	// CommunityPoolABI contains the minimal ABI for pool automation: stake, harvest, credit,
-	// reconcileStakedBuckets, and view getters for totalStaked / pendingRebalanceUnbondReserve.
+	// reconcileStakedBuckets, and view getters for totalUnits / totalStaked / pendingRebalanceUnbondReserve.
 	CommunityPoolABI abi.ABI
 )
 

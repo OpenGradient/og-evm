@@ -35,4 +35,9 @@ func TestCommunityPoolABI_MethodsPresent(t *testing.T) {
 	require.True(t, ok)
 	require.Empty(t, pendingMethod.Inputs)
 	require.Equal(t, "view", pendingMethod.StateMutability)
+
+	totalUnitsMethod, ok := CommunityPoolABI.Methods["totalUnits"]
+	require.True(t, ok)
+	require.Empty(t, totalUnitsMethod.Inputs)
+	require.Equal(t, "view", totalUnitsMethod.StateMutability)
 }

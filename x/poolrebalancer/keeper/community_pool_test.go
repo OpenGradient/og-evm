@@ -98,7 +98,11 @@ func TestMaybeRunCommunityPoolAutomation_SkipsWhenEVMKeeperUnset(t *testing.T) {
 
 func TestMaybeRunCommunityPoolAutomation_CallsHarvestThenStake(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
-	mockEVM := &mockEVMKeeper{}
+	mockEVM := &mockEVMKeeper{
+		ViewRetEncoder: func(method string) ([]byte, error) {
+			return packCommunityPoolUint256View(t, method, big.NewInt(1)), nil
+		},
+	}
 	k.evmKeeper = mockEVM
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
@@ -107,20 +111,25 @@ func TestMaybeRunCommunityPoolAutomation_CallsHarvestThenStake(t *testing.T) {
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.MaybeRunCommunityPoolAutomation(ctx))
-	require.Equal(t, []string{"harvest", "stake"}, mockEVM.methods)
+	require.Equal(t, []string{"totalUnits", "harvest", "stake"}, mockEVM.methods)
 
 	expectedContract := common.BytesToAddress(del.Bytes())
-	require.Len(t, mockEVM.froms, 2)
-	require.Len(t, mockEVM.contracts, 2)
+	require.Len(t, mockEVM.froms, 3)
+	require.Len(t, mockEVM.contracts, 3)
 	require.Equal(t, pooltypes.ModuleEVMAddress, mockEVM.froms[0])
 	require.Equal(t, pooltypes.ModuleEVMAddress, mockEVM.froms[1])
+	require.Equal(t, pooltypes.ModuleEVMAddress, mockEVM.froms[2])
 	require.Equal(t, expectedContract, mockEVM.contracts[0])
 	require.Equal(t, expectedContract, mockEVM.contracts[1])
+	require.Equal(t, expectedContract, mockEVM.contracts[2])
 }
 
 func TestMaybeRunCommunityPoolAutomation_HarvestFailureDoesNotBlockStake(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
 	mockEVM := &mockEVMKeeper{
+		ViewRetEncoder: func(method string) ([]byte, error) {
+			return packCommunityPoolUint256View(t, method, big.NewInt(1)), nil
+		},
 		errByMethod: map[string]error{
 			"harvest": errors.New("mock harvest failure"),
 		},
@@ -133,5 +142,24 @@ func TestMaybeRunCommunityPoolAutomation_HarvestFailureDoesNotBlockStake(t *test
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.MaybeRunCommunityPoolAutomation(ctx))
-	require.Equal(t, []string{"harvest", "stake"}, mockEVM.methods)
+	require.Equal(t, []string{"totalUnits", "harvest", "stake"}, mockEVM.methods)
+}
+
+func TestMaybeRunCommunityPoolAutomation_SkipsWhenPoolHasZeroUnits(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	mockEVM := &mockEVMKeeper{
+		ViewRetEncoder: func(method string) ([]byte, error) {
+			return packCommunityPoolUint256View(t, method, big.NewInt(0)), nil
+		},
+	}
+	k.evmKeeper = mockEVM
+
+	del := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))
+	params := pooltypes.DefaultParams()
+	params.PoolDelegatorAddress = del.String()
+	require.NoError(t, k.SetParams(ctx, params))
+
+	require.NoError(t, k.MaybeRunCommunityPoolAutomation(ctx))
+	require.Equal(t, []string{"totalUnits"}, mockEVM.methods)
+	require.Equal(t, []bool{false}, mockEVM.commits)
 }
