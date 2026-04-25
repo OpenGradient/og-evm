@@ -23,8 +23,6 @@ type UpdateParamsInput struct {
 	Params  interface{}
 }
 
-var authority = authtypes.NewModuleAddress(govtypes.ModuleName).String()
-
 // UpdateEvmParams helper function to update the EVM module parameters
 // It submits an update params proposal, votes for it, and waits till it passes
 func UpdateEvmParams(input UpdateParamsInput) error {
@@ -70,6 +68,8 @@ func updateModuleParams[T interface{}](input UpdateParamsInput, moduleName strin
 
 // createProposalMsg creates the module-specific update params message
 func createProposalMsg(params interface{}, name string) sdk.Msg {
+	authority := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+
 	switch name {
 	case evmtypes.ModuleName:
 		return &evmtypes.MsgUpdateParams{Authority: authority, Params: params.(evmtypes.Params)}
