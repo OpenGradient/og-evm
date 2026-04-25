@@ -115,6 +115,23 @@ func TestUpdateParams_RejectsUserAccountPoolDelegator(t *testing.T) {
 	require.Contains(t, err.Error(), "user account with signing keys")
 }
 
+func TestUpdateParams_RejectsNonContractWithoutAuthAccountAtRuntime(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	k.evmKeeper = &mockEVMKeeper{
+		isContractFn: func(common.Address) bool { return false },
+	}
+	addr := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = addr.String()
+
+	_, err := k.UpdateParams(ctx, &types.MsgUpdateParams{
+		Authority: k.authority.String(),
+		Params:    params,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be an EVM contract")
+}
+
 func TestMsgUpdateParams_ValidateBasic_RejectsInvalidParams(t *testing.T) {
 	msg := &types.MsgUpdateParams{
 		Authority: sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String(),
@@ -181,7 +198,7 @@ func TestSetParams_RejectsUserAccountPoolDelegator(t *testing.T) {
 	require.Contains(t, err.Error(), "user account with signing keys")
 }
 
-func TestSetParams_AcceptsBootstrapNoAuthAccount(t *testing.T) {
+func TestSetParams_RejectsNonContractWithoutAuthAccountAtRuntime(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
 	k.evmKeeper = &mockEVMKeeper{
 		isContractFn: func(common.Address) bool { return false },
@@ -190,7 +207,21 @@ func TestSetParams_AcceptsBootstrapNoAuthAccount(t *testing.T) {
 	params := types.DefaultParams()
 	params.PoolDelegatorAddress = addr.String()
 
-	require.NoError(t, k.SetParams(ctx, params))
+	err := k.SetParams(ctx, params)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be an EVM contract")
+}
+
+func TestSetParamsForGenesis_AcceptsBootstrapNoAuthAccount(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	k.evmKeeper = &mockEVMKeeper{
+		isContractFn: func(common.Address) bool { return false },
+	}
+	addr := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
+	params := types.DefaultParams()
+	params.PoolDelegatorAddress = addr.String()
+
+	require.NoError(t, k.SetParamsForGenesis(ctx, params))
 }
 
 func TestSetParams_RejectsClearingPoolDelegatorWhenPendingUndelegationsExist(t *testing.T) {

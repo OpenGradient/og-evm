@@ -38,7 +38,7 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, gs *types.GenesisState) {
 	if err := validateGenesisPendingUndelegations(gs); err != nil {
 		panic(fmt.Sprintf("failed to validate %s pending undelegations: %s", types.ModuleName, err))
 	}
-	if err := k.SetParams(ctx, gs.Params); err != nil {
+	if err := k.SetParamsForGenesis(ctx, gs.Params); err != nil {
 		panic(fmt.Sprintf("failed to set %s params: %s", types.ModuleName, err))
 	}
 	for _, entry := range gs.PendingRedelegations {

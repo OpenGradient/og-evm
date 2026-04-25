@@ -31,10 +31,7 @@ func (k Keeper) GetParams(ctx context.Context) (params types.Params, err error) 
 	return params, nil
 }
 
-// SetParams stores module params after validating pool delegator safety.
-// In particular, it rejects pool_delegator_address changes that would orphan
-// tracked pending undelegations/redelegations.
-func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
+func (k Keeper) setParams(ctx context.Context, params types.Params, allowBootstrap bool) error {
 	if err := params.Validate(); err != nil {
 		return err
 	}
@@ -45,12 +42,29 @@ func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
 	if err := k.validatePoolDelegatorAddressChange(ctx, currentParams.PoolDelegatorAddress, params.PoolDelegatorAddress); err != nil {
 		return err
 	}
-	if err := k.validatePoolDelegatorAddress(ctx, params.PoolDelegatorAddress); err != nil {
+	if err := k.validatePoolDelegatorAddress(ctx, params.PoolDelegatorAddress, allowBootstrap); err != nil {
 		return err
 	}
 	store := k.storeService.OpenKVStore(ctx)
 	bz := k.cdc.MustMarshal(&params)
 	return store.Set(types.ParamsKey, bz)
+}
+
+// SetParams stores module params for runtime operations after validating pool
+// delegator safety in strict contract-only mode.
+//
+// It rejects pool_delegator_address changes that would orphan tracked pending
+// undelegations/redelegations and disallows non-contract bootstrap exceptions.
+func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
+	return k.setParams(ctx, params, false)
+}
+
+// SetParamsForGenesis stores module params during module initialization.
+//
+// This keeps bootstrap compatibility for pool_delegator_address values that do
+// not yet have an auth account record.
+func (k Keeper) SetParamsForGenesis(ctx context.Context, params types.Params) error {
+	return k.setParams(ctx, params, true)
 }
 
 func (k Keeper) hasPendingUndelegations(ctx context.Context) (bool, error) {
