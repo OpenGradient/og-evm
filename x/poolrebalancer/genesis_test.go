@@ -2,6 +2,7 @@ package poolrebalancer
 
 import (
 	"bytes"
+	"context"
 	"math/big"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
-	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
 
 	"github.com/cosmos/evm/x/poolrebalancer/keeper"
@@ -24,6 +25,44 @@ import (
 )
 
 type genesisMockEVMKeeper struct{}
+
+type genesisMockStakingKeeper struct{}
+
+func (genesisMockStakingKeeper) GetBondedValidatorsByPower(context.Context) ([]stakingtypes.Validator, error) {
+	return nil, nil
+}
+
+func (genesisMockStakingKeeper) GetDelegatorDelegations(context.Context, sdk.AccAddress, uint16) ([]stakingtypes.Delegation, error) {
+	return nil, nil
+}
+
+func (genesisMockStakingKeeper) GetValidator(context.Context, sdk.ValAddress) (stakingtypes.Validator, error) {
+	return stakingtypes.Validator{}, nil
+}
+
+func (genesisMockStakingKeeper) GetDelegation(context.Context, sdk.AccAddress, sdk.ValAddress) (stakingtypes.Delegation, error) {
+	return stakingtypes.Delegation{}, nil
+}
+
+func (genesisMockStakingKeeper) GetUnbondingDelegation(context.Context, sdk.AccAddress, sdk.ValAddress) (stakingtypes.UnbondingDelegation, error) {
+	return stakingtypes.UnbondingDelegation{}, nil
+}
+
+func (genesisMockStakingKeeper) BeginRedelegation(context.Context, sdk.AccAddress, sdk.ValAddress, sdk.ValAddress, math.LegacyDec) (time.Time, error) {
+	return time.Time{}, nil
+}
+
+func (genesisMockStakingKeeper) Undelegate(context.Context, sdk.AccAddress, sdk.ValAddress, math.LegacyDec) (time.Time, math.Int, error) {
+	return time.Time{}, math.ZeroInt(), nil
+}
+
+func (genesisMockStakingKeeper) UnbondingTime(context.Context) (time.Duration, error) {
+	return 0, nil
+}
+
+func (genesisMockStakingKeeper) BondDenom(context.Context) (string, error) {
+	return "stake", nil
+}
 
 func (genesisMockEVMKeeper) CallEVM(
 	_ sdk.Context,
@@ -46,7 +85,7 @@ func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
-	stakingK := &stakingkeeper.Keeper{}
+	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
@@ -106,7 +145,7 @@ func TestGenesis_RoundTripPreservesDistinctRedelegationSources(t *testing.T) {
 
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
-	stakingK := &stakingkeeper.Keeper{}
+	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, nil, nil)
 
@@ -164,7 +203,7 @@ func TestInitGenesis_RejectsPendingUndelegationsWithoutPoolDelegator(t *testing.
 
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
-	stakingK := &stakingkeeper.Keeper{}
+	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
@@ -179,7 +218,7 @@ func TestInitGenesis_RejectsPendingUndelegationsWithoutPoolDelegator(t *testing.
 	}}
 
 	require.PanicsWithValue(t,
-		"failed to validate poolrebalancer pending undelegations: pending undelegations require params.pool_delegator_address to be set",
+		"failed to validate poolrebalancer genesis state: pending undelegations require params.pool_delegator_address to be set",
 		func() { InitGenesis(ctx, k, gs) },
 	)
 }
@@ -191,7 +230,7 @@ func TestInitGenesis_RejectsPendingUndelegationsForDifferentDelegator(t *testing
 
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
-	stakingK := &stakingkeeper.Keeper{}
+	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
@@ -208,7 +247,7 @@ func TestInitGenesis_RejectsPendingUndelegationsForDifferentDelegator(t *testing
 	}}
 
 	require.PanicsWithValue(t,
-		`failed to validate poolrebalancer pending undelegations: pending_undelegations[0].delegator_address "`+otherDel.String()+`" must match params.pool_delegator_address "`+poolDel.String()+`"`,
+		`failed to validate poolrebalancer genesis state: pending_undelegations[0].delegator_address "`+otherDel.String()+`" must match params.pool_delegator_address "`+poolDel.String()+`"`,
 		func() { InitGenesis(ctx, k, gs) },
 	)
 }
@@ -240,6 +279,7 @@ func TestGenesisState_Validate_PendingEntries(t *testing.T) {
 
 	t.Run("valid pending entries", func(t *testing.T) {
 		gs := types.DefaultGenesisState()
+		gs.Params.PoolDelegatorAddress = del.String()
 		gs.PendingRedelegations = []types.PendingRedelegation{validRedel}
 		gs.PendingUndelegations = []types.PendingUndelegation{validUndel}
 		require.NoError(t, gs.Validate())
@@ -283,5 +323,29 @@ func TestGenesisState_Validate_PendingEntries(t *testing.T) {
 		bad.CompletionTime = time.Time{}
 		gs.PendingUndelegations = []types.PendingUndelegation{bad}
 		require.Error(t, gs.Validate())
+	})
+
+	t.Run("invalid undelegation ownership without pool delegator", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		gs.PendingUndelegations = []types.PendingUndelegation{validUndel}
+		err := gs.Validate()
+		require.Error(t, err)
+		require.EqualError(t, err, "pending undelegations require params.pool_delegator_address to be set")
+	})
+
+	t.Run("invalid undelegation ownership mismatch", func(t *testing.T) {
+		gs := types.DefaultGenesisState()
+		gs.Params.PoolDelegatorAddress = del.String()
+		mismatchDel := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
+		bad := validUndel
+		bad.DelegatorAddress = mismatchDel.String()
+		gs.PendingUndelegations = []types.PendingUndelegation{bad}
+		err := gs.Validate()
+		require.Error(t, err)
+		require.EqualError(
+			t,
+			err,
+			`pending_undelegations[0].delegator_address "`+mismatchDel.String()+`" must match params.pool_delegator_address "`+del.String()+`"`,
+		)
 	})
 }

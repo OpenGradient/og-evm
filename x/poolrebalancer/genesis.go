@@ -9,33 +9,14 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-// validateGenesisPendingUndelegations enforces the pool-tracked undelegation
-// queue invariant at import: queued undelegations require a configured pool
-// delegator and every queued delegator must match params.pool_delegator_address.
-func validateGenesisPendingUndelegations(gs *types.GenesisState) error {
-	if len(gs.PendingUndelegations) == 0 {
-		return nil
-	}
-	if gs.Params.PoolDelegatorAddress == "" {
-		return fmt.Errorf("pending undelegations require params.pool_delegator_address to be set")
-	}
-	for i, entry := range gs.PendingUndelegations {
-		if entry.DelegatorAddress != gs.Params.PoolDelegatorAddress {
-			return fmt.Errorf(
-				"pending_undelegations[%d].delegator_address %q must match params.pool_delegator_address %q",
-				i, entry.DelegatorAddress, gs.Params.PoolDelegatorAddress,
-			)
-		}
-	}
-	return nil
-}
-
 // InitGenesis initializes module state from genesis.
 func InitGenesis(ctx sdk.Context, k keeper.Keeper, gs *types.GenesisState) {
 	if err := gs.Validate(); err != nil {
 		panic(fmt.Sprintf("failed to validate %s genesis state: %s", types.ModuleName, err))
 	}
-	if err := validateGenesisPendingUndelegations(gs); err != nil {
+	// Defense-in-depth: re-check the pool-tracked undelegation ownership invariant
+	// in init flow even though gs.Validate() also enforces it statelessly.
+	if err := types.ValidatePoolTrackedPendingUndelegations(gs); err != nil {
 		panic(fmt.Sprintf("failed to validate %s pending undelegations: %s", types.ModuleName, err))
 	}
 	if err := k.SetParamsForGenesis(ctx, gs.Params); err != nil {

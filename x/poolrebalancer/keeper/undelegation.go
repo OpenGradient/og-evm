@@ -118,6 +118,33 @@ func validateMaturedUndelegationBatchOwners(batches []maturedUndelegationBatch, 
 	return nil
 }
 
+func (k Keeper) validatePendingUndelegationDenom(ctx context.Context, coin sdk.Coin) error {
+	bondDenom, err := k.stakingKeeper.BondDenom(ctx)
+	if err != nil {
+		return fmt.Errorf("bond denom: %w", err)
+	}
+	if coin.Denom != bondDenom {
+		return fmt.Errorf("poolrebalancer: pending undelegation denom %q must match bond denom %q", coin.Denom, bondDenom)
+	}
+	return nil
+}
+
+func validateMaturedUndelegationBatchDenoms(batches []maturedUndelegationBatch, bondDenom string) error {
+	for _, b := range batches {
+		for _, e := range b.queued.Entries {
+			if e.Balance.Denom != bondDenom {
+				return fmt.Errorf(
+					"poolrebalancer: pending undelegation denom %q must match bond denom %q for completion %s",
+					e.Balance.Denom,
+					bondDenom,
+					normalizeCompletionTime(b.completionTime).Format(time.RFC3339Nano),
+				)
+			}
+		}
+	}
+	return nil
+}
+
 // PrepareMaturedPoolUndelegationCredits snapshots slash-adjusted staking unbonding balances for
 // matured pool-tracked undelegations and writes the sum into transient store for EndBlock use.
 // If matured batches exist while PoolDelegatorAddress is unset, this returns an error.
@@ -145,6 +172,9 @@ func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error
 	if err != nil {
 		return fmt.Errorf("bond denom: %w", err)
 	}
+	if err := validateMaturedUndelegationBatchDenoms(batches, bondDenom); err != nil {
+		return err
+	}
 
 	type tripleKey struct {
 		delegator      string
@@ -158,7 +188,7 @@ func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error
 
 	for _, b := range batches {
 		for _, e := range b.queued.Entries {
-			if e.DelegatorAddress != poolBech || e.Balance.Denom != bondDenom {
+			if e.DelegatorAddress != poolBech {
 				continue
 			}
 			key := tripleKey{
@@ -190,6 +220,9 @@ func (k Keeper) PrepareMaturedPoolUndelegationCredits(ctx context.Context) error
 // It appends to the (completionTime, delegator) queue and writes a by-validator index entry.
 func (k Keeper) addPendingUndelegation(ctx context.Context, del sdk.AccAddress, val sdk.ValAddress, coin sdk.Coin, completionTime time.Time) error {
 	if err := k.validatePendingUndelegationDelegator(ctx, del); err != nil {
+		return err
+	}
+	if err := k.validatePendingUndelegationDenom(ctx, coin); err != nil {
 		return err
 	}
 
@@ -394,6 +427,13 @@ func (k Keeper) CompletePendingUndelegations(ctx context.Context) error {
 		return errors.New("poolrebalancer: matured undelegations exist but PoolDelegatorAddress is empty")
 	}
 	if err := validateMaturedUndelegationBatchOwners(batches, poolDel); err != nil {
+		return err
+	}
+	bondDenom, err := k.stakingKeeper.BondDenom(ctx)
+	if err != nil {
+		return fmt.Errorf("bond denom: %w", err)
+	}
+	if err := validateMaturedUndelegationBatchDenoms(batches, bondDenom); err != nil {
 		return err
 	}
 

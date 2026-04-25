@@ -99,6 +99,27 @@ func (pu PendingUndelegation) Validate() error {
 	return nil
 }
 
+// ValidatePoolTrackedPendingUndelegations enforces the pool-tracked undelegation
+// queue invariant for genesis: queued undelegations require a configured pool
+// delegator and each queued delegator must match params.pool_delegator_address.
+func ValidatePoolTrackedPendingUndelegations(gs *GenesisState) error {
+	if len(gs.PendingUndelegations) == 0 {
+		return nil
+	}
+	if gs.Params.PoolDelegatorAddress == "" {
+		return fmt.Errorf("pending undelegations require params.pool_delegator_address to be set")
+	}
+	for i, entry := range gs.PendingUndelegations {
+		if entry.DelegatorAddress != gs.Params.PoolDelegatorAddress {
+			return fmt.Errorf(
+				"pending_undelegations[%d].delegator_address %q must match params.pool_delegator_address %q",
+				i, entry.DelegatorAddress, gs.Params.PoolDelegatorAddress,
+			)
+		}
+	}
+	return nil
+}
+
 // Validate checks genesis params using the same stateless rules as Params.Validate; pool
 // delegator safety still depends on keeper validation when InitGenesis calls SetParams.
 func (gs *GenesisState) Validate() error {
@@ -114,6 +135,9 @@ func (gs *GenesisState) Validate() error {
 		if err := pu.Validate(); err != nil {
 			return fmt.Errorf("pending_undelegations[%d]: %w", i, err)
 		}
+	}
+	if err := ValidatePoolTrackedPendingUndelegations(gs); err != nil {
+		return err
 	}
 	return nil
 }

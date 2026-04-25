@@ -892,53 +892,73 @@ func TestCompletePendingUndelegations_RetryAfterCreditVMFailureSucceeds(t *testi
 	require.True(t, k.getCommunityPoolReconcileDirty(ctx), "successful credit sets reconcile dirty")
 }
 
-func TestCompletePendingUndelegations_SumsOnlyBondDenom(t *testing.T) {
+func TestSetPendingUndelegation_RejectsNonBondDenom(t *testing.T) {
 	ctx, k, _ := newTestKeeper(t)
-	mockEVM := &mockEVMKeeper{}
-	k.evmKeeper = mockEVM
 
 	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
-	params := types.DefaultParams()
-	params.PoolDelegatorAddress = poolDel.String()
-	require.NoError(t, k.SetParams(ctx, params))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
 
 	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
-	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
-	completionA := ctx.BlockTime().Add(-2 * time.Second)
-	completionB := ctx.BlockTime().Add(-time.Second)
-
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
-		DelegatorAddress: poolDel.String(),
-		ValidatorAddress: val.String(),
-		Balance:          sdk.NewCoin("stake", math.NewInt(40)),
-		CompletionTime:   completionA,
-	}))
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
+	err := k.SetPendingUndelegation(ctx, types.PendingUndelegation{
 		DelegatorAddress: poolDel.String(),
 		ValidatorAddress: val.String(),
 		Balance:          sdk.NewCoin("otherdenom", math.NewInt(777)),
-		CompletionTime:   completionB,
-	}))
+		CompletionTime:   ctx.BlockTime().Add(time.Hour),
+	})
 
-	mockSK, ok := k.stakingKeeper.(*mockStakingKeeper)
-	require.True(t, ok)
-	mockSK.ubdByDelVal = map[string]stakingtypes.UnbondingDelegation{
-		poolDel.String() + "|" + val.String(): {
-			DelegatorAddress: poolDel.String(),
-			ValidatorAddress: val.String(),
-			Entries: []stakingtypes.UnbondingDelegationEntry{
-				{CompletionTime: completionA, Balance: math.NewInt(40)},
-			},
-		},
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `pending undelegation denom "otherdenom" must match bond denom "stake"`)
+}
+
+func TestPrepareMaturedPoolUndelegationCredits_ErrWhenMaturedRowsContainNonBondDenom(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
+
+	completion := ctx.BlockTime().Add(-time.Second)
+	seedPendingUndelegationUnchecked(t, ctx, k, types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("otherdenom", math.NewInt(1)),
+		CompletionTime:   completion,
+	})
+
+	err := k.PrepareMaturedPoolUndelegationCredits(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `pending undelegation denom "otherdenom" must match bond denom "stake"`)
+}
+
+func TestCompletePendingUndelegations_ErrAndRetainsQueueWhenMaturedRowsContainNonBondDenom(t *testing.T) {
+	ctx, k, _ := newTestKeeper(t)
+	ctx = ctx.WithBlockTime(time.Unix(2_000, 0))
+	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
+	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	setPoolDelegatorForTest(t, ctx, &k, poolDel)
+
+	completion := ctx.BlockTime().Add(-time.Second)
+	entry := types.PendingUndelegation{
+		DelegatorAddress: poolDel.String(),
+		ValidatorAddress: val.String(),
+		Balance:          sdk.NewCoin("otherdenom", math.NewInt(1)),
+		CompletionTime:   completion,
 	}
+	seedPendingUndelegationUnchecked(t, ctx, k, entry)
+	require.NoError(t, k.setMaturedPoolUndelegationCreditSum(ctx, math.ZeroInt()))
 
-	require.NoError(t, k.PrepareMaturedPoolUndelegationCredits(ctx))
-	require.NoError(t, k.CompletePendingUndelegations(ctx))
+	err := k.CompletePendingUndelegations(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `pending undelegation denom "otherdenom" must match bond denom "stake"`)
 
-	require.Equal(t, []string{"creditStakeableFromRebalance"}, mockEVM.methods)
-	amount, ok := mockEVM.args[0][0].(*big.Int)
-	require.True(t, ok)
-	require.Equal(t, "40", amount.String())
+	store := k.storeService.OpenKVStore(ctx)
+	queueBz, err := store.Get(types.GetPendingUndelegationQueueKey(completion, poolDel))
+	require.NoError(t, err)
+	require.NotNil(t, queueBz)
+	indexBz, err := store.Get(types.GetPendingUndelegationByValIndexKey(val, completion, entry.Balance.Denom, poolDel))
+	require.NoError(t, err)
+	require.NotNil(t, indexBz)
 }
 
 func TestCompletePendingUndelegations_ErrWhenPoolCreditRequiresEVMButNil(t *testing.T) {
