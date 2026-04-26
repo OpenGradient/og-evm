@@ -76,6 +76,7 @@ contract CommunityPool {
     error TokenTransferFromFailed();
     error HarvestFailed();
     error ZeroMintedUnits();
+    error ZeroUnitsWithPrincipalAssets(uint256 principalAssetsBefore);
     error RequestAlreadyClaimed();
     error RequestNotMatured(uint64 maturityTime, uint64 currentTime);
     error InvalidRequest();
@@ -264,7 +265,10 @@ contract CommunityPool {
         _claimPendingRewards(msg.sender);
 
         uint256 assetsBefore = principalAssets();
-        if (totalUnits == 0 || assetsBefore == 0) {
+        if (totalUnits == 0) {
+            if (assetsBefore != 0) {
+                revert ZeroUnitsWithPrincipalAssets(assetsBefore);
+            }
             mintedUnits = amount;
         } else {
             mintedUnits = (amount * totalUnits) / assetsBefore;

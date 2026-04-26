@@ -308,4 +308,38 @@ contract CommunityPoolCreditTest {
         require(pool.pendingRebalanceUnbondReserve() == 50 ether, "pendingUnchanged");
         require(pool.totalStaked() == 50 ether, "staked");
     }
+
+    /// @dev Reject first deposit when units are zero but bonded principal is already accounted.
+    function test_Deposit_revertsWhenZeroUnitsButBondedPrincipalExists() public {
+        pool.syncTotalStaked(1 ether);
+        bond.mint(address(this), 10 ether);
+        bond.approve(address(pool), type(uint256).max);
+        try pool.deposit(1 ether) {
+            revert("expected zero-units principal revert");
+        } catch (bytes memory err) {
+            require(err.length >= 4, "short err");
+            bytes4 sel;
+            assembly {
+                sel := mload(add(err, 0x20))
+            }
+            require(sel == CommunityPool.ZeroUnitsWithPrincipalAssets.selector, "wrong err");
+        }
+    }
+
+    /// @dev Reject first deposit when units are zero but reconcile reports bonded/pending principal.
+    function test_Deposit_revertsWhenZeroUnitsButReconcileSetsPrincipal() public {
+        automation.reconcile(pool, 2 ether, 3 ether);
+        bond.mint(address(this), 10 ether);
+        bond.approve(address(pool), type(uint256).max);
+        try pool.deposit(1 ether) {
+            revert("expected zero-units principal revert");
+        } catch (bytes memory err) {
+            require(err.length >= 4, "short err");
+            bytes4 sel;
+            assembly {
+                sel := mload(add(err, 0x20))
+            }
+            require(sel == CommunityPool.ZeroUnitsWithPrincipalAssets.selector, "wrong err");
+        }
+    }
 }

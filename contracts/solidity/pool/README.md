@@ -38,6 +38,7 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 - Mints units:
   - first deposit: `mintedUnits = amount`
   - otherwise: `mintedUnits = floor(amount * totalUnits / principalAssets())`
+- Rejects deposit when `totalUnits == 0` but `principalAssets() > 0` (`ZeroUnitsWithPrincipalAssets`), preventing orphan-accounted principal from being captured by a new first depositor.
 - `principalAssets()` = `stakeablePrincipalLedger + totalStaked + pendingRebalanceUnbondReserve`.
 - Reverts with `ZeroMintedUnits()` if floor rounding gives `0`.
 - Transfers tokens in and increases `stakeablePrincipalLedger`.

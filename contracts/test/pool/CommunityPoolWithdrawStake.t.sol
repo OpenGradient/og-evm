@@ -65,13 +65,12 @@ contract CommunityPoolWithdrawStakeTest is Test {
     }
 
     function test_Withdraw_doesNotChangePendingRebalanceUnbondReserve() public {
-        bond.mint(address(pool), 500 ether);
-        automation.reconcile(pool, 100 ether, 88 ether);
-        uint256 pendingBefore = pool.pendingRebalanceUnbondReserve();
-
         bond.mint(address(this), 300 ether);
         bond.approve(address(pool), type(uint256).max);
         pool.deposit(200 ether);
+        bond.mint(address(pool), 500 ether);
+        automation.reconcile(pool, 100 ether, 88 ether);
+        uint256 pendingBefore = pool.pendingRebalanceUnbondReserve();
 
         uint256 withdrawUnits = 100 ether;
         uint256 amountOut = (withdrawUnits * pool.totalStaked()) / pool.totalUnits();
@@ -87,12 +86,11 @@ contract CommunityPoolWithdrawStakeTest is Test {
     }
 
     function test_Withdraw_revertsOnFullExitWhenPendingRebalanceExists() public {
-        bond.mint(address(pool), 500 ether);
-        automation.reconcile(pool, 100 ether, 88 ether);
-
         bond.mint(address(this), 200 ether);
         bond.approve(address(pool), type(uint256).max);
         pool.deposit(200 ether);
+        bond.mint(address(pool), 500 ether);
+        automation.reconcile(pool, 100 ether, 88 ether);
 
         uint256 fullUnits = pool.totalUnits();
         vm.expectRevert(
@@ -106,12 +104,11 @@ contract CommunityPoolWithdrawStakeTest is Test {
     }
 
     function test_Withdraw_allowsFullExitWhenNoNonStakedPrincipalRemains() public {
-        bond.mint(address(pool), 500 ether);
-        automation.reconcile(pool, 100 ether, 0);
-
         bond.mint(address(this), 200 ether);
         bond.approve(address(pool), type(uint256).max);
         pool.deposit(200 ether);
+        bond.mint(address(pool), 500 ether);
+        automation.reconcile(pool, 100 ether, 0);
 
         _mockDelegate(address(pool), 200 ether, pool.maxValidators(), 200 ether, 2);
         pool.stake();
