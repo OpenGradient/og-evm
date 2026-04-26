@@ -171,7 +171,6 @@ type EVMD struct {
 	keys  map[string]*storetypes.KVStoreKey
 	tkeys map[string]*storetypes.TransientStoreKey
 	oKeys map[string]*storetypes.ObjectStoreKey
-	tKeys map[string]*storetypes.TransientStoreKey
 
 	// keepers
 	AccountKeeper         authkeeper.AccountKeeper
@@ -255,11 +254,11 @@ func NewExampleApp(
 		evmtypes.StoreKey, feemarkettypes.StoreKey, erc20types.StoreKey, precisebanktypes.StoreKey,
 		poolrebalancertypes.StoreKey,
 	)
-	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
-	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
-	tKeys := storetypes.NewTransientStoreKeys(
+	tkeys := storetypes.NewTransientStoreKeys(
+		paramstypes.TStoreKey,
 		poolrebalancertypes.TransientStoreKey,
 	)
+	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
 
 	var nonTransientKeys []storetypes.StoreKey
 	for _, k := range keys {
@@ -289,7 +288,6 @@ func NewExampleApp(
 		keys:              keys,
 		tkeys:             tkeys,
 		oKeys:             oKeys,
-		tKeys:             tKeys,
 	}
 
 	// params keeper is used by the PoA module
@@ -517,7 +515,7 @@ func NewExampleApp(
 	app.PoolRebalancerKeeper = poolrebalancerkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[poolrebalancertypes.StoreKey]),
-		tKeys[poolrebalancertypes.TransientStoreKey],
+		tkeys[poolrebalancertypes.TransientStoreKey],
 		app.StakingKeeper,
 		stakingkeeper.NewQuerier(app.StakingKeeper),
 		app.DistrKeeper,
@@ -789,7 +787,7 @@ func NewExampleApp(
 	// initialize stores
 	app.MountKVStores(keys)
 	app.MountObjectStores(oKeys)
-	app.MountTransientStores(tKeys)
+	app.MountTransientStores(tkeys)
 
 	maxGasWanted := cast.ToUint64(appOpts.Get(srvflags.EVMMaxTxGasWanted))
 
@@ -995,7 +993,7 @@ func (app *EVMD) GetKey(storeKey string) *storetypes.KVStoreKey {
 // NOTE: Same intent as GetKey—primarily for tests and helpers that must build module keepers with the
 // app's real store keys (e.g. integration suites wiring poolrebalancer.Keeper next to the app).
 func (app *EVMD) GetTKey(storeKey string) *storetypes.TransientStoreKey {
-	return app.tKeys[storeKey]
+	return app.tkeys[storeKey]
 }
 
 // GetSubspace returns a params subspace for a given module name.

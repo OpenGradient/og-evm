@@ -15,6 +15,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	simutils "github.com/cosmos/cosmos-sdk/testutil/sims"
+	paramstypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	"github.com/stretchr/testify/require"
 
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
@@ -54,6 +55,12 @@ func TestBeginBlockOrder_PoolRebalancerAfterSlashingAndEvidence(t *testing.T) {
 
 	order := app.ModuleManager.OrderBeginBlockers
 	require.NotEmpty(t, order)
+	require.NotNil(t, app.GetTKey(paramstypes.TStoreKey), "params transient key must be mounted")
+	require.NotNil(
+		t,
+		app.GetTKey(poolrebalancertypes.TransientStoreKey),
+		"poolrebalancer transient key must be mounted",
+	)
 
 	iSlash := beginBlockModuleIndex(order, slashingtypes.ModuleName)
 	iEvidence := beginBlockModuleIndex(order, evidencetypes.ModuleName)
