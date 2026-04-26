@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
@@ -56,6 +58,40 @@ func (m *mockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]s
 
 func (m *mockStakingKeeper) GetDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress, maxRetrieve uint16) ([]stakingtypes.Delegation, error) {
 	return m.delegations, nil
+}
+
+func (m *mockStakingKeeper) DelegatorDelegations(ctx context.Context, req *stakingtypes.QueryDelegatorDelegationsRequest) (*stakingtypes.QueryDelegatorDelegationsResponse, error) {
+	start := 0
+	if req != nil && req.Pagination != nil && len(req.Pagination.Key) > 0 {
+		parsed, err := strconv.Atoi(string(req.Pagination.Key))
+		if err != nil {
+			return nil, fmt.Errorf("invalid pagination key: %w", err)
+		}
+		start = parsed
+	}
+	if start > len(m.delegations) {
+		start = len(m.delegations)
+	}
+	limit := len(m.delegations)
+	if req != nil && req.Pagination != nil && req.Pagination.Limit > 0 && int(req.Pagination.Limit) < limit {
+		limit = int(req.Pagination.Limit)
+	}
+	end := start + limit
+	if end > len(m.delegations) {
+		end = len(m.delegations)
+	}
+	responses := make([]stakingtypes.DelegationResponse, 0, end-start)
+	for _, delegation := range m.delegations[start:end] {
+		responses = append(responses, stakingtypes.DelegationResponse{Delegation: delegation})
+	}
+	var nextKey []byte
+	if end < len(m.delegations) {
+		nextKey = []byte(strconv.Itoa(end))
+	}
+	return &stakingtypes.QueryDelegatorDelegationsResponse{
+		DelegationResponses: responses,
+		Pagination:          &query.PageResponse{NextKey: nextKey},
+	}, nil
 }
 
 func (m *mockStakingKeeper) GetValidator(ctx context.Context, addr sdk.ValAddress) (stakingtypes.Validator, error) {
@@ -119,7 +155,7 @@ func (m *mockStakingKeeper) BondDenom(ctx context.Context) (string, error) {
 	return "stake", nil
 }
 
-func newProcessRebalanceKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context, Keeper) {
+func newProcessRebalanceKeeper(t *testing.T, sk *mockStakingKeeper) (sdk.Context, Keeper) {
 	t.Helper()
 
 	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
@@ -130,7 +166,7 @@ func newProcessRebalanceKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Contex
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := NewKeeper(cdc, storeService, tKey, sk, nil, authority, &mockEVMKeeper{}, nil)
+	k := NewKeeper(cdc, storeService, tKey, sk, sk, nil, authority, &mockEVMKeeper{}, nil)
 
 	return ctx, k
 }

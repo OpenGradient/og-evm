@@ -34,7 +34,8 @@ This document captures assumptions that the `communitypool` integration suite de
   `stakeablePrincipalLedger > 0` or `pendingRebalanceUnbondReserve > 0`.
 - `stake()` delegates through `staking.delegateToBondedValidators(address(this), liquid, maxValidators)`.
 - The staking precompile path is atomic at transaction scope: if any internal per-validator delegate fails, no partial delegation state persists.
-- Validator selection policy for `stake()` is the first `maxValidators` bonded validators in staking precompile/keeper order.
+- Validator selection policy for `stake()` is the first `maxValidators` bonded validators in staking precompile query order.
+- Poolrebalancer target selection is independently the staking keeper bonded-by-power top-`max_target_validators` set. Exact ordering equivalence is not required; rebalance is the intended drift-correction path.
 - Delegation split policy is deterministic: `amount / n` base per validator and `amount % n` remainder distributed as `+1` to the first remainder validators.
 - `syncTotalStaked` is accounting-only and must not create staking side effects. It updates bonded `totalStaked` only; it does not set `pendingRebalanceUnbondReserve` (full bucket sync is `reconcileStakedBuckets`).
 
@@ -56,6 +57,6 @@ Some specs construct a `poolrebalancerkeeper.Keeper` with a stub `EVMKeeper` and
 - Integration suites built on `network.NewUnitTestNetwork` (CommunityPool Ginkgo, poolrebalancer stub-EVM, etc.) need **`-tags=test`** (singular, not `tests`) so the `test`-tag build of `x/vm/types` provides `EVMConfigurator.ResetTestConfig`.
 - Two UBD entries sharing `CompletionTime` but differing `CreationHeight`: logic is covered in `x/poolrebalancer/keeper` unit tests. Real-staking coverage lives in **`tests/integration/x/poolrebalancer`** (`TestUndelegationMultiEntry_SameCompletionDifferentCreationHeight`), using short genesis `UnbondingTime` and `NextBlockAfter(0)` on the second leg so both entries share the same completion instant.
 
-- If staking precompile validator ordering or bonded-set query semantics change, staking-path tests may fail and need expectation updates.
+- If staking precompile validator ordering or bonded-set query semantics change, tests should still hold if rebalance converges stake into the keeper target set; update expectations only if the explicit policy above changes.
 - If default gas behavior changes in factory or precompiles, tx helper gas defaults may need adjustment.
 - If ownership/permissions policy changes, tests must be updated to reflect the new access model.

@@ -157,4 +157,17 @@ contract CommunityPoolWithdrawStakeTest is Test {
         assertEq(pool.totalStaked(), 120 ether);
         assertEq(pool.stakeablePrincipalLedger(), 0);
     }
+
+    function test_Stake_whenTotalUnitsZero_noopsWithEmptyLedger() public {
+        assertEq(pool.totalUnits(), 0);
+        assertEq(pool.stakeablePrincipalLedger(), 0);
+        assertEq(pool.totalStaked(), 0);
+
+        uint256 delegatedAmount = pool.stake();
+
+        assertEq(delegatedAmount, 0);
+        assertEq(pool.totalUnits(), 0);
+        assertEq(pool.stakeablePrincipalLedger(), 0);
+        assertEq(pool.totalStaked(), 0);
+    }
 }

@@ -27,6 +27,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 )
 
 // TestCommunityPoolIntegrationSuite registers Ginkgo specs for CommunityPool (and poolrebalancer hooks
@@ -761,6 +762,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 				storeService,
 				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 				s.network.App.GetStakingKeeper(),
+				stakingkeeper.NewQuerier(s.network.App.GetStakingKeeper()),
 				s.network.App.GetDistrKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
@@ -821,6 +823,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 				storeService,
 				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 				s.network.App.GetStakingKeeper(),
+				stakingkeeper.NewQuerier(s.network.App.GetStakingKeeper()),
 				s.network.App.GetDistrKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
@@ -915,6 +918,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 				storeService,
 				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 				s.network.App.GetStakingKeeper(),
+				stakingkeeper.NewQuerier(s.network.App.GetStakingKeeper()),
 				s.network.App.GetDistrKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
@@ -1024,6 +1028,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 				storeService,
 				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 				s.network.App.GetStakingKeeper(),
+				stakingkeeper.NewQuerier(s.network.App.GetStakingKeeper()),
 				s.network.App.GetDistrKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
@@ -1451,7 +1456,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			Expect(delRes.DelegationResponse.Balance.Amount.IsPositive()).To(BeTrue())
 		})
 
-		It("stake delegates to the same bonded-validator prefix used by rebalancer targets", func() {
+		It("stake may drift from keeper targets and rebalance converges stake back to target set", func() {
 			poolAddr := s.deployCommunityPool(0, 10, 2, big.NewInt(1))
 			owner := s.keyring.GetKey(0)
 			user := s.keyring.GetKey(1)
@@ -1464,6 +1469,7 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 				storeService,
 				s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 				s.network.App.GetStakingKeeper(),
+				stakingkeeper.NewQuerier(s.network.App.GetStakingKeeper()),
 				s.network.App.GetDistrKeeper(),
 				authtypes.NewModuleAddress(govtypes.ModuleName),
 				s.network.App.GetEVMKeeper(),
@@ -1472,6 +1478,9 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			params := poolrebalancertypes.DefaultParams()
 			params.PoolDelegatorAddress = sdk.AccAddress(poolAddr.Bytes()).String()
 			params.MaxTargetValidators = 2
+			params.RebalanceThresholdBp = 0
+			params.MaxOpsPerBlock = 10
+			params.MaxMovePerOp = sdkmath.ZeroInt()
 			Expect(rebalancerKeeper.SetParams(ctx, params)).To(BeNil())
 			targetVals, err := rebalancerKeeper.GetTargetBondedValidators(ctx)
 			Expect(err).To(BeNil())
@@ -1495,19 +1504,27 @@ func TestCommunityPoolIntegrationSuite(t *testing.T, create network.CreateEvmApp
 			ctx = s.network.GetContext()
 			poolDel := sdk.AccAddress(poolAddr.Bytes())
 			sk := s.network.App.GetStakingKeeper()
+			targetSet := map[string]struct{}{}
 			for _, val := range targetVals {
+				targetSet[val.String()] = struct{}{}
 				delegation, dErr := sk.GetDelegation(ctx, poolDel, val)
 				Expect(dErr).To(BeNil(), "expected delegation to target validator %s", val.String())
 				Expect(delegation.Shares.IsPositive()).To(BeTrue())
 			}
 
-			bondedVals, err := sk.GetBondedValidatorsByPower(ctx)
+			// Rebalance should correct any order-source drift over subsequent EndBlock passes.
+			for i := 0; i < 2; i++ {
+				Expect(s.network.NextBlock()).To(BeNil())
+			}
+
+			ctx = s.network.GetContext()
+			delegations, err := sk.GetDelegatorDelegations(ctx, poolDel, ^uint16(0))
 			Expect(err).To(BeNil())
-			if len(bondedVals) > len(targetVals) {
-				thirdVal, vErr := sdk.ValAddressFromBech32(bondedVals[len(targetVals)].OperatorAddress)
-				Expect(vErr).To(BeNil())
-				_, dErr := sk.GetDelegation(ctx, poolDel, thirdVal)
-				Expect(dErr).ToNot(BeNil(), "stake() must not skip ahead of the target prefix")
+			for _, d := range delegations {
+				if d.Shares.IsPositive() {
+					_, ok := targetSet[d.ValidatorAddress]
+					Expect(ok).To(BeTrue(), "positive stake should converge to keeper target set")
+				}
 			}
 		})
 

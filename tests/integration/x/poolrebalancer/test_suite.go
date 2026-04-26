@@ -17,6 +17,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -94,6 +95,7 @@ func (s *KeeperIntegrationTestSuite) configurePoolKeeper() {
 		storeService,
 		s.network.App.GetTKey(poolrebalancertypes.TransientStoreKey),
 		s.network.App.GetStakingKeeper(),
+		stakingkeeper.NewQuerier(s.network.App.GetStakingKeeper()),
 		s.network.App.GetDistrKeeper(),
 		authority,
 		rebalanceIntegrationStubEVM{},

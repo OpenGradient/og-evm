@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"math/big"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
@@ -34,6 +36,44 @@ func (genesisMockStakingKeeper) GetBondedValidatorsByPower(context.Context) ([]s
 
 func (genesisMockStakingKeeper) GetDelegatorDelegations(context.Context, sdk.AccAddress, uint16) ([]stakingtypes.Delegation, error) {
 	return nil, nil
+}
+
+func (m genesisMockStakingKeeper) DelegatorDelegations(ctx context.Context, req *stakingtypes.QueryDelegatorDelegationsRequest) (*stakingtypes.QueryDelegatorDelegationsResponse, error) {
+	delegations, err := m.GetDelegatorDelegations(ctx, sdk.MustAccAddressFromBech32(req.DelegatorAddr), 0)
+	if err != nil {
+		return nil, err
+	}
+	start := 0
+	if req != nil && req.Pagination != nil && len(req.Pagination.Key) > 0 {
+		parsed, err := strconv.Atoi(string(req.Pagination.Key))
+		if err != nil {
+			return nil, err
+		}
+		start = parsed
+	}
+	if start > len(delegations) {
+		start = len(delegations)
+	}
+	limit := len(delegations)
+	if req != nil && req.Pagination != nil && req.Pagination.Limit > 0 && int(req.Pagination.Limit) < limit {
+		limit = int(req.Pagination.Limit)
+	}
+	end := start + limit
+	if end > len(delegations) {
+		end = len(delegations)
+	}
+	responses := make([]stakingtypes.DelegationResponse, 0, end-start)
+	for _, delegation := range delegations[start:end] {
+		responses = append(responses, stakingtypes.DelegationResponse{Delegation: delegation})
+	}
+	var nextKey []byte
+	if end < len(delegations) {
+		nextKey = []byte(strconv.Itoa(end))
+	}
+	return &stakingtypes.QueryDelegatorDelegationsResponse{
+		DelegationResponses: responses,
+		Pagination:          &query.PageResponse{NextKey: nextKey},
+	}, nil
 }
 
 func (genesisMockStakingKeeper) GetValidator(context.Context, sdk.ValAddress) (stakingtypes.Validator, error) {
@@ -87,7 +127,7 @@ func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
+	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	srcVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
@@ -123,7 +163,7 @@ func TestGenesis_ExportsAndRestoresPendingState(t *testing.T) {
 	ctx2 := testutil.DefaultContext(storeKey2, tKey2).WithBlockTime(time.Unix(2_000, 0))
 
 	storeService2 := runtime.NewKVStoreService(storeKey2)
-	k2 := keeper.NewKeeper(cdc, storeService2, tKey2, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
+	k2 := keeper.NewKeeper(cdc, storeService2, tKey2, stakingK, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
 	InitGenesis(ctx2, k2, exported)
 
@@ -147,7 +187,7 @@ func TestGenesis_RoundTripPreservesDistinctRedelegationSources(t *testing.T) {
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, nil, nil)
+	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, stakingK, nil, authority, nil, nil)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	srcA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
@@ -177,7 +217,7 @@ func TestGenesis_RoundTripPreservesDistinctRedelegationSources(t *testing.T) {
 	storeKey2 := storetypes.NewKVStoreKey(types.ModuleName)
 	tKey2 := storetypes.NewTransientStoreKey("transient_test2")
 	ctx2 := testutil.DefaultContext(storeKey2, tKey2).WithBlockTime(time.Unix(3_000, 0))
-	k2 := keeper.NewKeeper(cdc, runtime.NewKVStoreService(storeKey2), tKey2, stakingK, nil, authority, nil, nil)
+	k2 := keeper.NewKeeper(cdc, runtime.NewKVStoreService(storeKey2), tKey2, stakingK, stakingK, nil, authority, nil, nil)
 	InitGenesis(ctx2, k2, exported)
 
 	redels, err := k2.GetAllPendingRedelegations(ctx2)
@@ -205,7 +245,7 @@ func TestInitGenesis_RejectsPendingUndelegationsWithoutPoolDelegator(t *testing.
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
+	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
@@ -232,7 +272,7 @@ func TestInitGenesis_RejectsPendingUndelegationsForDifferentDelegator(t *testing
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingK := genesisMockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
+	k := keeper.NewKeeper(cdc, storeService, tKey, stakingK, stakingK, nil, authority, genesisMockEVMKeeper{}, nil)
 
 	poolDel := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
 	otherDel := sdk.AccAddress(bytes.Repeat([]byte{3}, 20))

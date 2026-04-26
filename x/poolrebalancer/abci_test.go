@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -46,13 +48,21 @@ func (endBlockerMockEVM) CallEVM(
 func (endBlockerMockEVM) IsContract(sdk.Context, common.Address) bool { return true }
 
 func newEndBlockerTestKeeper(t *testing.T, sk types.StakingKeeper) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey) {
-	ctx, k, storeKey, _ := newEndBlockerTestKeeperWithDeps(t, sk, nil, endBlockerMockEVM{})
+	stakingDeps, ok := sk.(interface {
+		types.StakingKeeper
+		types.StakingQuerier
+	})
+	require.True(t, ok)
+	ctx, k, storeKey, _ := newEndBlockerTestKeeperWithDeps(t, stakingDeps, nil, endBlockerMockEVM{})
 	return ctx, k, storeKey
 }
 
 func newEndBlockerTestKeeperWithDeps(
 	t *testing.T,
-	sk types.StakingKeeper,
+	sk interface {
+		types.StakingKeeper
+		types.StakingQuerier
+	},
 	dq types.DistributionKeeper,
 	evm types.EVMKeeper,
 ) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey, *storetypes.TransientStoreKey) {
@@ -66,7 +76,7 @@ func newEndBlockerTestKeeperWithDeps(
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 
-	k := keeper.NewKeeper(cdc, storeService, tKey, sk, dq, authority, evm, nil)
+	k := keeper.NewKeeper(cdc, storeService, tKey, sk, sk, dq, authority, evm, nil)
 	return ctx, k, storeKey, tKey
 }
 
@@ -91,7 +101,12 @@ func (m *recordingEndBlockerEVM) CallEVM(
 func (recordingEndBlockerEVM) IsContract(sdk.Context, common.Address) bool { return true }
 
 func newEndBlockerTestKeeperWithRecordingEVM(t *testing.T, sk types.StakingKeeper, evm *recordingEndBlockerEVM) (sdk.Context, keeper.Keeper, *storetypes.KVStoreKey) {
-	ctx, k, storeKey, _ := newEndBlockerTestKeeperWithDeps(t, sk, nil, evm)
+	stakingDeps, ok := sk.(interface {
+		types.StakingKeeper
+		types.StakingQuerier
+	})
+	require.True(t, ok)
+	ctx, k, storeKey, _ := newEndBlockerTestKeeperWithDeps(t, stakingDeps, nil, evm)
 	return ctx, k, storeKey
 }
 
@@ -113,6 +128,44 @@ func (stakingKeeperOpError) GetBondedValidatorsByPower(ctx context.Context) ([]s
 
 func (stakingKeeperOpError) GetDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress, maxRetrieve uint16) ([]stakingtypes.Delegation, error) {
 	return nil, nil
+}
+
+func (m stakingKeeperOpError) DelegatorDelegations(ctx context.Context, req *stakingtypes.QueryDelegatorDelegationsRequest) (*stakingtypes.QueryDelegatorDelegationsResponse, error) {
+	delegations, err := m.GetDelegatorDelegations(ctx, sdk.MustAccAddressFromBech32(req.DelegatorAddr), 0)
+	if err != nil {
+		return nil, err
+	}
+	start := 0
+	if req != nil && req.Pagination != nil && len(req.Pagination.Key) > 0 {
+		parsed, err := strconv.Atoi(string(req.Pagination.Key))
+		if err != nil {
+			return nil, err
+		}
+		start = parsed
+	}
+	if start > len(delegations) {
+		start = len(delegations)
+	}
+	limit := len(delegations)
+	if req != nil && req.Pagination != nil && req.Pagination.Limit > 0 && int(req.Pagination.Limit) < limit {
+		limit = int(req.Pagination.Limit)
+	}
+	end := start + limit
+	if end > len(delegations) {
+		end = len(delegations)
+	}
+	responses := make([]stakingtypes.DelegationResponse, 0, end-start)
+	for _, delegation := range delegations[start:end] {
+		responses = append(responses, stakingtypes.DelegationResponse{Delegation: delegation})
+	}
+	var nextKey []byte
+	if end < len(delegations) {
+		nextKey = []byte(strconv.Itoa(end))
+	}
+	return &stakingtypes.QueryDelegatorDelegationsResponse{
+		DelegationResponses: responses,
+		Pagination:          &query.PageResponse{NextKey: nextKey},
+	}, nil
 }
 
 func (stakingKeeperOpError) GetValidator(ctx context.Context, addr sdk.ValAddress) (stakingtypes.Validator, error) {

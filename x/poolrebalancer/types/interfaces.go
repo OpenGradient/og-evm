@@ -29,6 +29,11 @@ type StakingKeeper interface {
 	BondDenom(ctx context.Context) (string, error)
 }
 
+// StakingQuerier defines the subset of staking query methods used by poolrebalancer.
+type StakingQuerier interface {
+	DelegatorDelegations(ctx context.Context, req *stakingtypes.QueryDelegatorDelegationsRequest) (*stakingtypes.QueryDelegatorDelegationsResponse, error)
+}
+
 // DistributionKeeper defines the subset of distribution keeper methods used by poolrebalancer.
 type DistributionKeeper interface {
 	IterateValidatorSlashEventsBetween(

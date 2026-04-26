@@ -18,7 +18,7 @@ import (
 	"github.com/cosmos/evm/x/poolrebalancer/types"
 )
 
-func newKeeperWithStaking(t *testing.T, sk types.StakingKeeper) (sdk.Context, Keeper) {
+func newKeeperWithStaking(t *testing.T, sk *mockStakingKeeper) (sdk.Context, Keeper) {
 	t.Helper()
 	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
 	tKey := storetypes.NewTransientStoreKey("transient_test")
@@ -27,7 +27,7 @@ func newKeeperWithStaking(t *testing.T, sk types.StakingKeeper) (sdk.Context, Ke
 	storeService := runtime.NewKVStoreService(storeKey)
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := NewKeeper(cdc, storeService, tKey, sk, nil, authority, nil, newMockAccountKeeper())
+	k := NewKeeper(cdc, storeService, tKey, sk, sk, nil, authority, nil, newMockAccountKeeper())
 	return ctx, k
 }
 
@@ -99,36 +99,28 @@ func TestComputeExpectedBondedPrincipal_SkipsNonBondedValidators(t *testing.T) {
 	require.Equal(t, "100", sum.String())
 }
 
-func TestGetDelegatorDelegationsWithLimit_ErrorsAtScanLimit(t *testing.T) {
+func TestGetAllDelegatorDelegations_PaginatesAcrossPages(t *testing.T) {
 	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
-	valA := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
-	valB := sdk.ValAddress(bytes.Repeat([]byte{3}, 20))
+	baseVal := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
+	delegations := make([]stakingtypes.Delegation, 0, delegatorDelegationPageLimit+1)
+	for i := uint64(0); i <= delegatorDelegationPageLimit; i++ {
+		valBytes := append([]byte{}, baseVal.Bytes()...)
+		valBytes[len(valBytes)-1] = byte(i % 255)
+		val := sdk.ValAddress(valBytes)
+		delegations = append(delegations, stakingtypes.Delegation{
+			DelegatorAddress: del.String(),
+			ValidatorAddress: val.String(),
+			Shares:           math.LegacyNewDec(1),
+		})
+	}
 	sk := &mockStakingKeeper{
-		delegations: []stakingtypes.Delegation{
-			{DelegatorAddress: del.String(), ValidatorAddress: valA.String(), Shares: math.LegacyNewDec(1)},
-			{DelegatorAddress: del.String(), ValidatorAddress: valB.String(), Shares: math.LegacyNewDec(1)},
-		},
+		delegations: delegations,
 	}
 	ctx, k := newKeeperWithStaking(t, sk)
 
-	_, err := k.getDelegatorDelegationsWithLimit(ctx, del, 2)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "possibly truncated staking view")
-}
-
-func TestGetDelegatorDelegationsWithLimit_AllowsBelowScanLimit(t *testing.T) {
-	del := sdk.AccAddress(bytes.Repeat([]byte{1}, 20))
-	val := sdk.ValAddress(bytes.Repeat([]byte{2}, 20))
-	sk := &mockStakingKeeper{
-		delegations: []stakingtypes.Delegation{
-			{DelegatorAddress: del.String(), ValidatorAddress: val.String(), Shares: math.LegacyNewDec(1)},
-		},
-	}
-	ctx, k := newKeeperWithStaking(t, sk)
-
-	delegations, err := k.getDelegatorDelegationsWithLimit(ctx, del, 2)
+	delegations, err := k.getAllDelegatorDelegations(ctx, del)
 	require.NoError(t, err)
-	require.Len(t, delegations, 1)
+	require.Len(t, delegations, int(delegatorDelegationPageLimit+1))
 }
 
 func TestComputeExpectedPendingRebalancePrincipal_UsesStakingUBDAndDedupes(t *testing.T) {

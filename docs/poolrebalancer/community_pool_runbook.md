@@ -139,7 +139,7 @@ Logic:
 
 **Empty-pool harvest**: CommunityPool **`harvest()`** reverts with **`EmptyPool()`** when **`totalUnits == 0`**. EndBlock automation reads **`totalUnits`** first and skips **`harvest`** / **`stake`** while the pool is empty, preventing rewards from entering **`rewardReserve`** without an index owner.
 
-**Delegation scan bound**: keeper paths that compute bonded stake use a centralized delegation scan and fail closed if the staking keeper returns exactly the scan limit. That boundary means the account may have more delegations than the response contains, so reconciliation/rebalance refuses to use a possibly truncated view instead of silently undercounting stake.
+**Delegation pagination**: keeper paths that compute bonded stake paginate delegator delegations through staking query `next_key` until exhausted. This avoids both silent truncation and fixed scan-ceiling failures for fragmented delegation sets. If pagination query calls fail, reconcile/rebalance logs errors and retries on later blocks.
 
 ---
 
@@ -168,7 +168,7 @@ The full artifact used elsewhere (e.g. Go contract tests) is `contracts/solidity
 | `Unauthorized` on automation txs | **`automationCaller`** ≠ module EVM address, or wrong **`from`** in `CallEVM`. |
 | `EmptyPool` during direct `harvest` | Pool has **zero units**; EndBlock automation skips harvest until deposits create units. |
 | `poolrebalancer: community pool staked buckets reconcile failed` (recurring) | EVM gas, contract revert, or **`ComputeExpectedCommunityPoolStakedBuckets`** error (e.g. missing UBD for queued triple). |
-| `delegation scan reached maxRetrieve` | Pool delegator has reached the keeper scan boundary; reduce fragmentation or add true paginated keeper support before relying on reconciliation/rebalance accounting. |
+| `delegator delegations page query for ...` | Staking pagination query failed while collecting full delegator view; check node/query health and retry. Reconcile/rebalance will retry on subsequent blocks. |
 | `complete pending undelegations failed` / block halt | **Credit** reverted: **`pendingRebalanceUnbondReserve` < creditSum**, missing transient snapshot with matured batches, nil EVM, empty pool delegator. |
 | Contract **`totalStaked`** wrong but pending OK | Use **`syncTotalStaked`** (owner) for **bonded-only** fix; full two-bucket fix needs **automation** **`reconcileStakedBuckets`** (or temporary automation caller). |
 | Deposit / pricePerUnit “wrong” after rebalance | **`principalAssets`** includes **`pendingRebalanceUnbondReserve`**; large pending increases denominator for new mints until credit clears pending. |

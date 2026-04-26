@@ -18,6 +18,7 @@ type Keeper struct {
 	transientKey  *storetypes.TransientStoreKey
 	cdc           codec.BinaryCodec
 	stakingKeeper types.StakingKeeper
+	stakingQuerier types.StakingQuerier
 	distrKeeper   types.DistributionKeeper
 	evmKeeper     types.EVMKeeper
 	accountKeeper types.AccountKeeper
@@ -32,6 +33,7 @@ func NewKeeper(
 	storeService store.KVStoreService,
 	transientKey *storetypes.TransientStoreKey,
 	stakingKeeper types.StakingKeeper,
+	stakingQuerier types.StakingQuerier,
 	distrKeeper types.DistributionKeeper,
 	authority sdk.AccAddress,
 	evmKeeper types.EVMKeeper,
@@ -46,6 +48,7 @@ func NewKeeper(
 		transientKey:                     transientKey,
 		cdc:                              cdc,
 		stakingKeeper:                    stakingKeeper,
+		stakingQuerier:                   stakingQuerier,
 		distrKeeper:                      distrKeeper,
 		evmKeeper:                        evmKeeper,
 		accountKeeper:                    accountKeeper,

@@ -57,7 +57,7 @@ func newTestKeeper(t *testing.T) (sdk.Context, Keeper, *mockAccountKeeper) {
 
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
 	mockAcc := newMockAccountKeeper()
-	k := NewKeeper(cdc, storeService, tKey, stakingKeeper, nil, authority, nil, mockAcc)
+	k := NewKeeper(cdc, storeService, tKey, stakingKeeper, stakingKeeper, nil, authority, nil, mockAcc)
 	return ctx, k, mockAcc
 }
 
@@ -74,7 +74,7 @@ func newTestKeeperNilAuthAndEVM(t *testing.T) (sdk.Context, Keeper) {
 	cdc := moduletestutil.MakeTestEncodingConfig().Codec
 	stakingKeeper := &mockStakingKeeper{}
 	authority := sdk.AccAddress(bytes.Repeat([]byte{9}, 20))
-	k := NewKeeper(cdc, storeService, tKey, stakingKeeper, nil, authority, nil, nil)
+	k := NewKeeper(cdc, storeService, tKey, stakingKeeper, stakingKeeper, nil, authority, nil, nil)
 	return ctx, k
 }
 
