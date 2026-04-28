@@ -19,7 +19,7 @@ message Params {
   // rebalance_threshold_bp is the drift threshold in basis points.
   uint32 rebalance_threshold_bp = 3;
 
-  // max_ops_per_block caps redelegate/undelegate operations per block.
+  // max_ops_per_block caps redelegation operations per block.
   uint32 max_ops_per_block = 4;
 
   // max_move_per_op caps the amount moved per operation (0 = no cap).
@@ -28,8 +28,7 @@ message Params {
     (gogoproto.nullable) = false
   ];
 
-  // use_undelegate_fallback enables undelegation when no safe redelegation move exists.
-  bool use_undelegate_fallback = 6;
+  reserved 6;
 }
 
 // PendingRedelegation is an in-flight redelegation tracked for transitive redelegation safety.
@@ -47,29 +46,13 @@ message QueuedRedelegation {
   repeated PendingRedelegation entries = 1 [ (gogoproto.nullable) = false ];
 }
 
-// PendingUndelegation is an in-flight undelegation tracked for later cleanup and (optional) slash handling.
-message PendingUndelegation {
-  string delegator_address = 1;
-  string validator_address = 2;
-  cosmos.base.v1beta1.Coin balance = 3 [ (gogoproto.nullable) = false ];
-  google.protobuf.Timestamp completion_time = 4
-      [ (gogoproto.nullable) = false, (gogoproto.stdtime) = true ];
-}
-
-// QueuedUndelegation groups undelegations that share the same (completion time, delegator) queue key.
-message QueuedUndelegation {
-  repeated PendingUndelegation entries = 1 [ (gogoproto.nullable) = false ];
-}
-
 // GenesisState defines the poolrebalancer module's genesis state.
 message GenesisState {
   Params params = 1 [ (gogoproto.nullable) = false ];
 
-  // pending_redelegations and pending_undelegations allow restoring in-flight state on restart.
+  // pending_redelegations allow restoring in-flight state on restart.
   // They are optional for initial deployments.
   repeated PendingRedelegation pending_redelegations = 2
       [ (gogoproto.nullable) = false ];
-  repeated PendingUndelegation pending_undelegations = 3
-      [ (gogoproto.nullable) = false ];
+  reserved 3;
 }
-

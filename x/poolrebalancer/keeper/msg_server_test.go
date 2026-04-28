@@ -136,12 +136,11 @@ func TestMsgUpdateParams_ValidateBasic_RejectsInvalidParams(t *testing.T) {
 	msg := &types.MsgUpdateParams{
 		Authority: sdk.AccAddress(bytes.Repeat([]byte{1}, 20)).String(),
 		Params: types.Params{
-			PoolDelegatorAddress:  "",
-			MaxTargetValidators:   0, // invalid
-			RebalanceThresholdBp:  50,
-			MaxOpsPerBlock:        5,
-			MaxMovePerOp:          math.ZeroInt(),
-			UseUndelegateFallback: true,
+			PoolDelegatorAddress: "",
+			MaxTargetValidators:  0, // invalid
+			RebalanceThresholdBp: 50,
+			MaxOpsPerBlock:       5,
+			MaxMovePerOp:         math.ZeroInt(),
 		},
 	}
 
@@ -222,53 +221,6 @@ func TestSetParamsForGenesis_AcceptsBootstrapNoAuthAccount(t *testing.T) {
 	params.PoolDelegatorAddress = addr.String()
 
 	require.NoError(t, k.SetParamsForGenesis(ctx, params))
-}
-
-func TestSetParams_RejectsClearingPoolDelegatorWhenPendingUndelegationsExist(t *testing.T) {
-	ctx, k, _ := newTestKeeper(t)
-	k.evmKeeper = &mockEVMKeeper{}
-
-	currentPool := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
-	params := types.DefaultParams()
-	params.PoolDelegatorAddress = currentPool.String()
-	require.NoError(t, k.SetParams(ctx, params))
-
-	val := sdk.ValAddress(bytes.Repeat([]byte{0xCD}, 20))
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
-		DelegatorAddress: currentPool.String(),
-		ValidatorAddress: val.String(),
-		Balance:          sdk.NewCoin("stake", math.NewInt(10)),
-		CompletionTime:   sdk.UnwrapSDKContext(ctx).BlockTime().Add(time.Hour),
-	}))
-
-	params.PoolDelegatorAddress = ""
-	err := k.SetParams(ctx, params)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot change pool_delegator_address while pending undelegations exist")
-}
-
-func TestSetParams_RejectsChangingPoolDelegatorWhenPendingUndelegationsExist(t *testing.T) {
-	ctx, k, _ := newTestKeeper(t)
-	k.evmKeeper = &mockEVMKeeper{}
-
-	currentPool := sdk.AccAddress(bytes.Repeat([]byte{0xAB}, 20))
-	nextPool := sdk.AccAddress(bytes.Repeat([]byte{0xBC}, 20))
-	params := types.DefaultParams()
-	params.PoolDelegatorAddress = currentPool.String()
-	require.NoError(t, k.SetParams(ctx, params))
-
-	val := sdk.ValAddress(bytes.Repeat([]byte{0xCD}, 20))
-	require.NoError(t, k.SetPendingUndelegation(ctx, types.PendingUndelegation{
-		DelegatorAddress: currentPool.String(),
-		ValidatorAddress: val.String(),
-		Balance:          sdk.NewCoin("stake", math.NewInt(10)),
-		CompletionTime:   sdk.UnwrapSDKContext(ctx).BlockTime().Add(time.Hour),
-	}))
-
-	params.PoolDelegatorAddress = nextPool.String()
-	err := k.SetParams(ctx, params)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot change pool_delegator_address while pending undelegations exist")
 }
 
 func TestSetParams_RejectsChangingPoolDelegatorWhenTrackedRedelegationsExist(t *testing.T) {

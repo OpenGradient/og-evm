@@ -15,7 +15,7 @@ import (
 // TestUpdateParams_RejectsInvalidAuthority verifies that MsgUpdateParams enforces
 // module authority and rejects unauthorized callers.
 func (s *KeeperIntegrationTestSuite) TestUpdateParams_RejectsInvalidAuthority() {
-	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt(), false)
+	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt())
 
 	msg := &poolrebalancertypes.MsgUpdateParams{
 		Authority: sdk.AccAddress(bytes.Repeat([]byte{8}, 20)).String(),
@@ -43,7 +43,6 @@ func (s *KeeperIntegrationTestSuite) TestUpdateParams_ValidAuthorityChangesSched
 		10000, // threshold suppresses all scheduling
 		1,
 		sdkmath.ZeroInt(),
-		false,
 	)
 	_, err := s.poolKeeper.UpdateParams(s.ctx, &poolrebalancertypes.MsgUpdateParams{
 		Authority: authority,
@@ -53,7 +52,6 @@ func (s *KeeperIntegrationTestSuite) TestUpdateParams_ValidAuthorityChangesSched
 
 	s.Require().NoError(s.RunBeginThenEndBlock())
 	s.Require().Len(s.PendingRedelegations(), 0, "expected no scheduling under high threshold")
-	s.Require().Len(s.PendingUndelegations(), 0, "expected no fallback scheduling under high threshold")
 	s.T().Logf("update-params flow: high threshold kept queues empty")
 
 	// Phase 2: lower threshold, same drift should now schedule.
@@ -69,4 +67,3 @@ func (s *KeeperIntegrationTestSuite) TestUpdateParams_ValidAuthorityChangesSched
 	s.Require().NotEmpty(s.PendingRedelegations(), "expected scheduling after lowering threshold")
 	s.T().Logf("update-params flow: low threshold scheduled %d redelegations", len(s.PendingRedelegations()))
 }
-

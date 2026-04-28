@@ -2,6 +2,7 @@ package evmd
 
 import (
 	"os"
+	"sync"
 	"testing"
 
 	"cosmossdk.io/log"
@@ -31,27 +32,43 @@ func beginBlockModuleIndex(order []string, moduleName string) int {
 	return -1
 }
 
-// TestBeginBlockOrder_PoolRebalancerAfterSlashingAndEvidence guards the ordering required for
-// PrepareMaturedPoolUndelegationCredits: slashing and evidence BeginBlock may update bonded or unbonding
-// balances; poolrebalancer must snapshot UBD after both. Staking runs after poolrebalancer here;
-// x/staking BeginBlocker only tracks HistoricalInfo (delegator UBD matures in staking EndBlock), so this
-// relative order does not affect the snapshot’s UBD balances.
-func TestBeginBlockOrder_PoolRebalancerAfterSlashingAndEvidence(t *testing.T) {
-	home, err := os.MkdirTemp("", "evmd-begin-block-order")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(home) })
+var (
+	orderTestAppOnce sync.Once
+	orderTestApp     *EVMD
+	orderTestAppErr  error
+)
 
-	app := NewExampleApp(
-		log.NewNopLogger(),
-		dbm.NewMemDB(),
-		nil,
-		true,
-		simutils.AppOptionsMap{
-			flags.FlagHome:      home,
-			srvflags.EVMChainID: constants.EighteenDecimalsChainID,
-		},
-		baseapp.SetChainID(constants.ExampleChainID.ChainID),
-	)
+func getOrderTestApp() (*EVMD, error) {
+	orderTestAppOnce.Do(func() {
+		home, err := os.MkdirTemp("", "evmd-block-order")
+		if err != nil {
+			orderTestAppErr = err
+			return
+		}
+
+		orderTestApp = NewExampleApp(
+			log.NewNopLogger(),
+			dbm.NewMemDB(),
+			nil,
+			true,
+			simutils.AppOptionsMap{
+				flags.FlagHome:      home,
+				srvflags.EVMChainID: constants.EighteenDecimalsChainID,
+			},
+			baseapp.SetChainID(constants.ExampleChainID.ChainID),
+		)
+	})
+	return orderTestApp, orderTestAppErr
+}
+
+// TestBeginBlockOrder_PoolRebalancerAfterSlashingAndEvidence guards the ordering required for
+// previous-block slash snapshot correctness: slashing and evidence BeginBlock may update staking
+// state, so poolrebalancer must snapshot slash signals after both. Staking runs after poolrebalancer
+// here; x/staking BeginBlocker only tracks HistoricalInfo, so this relative order does not affect
+// slash-snapshot correctness.
+func TestBeginBlockOrder_PoolRebalancerAfterSlashingAndEvidence(t *testing.T) {
+	app, err := getOrderTestApp()
+	require.NoError(t, err)
 
 	order := app.ModuleManager.OrderBeginBlockers
 	require.NotEmpty(t, order)
@@ -75,7 +92,7 @@ func TestBeginBlockOrder_PoolRebalancerAfterSlashingAndEvidence(t *testing.T) {
 	require.Less(t, iSlash, iEvidence,
 		"slashing must run before evidence (downtime vs equivocation slash ordering)")
 	require.Less(t, iEvidence, iPool,
-		"equivocation evidence slashes UBD in evidence BeginBlock; poolrebalancer snapshot must follow")
+		"equivocation evidence updates validator slash state in BeginBlock; poolrebalancer snapshot must follow")
 	require.Less(t, iPool, iStake,
-		"app orders poolrebalancer before staking BeginBlock; staking BeginBlock does not mutate UBD")
+		"app orders poolrebalancer before staking BeginBlock; staking BeginBlock does not alter slash snapshot inputs")
 }

@@ -37,7 +37,7 @@ func TestMaybeReconcileCommunityPoolStakedBucketsSecondPass_DelegatesWhenEnabled
 	t.Cleanup(func() { k.SetCommunityPoolReconcileSecondPassForTesting(false) })
 	mockEVM := &mockEVMKeeper{
 		ViewRetEncoder: func(method string) ([]byte, error) {
-			return packCommunityPoolUint256View(t, method, big.NewInt(0)), nil
+			return packCommunityPoolUint256View(t, method, big.NewInt(1)), nil
 		},
 	}
 	k.evmKeeper = mockEVM
@@ -51,5 +51,5 @@ func TestMaybeReconcileCommunityPoolStakedBucketsSecondPass_DelegatesWhenEnabled
 	require.NoError(t, k.setCommunityPoolReconcileDirty(ctx, true))
 
 	require.NoError(t, k.MaybeReconcileCommunityPoolStakedBucketsSecondPass(ctx))
-	require.Equal(t, []string{"totalStaked", "pendingRebalanceUnbondReserve"}, mockEVM.methods)
+	require.Equal(t, []string{"totalStaked", "reconcileTotalStaked"}, mockEVM.methods)
 }

@@ -59,35 +59,3 @@ func (qs QueryServer) PendingRedelegations(
 		Pagination:    pageRes,
 	}, nil
 }
-
-func (qs QueryServer) PendingUndelegations(
-	ctx context.Context,
-	req *types.QueryPendingUndelegationsRequest,
-) (*types.QueryPendingUndelegationsResponse, error) {
-	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "empty request")
-	}
-	// query.Paginate walks queue store keys (completion_time, delegator); each value is a
-	// QueuedUndelegation batch. limit/next_key count buckets, not undelegations, so one page
-	// can return many undelegations when a bucket has multiple entries (see query.proto).
-	store := runtime.KVStoreAdapter(qs.k.storeService.OpenKVStore(ctx))
-	pstore := prefix.NewStore(store, types.PendingUndelegationQueueKey)
-
-	var out []types.PendingUndelegation
-	pageRes, err := query.Paginate(pstore, req.Pagination, func(key, value []byte) error {
-		var queued types.QueuedUndelegation
-		if err := qs.k.cdc.Unmarshal(value, &queued); err != nil {
-			return err
-		}
-		out = append(out, queued.Entries...)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &types.QueryPendingUndelegationsResponse{
-		Undelegations: out,
-		Pagination:    pageRes,
-	}, nil
-}

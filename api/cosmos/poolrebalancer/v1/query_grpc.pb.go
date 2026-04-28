@@ -21,7 +21,6 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	Query_Params_FullMethodName               = "/cosmos.poolrebalancer.v1.Query/Params"
 	Query_PendingRedelegations_FullMethodName = "/cosmos.poolrebalancer.v1.Query/PendingRedelegations"
-	Query_PendingUndelegations_FullMethodName = "/cosmos.poolrebalancer.v1.Query/PendingUndelegations"
 )
 
 // QueryClient is the client API for Query service.
@@ -32,13 +31,6 @@ type QueryClient interface {
 	Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error)
 	// PendingRedelegations returns tracked in-flight redelegations.
 	PendingRedelegations(ctx context.Context, in *QueryPendingRedelegationsRequest, opts ...grpc.CallOption) (*QueryPendingRedelegationsResponse, error)
-	// PendingUndelegations returns tracked in-flight undelegations.
-	//
-	// Pagination steps the on-chain undelegation queue by store key: each key is one
-	// (completion_time, delegator) bucket and its value may batch many entries. So
-	// pagination.limit and next_key are bucket-oriented, not a cap on the number of
-	// undelegations returned (e.g. limit=1 can still return multiple undelegations).
-	PendingUndelegations(ctx context.Context, in *QueryPendingUndelegationsRequest, opts ...grpc.CallOption) (*QueryPendingUndelegationsResponse, error)
 }
 
 type queryClient struct {
@@ -67,15 +59,6 @@ func (c *queryClient) PendingRedelegations(ctx context.Context, in *QueryPending
 	return out, nil
 }
 
-func (c *queryClient) PendingUndelegations(ctx context.Context, in *QueryPendingUndelegationsRequest, opts ...grpc.CallOption) (*QueryPendingUndelegationsResponse, error) {
-	out := new(QueryPendingUndelegationsResponse)
-	err := c.cc.Invoke(ctx, Query_PendingUndelegations_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // QueryServer is the server API for Query service.
 // All implementations must embed UnimplementedQueryServer
 // for forward compatibility
@@ -84,13 +67,6 @@ type QueryServer interface {
 	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
 	// PendingRedelegations returns tracked in-flight redelegations.
 	PendingRedelegations(context.Context, *QueryPendingRedelegationsRequest) (*QueryPendingRedelegationsResponse, error)
-	// PendingUndelegations returns tracked in-flight undelegations.
-	//
-	// Pagination steps the on-chain undelegation queue by store key: each key is one
-	// (completion_time, delegator) bucket and its value may batch many entries. So
-	// pagination.limit and next_key are bucket-oriented, not a cap on the number of
-	// undelegations returned (e.g. limit=1 can still return multiple undelegations).
-	PendingUndelegations(context.Context, *QueryPendingUndelegationsRequest) (*QueryPendingUndelegationsResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -103,9 +79,6 @@ func (UnimplementedQueryServer) Params(context.Context, *QueryParamsRequest) (*Q
 }
 func (UnimplementedQueryServer) PendingRedelegations(context.Context, *QueryPendingRedelegationsRequest) (*QueryPendingRedelegationsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PendingRedelegations not implemented")
-}
-func (UnimplementedQueryServer) PendingUndelegations(context.Context, *QueryPendingUndelegationsRequest) (*QueryPendingUndelegationsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PendingUndelegations not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -156,24 +129,6 @@ func _Query_PendingRedelegations_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Query_PendingUndelegations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryPendingUndelegationsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(QueryServer).PendingUndelegations(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Query_PendingUndelegations_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServer).PendingUndelegations(ctx, req.(*QueryPendingUndelegationsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // Query_ServiceDesc is the grpc.ServiceDesc for Query service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -188,10 +143,6 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PendingRedelegations",
 			Handler:    _Query_PendingRedelegations_Handler,
-		},
-		{
-			MethodName: "PendingUndelegations",
-			Handler:    _Query_PendingUndelegations_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

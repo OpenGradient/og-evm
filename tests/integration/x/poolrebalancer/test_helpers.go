@@ -18,13 +18,6 @@ func (s *KeeperIntegrationTestSuite) PendingRedelegations() []poolrebalancertype
 	return out
 }
 
-// PendingUndelegations returns all pending undelegations, failing test on query error.
-func (s *KeeperIntegrationTestSuite) PendingUndelegations() []poolrebalancertypes.PendingUndelegation {
-	out, err := s.poolKeeper.GetAllPendingUndelegations(s.ctx)
-	s.Require().NoError(err)
-	return out
-}
-
 // DelegateExtraToValidator creates deterministic drift by adding extra stake on one validator.
 // Amount selection tries to be large enough to survive truncation in stake math.
 func (s *KeeperIntegrationTestSuite) DelegateExtraToValidator(val stakingtypes.Validator) {
@@ -59,11 +52,6 @@ func (s *KeeperIntegrationTestSuite) DelegateExtraToValidator(val stakingtypes.V
 // SeedPendingRedelegation inserts a pending redelegation fixture entry.
 func (s *KeeperIntegrationTestSuite) SeedPendingRedelegation(entry poolrebalancertypes.PendingRedelegation) {
 	s.Require().NoError(s.poolKeeper.SetPendingRedelegation(s.ctx, entry))
-}
-
-// SeedPendingUndelegation inserts a pending undelegation fixture entry.
-func (s *KeeperIntegrationTestSuite) SeedPendingUndelegation(entry poolrebalancertypes.PendingUndelegation) {
-	s.Require().NoError(s.poolKeeper.SetPendingUndelegation(s.ctx, entry))
 }
 
 // ComputeCurrentDeltas mirrors ProcessRebalance inputs and returns target-current deltas.
@@ -146,15 +134,3 @@ func (s *KeeperIntegrationTestSuite) RedelegationSrcDstPairs() [][2]string {
 	})
 	return out
 }
-
-// UndelegationValidators returns queued undelegation validators in sorted order.
-func (s *KeeperIntegrationTestSuite) UndelegationValidators() []string {
-	undels := s.PendingUndelegations()
-	out := make([]string, 0, len(undels))
-	for _, u := range undels {
-		out = append(out, u.ValidatorAddress)
-	}
-	sort.Strings(out)
-	return out
-}
-

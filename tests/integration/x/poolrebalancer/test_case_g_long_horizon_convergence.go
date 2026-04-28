@@ -20,14 +20,12 @@ func maxAbsDelta(deltas map[string]sdkmath.Int) sdkmath.Int {
 
 // TestLongHorizonConvergence_RedelegationOnly verifies repeated Begin+End passes
 // with periodic maturity windows reduce drift to a small tolerance using redelegations only.
-// Fallback is off so scheduling uses redelegations only (no undelegation queue); each iteration still calls
-// BeginBlock (idle for credits when nothing matured, same as production ordering before EndBlock).
+// Each iteration still calls BeginBlock, matching production ordering before EndBlock.
 func (s *KeeperIntegrationTestSuite) TestLongHorizonConvergence_RedelegationOnly() {
 	params := s.DefaultEnabledParams(
 		0,                                  // threshold: schedule on any drift
 		1,                                  // force gradual per-pass progress to exercise long-horizon behavior
 		sdkmath.NewInt(100000000000000000), // cap per-op movement to require multiple iterations
-		false,                              // redelegation-only mode
 	)
 	s.EnableRebalancer(params)
 
@@ -72,10 +70,9 @@ func (s *KeeperIntegrationTestSuite) TestLongHorizonConvergence_RedelegationOnly
 		deltas := s.ComputeCurrentDeltas()
 		curMaxAbs := maxAbsDelta(deltas)
 		pendingRed := len(s.PendingRedelegations())
-		pendingUnd := len(s.PendingUndelegations())
 		s.T().Logf(
-			"convergence iter=%d maxAbsDelta=%s tol=%s pending(red=%d,und=%d)",
-			i, curMaxAbs.String(), tol.String(), pendingRed, pendingUnd,
+			"convergence iter=%d maxAbsDelta=%s tol=%s pending(redelegations=%d)",
+			i, curMaxAbs.String(), tol.String(), pendingRed,
 		)
 
 		if curMaxAbs.LT(initialMaxAbs) {
@@ -112,5 +109,4 @@ func (s *KeeperIntegrationTestSuite) TestLongHorizonConvergence_RedelegationOnly
 	// Final maturity pass to ensure no stale queue buildup remains.
 	s.WithBlockTime(s.ctx.BlockTime().Add(s.unbondingSec + time.Second))
 	s.Require().NoError(s.RunBeginThenEndBlock())
-	s.Require().Empty(s.PendingUndelegations(), "undelegation queue should remain empty in redelegation-only mode")
 }

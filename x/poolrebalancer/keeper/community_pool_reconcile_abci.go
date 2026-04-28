@@ -80,24 +80,24 @@ func (k Keeper) unpackCommunityPoolUint256View(methodName string, ret []byte) (m
 // coerceEVMUint256BigInt returns bi if it fits a Solidity uint256 ABI argument.
 func coerceEVMUint256BigInt(bi *big.Int) (*big.Int, error) {
 	if bi == nil {
-		return nil, errors.New("nil staked-bucket big.Int")
+		return nil, errors.New("nil total-staked big.Int")
 	}
 	if bi.Sign() < 0 {
-		return nil, errors.New("staked-bucket amount is negative")
+		return nil, errors.New("total-staked amount is negative")
 	}
 	if bi.Cmp(abi.MaxUint256) > 0 {
-		return nil, fmt.Errorf("staked-bucket amount exceeds uint256 (bits>256)")
+		return nil, fmt.Errorf("total-staked amount exceeds uint256 (bits>256)")
 	}
 	return bi, nil
 }
 
-// communityPoolStakeBucketBigInt coerces v to a *big.Int valid for Solidity uint256 ABI encoding.
+// communityPoolStakeBucketBigInt coerces total-staked v to a *big.Int valid for Solidity uint256 ABI encoding.
 func communityPoolStakeBucketBigInt(v math.Int) (*big.Int, error) {
 	if v.IsNil() {
-		return nil, errors.New("nil staked-bucket amount")
+		return nil, errors.New("nil total-staked amount")
 	}
 	if v.IsNegative() {
-		return nil, fmt.Errorf("staked-bucket amount is negative: %s", v.String())
+		return nil, fmt.Errorf("total-staked amount is negative: %s", v.String())
 	}
 	return coerceEVMUint256BigInt(v.BigInt())
 }
@@ -116,22 +116,12 @@ func (k Keeper) callCommunityPoolViewUint256(ctx sdk.Context, poolDel sdk.AccAdd
 	return k.unpackCommunityPoolUint256View(method, res.Ret)
 }
 
-func (k Keeper) tryReadOnChainCommunityPoolStakedBuckets(ctx sdk.Context, poolDel sdk.AccAddress) (bonded, pending math.Int, err error) {
-	bonded, err = k.callCommunityPoolViewUint256(ctx, poolDel, "totalStaked")
-	if err != nil {
-		return math.ZeroInt(), math.ZeroInt(), err
-	}
-	pending, err = k.callCommunityPoolViewUint256(ctx, poolDel, "pendingRebalanceUnbondReserve")
-	if err != nil {
-		return math.ZeroInt(), math.ZeroInt(), err
-	}
-	return bonded, pending, nil
+func (k Keeper) tryReadOnChainCommunityPoolTotalStaked(ctx sdk.Context, poolDel sdk.AccAddress) (math.Int, error) {
+	return k.callCommunityPoolViewUint256(ctx, poolDel, "totalStaked")
 }
 
-// MaybeReconcileCommunityPoolStakedBuckets aligns EVM totalStaked and pendingRebalanceUnbondReserve with
-// staking when dirty or on a sweep block. Returns errors for tests/metrics; EndBlocker only logs them.
-// Runs after CompletePendingUndelegations in the same block: credit lowers contract pending; expected
-// (bonded, pending) must match staking + immature module queue, then reconcileStakedBuckets applies it.
+// MaybeReconcileCommunityPoolStakedBuckets aligns EVM totalStaked with staking when dirty or on a sweep block.
+// Returns errors for tests/metrics; EndBlocker only logs them.
 func (k Keeper) MaybeReconcileCommunityPoolStakedBuckets(ctx context.Context) error {
 	poolDel, err := k.GetPoolDelegatorAddress(ctx)
 	if err != nil {
@@ -150,14 +140,13 @@ func (k Keeper) MaybeReconcileCommunityPoolStakedBuckets(ctx context.Context) er
 		return nil
 	}
 
-	blockTime := sdkCtx.BlockTime()
-	expBonded, expPending, err := k.ComputeExpectedCommunityPoolStakedBuckets(ctx, poolDel, blockTime)
+	expBonded, err := k.ComputeExpectedBondedPrincipal(ctx, poolDel)
 	if err != nil {
-		return fmt.Errorf("compute expected community pool staked buckets: %w", err)
+		return fmt.Errorf("compute expected community pool total staked: %w", err)
 	}
 
-	onBonded, onPending, staticErr := k.tryReadOnChainCommunityPoolStakedBuckets(sdkCtx, poolDel)
-	if staticErr == nil && onBonded.Equal(expBonded) && onPending.Equal(expPending) {
+	onBonded, staticErr := k.tryReadOnChainCommunityPoolTotalStaked(sdkCtx, poolDel)
+	if staticErr == nil && onBonded.Equal(expBonded) {
 		return k.setCommunityPoolReconcileDirty(ctx, false)
 	}
 
@@ -166,27 +155,20 @@ func (k Keeper) MaybeReconcileCommunityPoolStakedBuckets(ctx context.Context) er
 		_ = k.setCommunityPoolReconcileDirty(ctx, true) //nolint:errcheck // persist dirty for retry after fix
 		return fmt.Errorf("expected bonded principal for EVM: %w", err)
 	}
-	pendingArg, err := communityPoolStakeBucketBigInt(expPending)
-	if err != nil {
-		_ = k.setCommunityPoolReconcileDirty(ctx, true) //nolint:errcheck
-		return fmt.Errorf("expected pending rebalance principal for EVM: %w", err)
-	}
-
 	res, err := k.callCommunityPoolEVMWithCommit(
 		sdkCtx,
 		poolDel,
 		true,
-		"reconcileStakedBuckets",
+		"reconcileTotalStaked",
 		bondedArg,
-		pendingArg,
 	)
 	if err != nil {
 		_ = k.setCommunityPoolReconcileDirty(ctx, true) //nolint:errcheck // best-effort persist dirty for retry
-		return fmt.Errorf("reconcileStakedBuckets: %w", err)
+		return fmt.Errorf("reconcileTotalStaked: %w", err)
 	}
 	if res != nil && res.Failed() {
 		_ = k.setCommunityPoolReconcileDirty(ctx, true) //nolint:errcheck
-		return fmt.Errorf("reconcileStakedBuckets vm error: %s", res.VmError)
+		return fmt.Errorf("reconcileTotalStaked vm error: %s", res.VmError)
 	}
 	return k.setCommunityPoolReconcileDirty(ctx, false)
 }

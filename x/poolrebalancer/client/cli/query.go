@@ -24,7 +24,6 @@ func GetQueryCmd() *cobra.Command {
 	cmd.AddCommand(
 		GetParamsCmd(),
 		GetPendingRedelegationsCmd(),
-		GetPendingUndelegationsCmd(),
 	)
 	return cmd
 }
@@ -84,38 +83,5 @@ func GetPendingRedelegationsCmd() *cobra.Command {
 
 	flags.AddQueryFlagsToCmd(cmd)
 	flags.AddPaginationFlagsToCmd(cmd, "pending-redelegations")
-	return cmd
-}
-
-func GetPendingUndelegationsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "pending-undelegations",
-		Short: "List pending undelegations",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			clientCtx, err := client.GetClientQueryContext(cmd)
-			if err != nil {
-				return err
-			}
-
-			queryClient := types.NewQueryClient(clientCtx)
-			pageReq, err := client.ReadPageRequest(cmd.Flags())
-			if err != nil {
-				return err
-			}
-
-			res, err := queryClient.PendingUndelegations(context.Background(), &types.QueryPendingUndelegationsRequest{
-				Pagination: pageReq,
-			})
-			if err != nil {
-				return err
-			}
-
-			return clientCtx.PrintProto(res)
-		},
-	}
-
-	flags.AddQueryFlagsToCmd(cmd)
-	flags.AddPaginationFlagsToCmd(cmd, "pending-undelegations")
 	return cmd
 }

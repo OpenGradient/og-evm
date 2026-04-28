@@ -10,8 +10,6 @@ import (
 	"github.com/cosmos/evm/x/poolrebalancer/types"
 
 	"cosmossdk.io/math"
-	storetypes "cosmossdk.io/store/types"
-	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -54,7 +52,7 @@ func (k Keeper) setParams(ctx context.Context, params types.Params, allowBootstr
 // delegator safety in strict contract-only mode.
 //
 // It rejects pool_delegator_address changes that would orphan tracked pending
-// undelegations/redelegations and disallows non-contract bootstrap exceptions.
+// rebalance operations and disallows non-contract bootstrap exceptions.
 func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
 	return k.setParams(ctx, params, false)
 }
@@ -65,13 +63,6 @@ func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
 // not yet have an auth account record.
 func (k Keeper) SetParamsForGenesis(ctx context.Context, params types.Params) error {
 	return k.setParams(ctx, params, true)
-}
-
-func (k Keeper) hasPendingUndelegations(ctx context.Context) (bool, error) {
-	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
-	iter := storetypes.KVStorePrefixIterator(store, types.PendingUndelegationQueueKey)
-	defer iter.Close() //nolint:errcheck
-	return iter.Valid(), nil
 }
 
 func (k Keeper) hasPendingRedelegationsForDelegator(ctx context.Context, del sdk.AccAddress) (bool, error) {
@@ -95,14 +86,6 @@ func (k Keeper) hasPendingRedelegationsForDelegator(ctx context.Context, del sdk
 func (k Keeper) validatePoolDelegatorAddressChange(ctx context.Context, current, next string) error {
 	if current == next || current == "" {
 		return nil
-	}
-
-	hasUndelegations, err := k.hasPendingUndelegations(ctx)
-	if err != nil {
-		return err
-	}
-	if hasUndelegations {
-		return fmt.Errorf("cannot change pool_delegator_address while pending undelegations exist")
 	}
 
 	currentDel, err := sdk.AccAddressFromBech32(current)
@@ -183,13 +166,4 @@ func (k Keeper) GetMaxMovePerOp(ctx context.Context) (math.Int, error) {
 		return math.ZeroInt(), nil
 	}
 	return params.MaxMovePerOp, nil
-}
-
-// GetUseUndelegateFallback returns UseUndelegateFallback from params.
-func (k Keeper) GetUseUndelegateFallback(ctx context.Context) (bool, error) {
-	params, err := k.GetParams(ctx)
-	if err != nil {
-		return false, err
-	}
-	return params.UseUndelegateFallback, nil
 }

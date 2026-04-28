@@ -10,8 +10,6 @@ import (
 
 	"github.com/cosmos/evm/x/poolrebalancer/types"
 
-	"cosmossdk.io/math"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -39,25 +37,6 @@ func (k Keeper) callCommunityPoolEVMWithCommit(ctx sdk.Context, poolDel sdk.AccA
 // callCommunityPoolEVM state-changing CommunityPool call.
 func (k Keeper) callCommunityPoolEVM(ctx sdk.Context, poolDel sdk.AccAddress, method string, args ...any) (*evmtypes.MsgEthereumTxResponse, error) {
 	return k.callCommunityPoolEVMWithCommit(ctx, poolDel, true, method, args...)
-}
-
-// creditCommunityPoolStakeableFromRebalance calls CommunityPool.creditStakeableFromRebalance(amount).
-func (k Keeper) creditCommunityPoolStakeableFromRebalance(ctx sdk.Context, poolDel sdk.AccAddress, amount math.Int) error {
-	if !amount.IsPositive() {
-		return nil
-	}
-	creditArg, err := coerceEVMUint256BigInt(amount.BigInt())
-	if err != nil {
-		return fmt.Errorf("creditStakeableFromRebalance amount for EVM: %w", err)
-	}
-	res, err := k.callCommunityPoolEVM(ctx, poolDel, "creditStakeableFromRebalance", creditArg)
-	if err != nil {
-		return fmt.Errorf("creditStakeableFromRebalance: %w", err)
-	}
-	if res != nil && res.Failed() {
-		return fmt.Errorf("creditStakeableFromRebalance vm error: %s", res.VmError)
-	}
-	return nil
 }
 
 // MaybeRunCommunityPoolAutomation runs harvest then stake on PoolDelegatorAddress (best-effort; errors logged).

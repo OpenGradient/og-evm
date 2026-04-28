@@ -18,14 +18,11 @@ func (s *KeeperIntegrationTestSuite) TestDisabledNoOp_NoPendingQueues() {
 	s.Require().NoError(s.RunBeginThenEndBlock())
 
 	red := s.PendingRedelegations()
-	und := s.PendingUndelegations()
-	s.T().Logf("disabled-case: pending after EndBlock red=%d und=%d", len(red), len(und))
+	s.T().Logf("disabled-case: pending after EndBlock redelegations=%d", len(red))
 	s.Require().Len(red, 0)
-	s.Require().Len(und, 0)
 
 	// Sanity: ensure we did not accidentally enable it.
 	params, err := s.poolKeeper.GetParams(ctx)
 	s.Require().NoError(err)
 	s.Require().Empty(params.PoolDelegatorAddress)
 }
-

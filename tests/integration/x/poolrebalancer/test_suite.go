@@ -141,13 +141,12 @@ func (s *KeeperIntegrationTestSuite) DisabledParams() poolrebalancertypes.Params
 }
 
 // DefaultEnabledParams returns a baseline enabled config with per-test overrides.
-func (s *KeeperIntegrationTestSuite) DefaultEnabledParams(thresholdBP uint32, maxOpsPerBlock uint32, maxMovePerOp sdkmath.Int, useUndelegateFallback bool) poolrebalancertypes.Params {
+func (s *KeeperIntegrationTestSuite) DefaultEnabledParams(thresholdBP uint32, maxOpsPerBlock uint32, maxMovePerOp sdkmath.Int) poolrebalancertypes.Params {
 	p := poolrebalancertypes.DefaultParams()
 	p.PoolDelegatorAddress = s.poolDel.String()
 	p.MaxTargetValidators = uint32(len(s.validators))
 	p.RebalanceThresholdBp = thresholdBP
 	p.MaxOpsPerBlock = maxOpsPerBlock
 	p.MaxMovePerOp = maxMovePerOp
-	p.UseUndelegateFallback = useUndelegateFallback
 	return p
 }

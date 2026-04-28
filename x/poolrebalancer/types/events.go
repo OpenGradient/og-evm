@@ -5,10 +5,7 @@ const (
 	EventTypeRebalanceSummary       = "rebalance_summary"
 	EventTypeRedelegationStarted    = "redelegation_started"
 	EventTypeRedelegationFailed     = "redelegation_failed"
-	EventTypeUndelegationStarted    = "undelegation_started"
-	EventTypeUndelegationFailed     = "undelegation_failed"
 	EventTypeRedelegationsCompleted = "redelegations_completed"
-	EventTypeUndelegationsCompleted = "undelegations_completed"
 
 	// Common attributes.
 	AttributeKeyDelegator      = "delegator"
@@ -20,6 +17,5 @@ const (
 	AttributeKeyCompletionTime = "completion_time"
 	AttributeKeyCount          = "count"
 	AttributeKeyOpsDone        = "ops_done"
-	AttributeKeyUseFallback    = "use_undelegate_fallback"
 	AttributeKeyReason         = "reason"
 )

@@ -12,7 +12,6 @@ func (s *KeeperIntegrationTestSuite) TestBoundedOpsPerBlock_MaxOpsIsRespected() 
 		0,   // rebalance_threshold_bp
 		1,   // max_ops_per_block
 		sdkmath.ZeroInt(), // max_move_per_op = 0 => no cap
-		false,
 	)
 
 	s.EnableRebalancer(params)
@@ -36,4 +35,3 @@ func (s *KeeperIntegrationTestSuite) TestBoundedOpsPerBlock_MaxOpsIsRespected() 
 	s.Require().Equal(s.poolDel.String(), e.DelegatorAddress)
 	s.Require().Equal(s.bondDenom, e.Amount.Denom)
 }
-

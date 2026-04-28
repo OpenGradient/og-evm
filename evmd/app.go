@@ -685,11 +685,10 @@ func NewExampleApp(
 
 		// TODO: remove no-ops? check if all are no-ops before removing
 		distrtypes.ModuleName, slashingtypes.ModuleName,
-		// Slashing and evidence BeginBlock can change bonded or unbonding balances in the same block.
-		// Poolrebalancer BeginBlock reads staking UBD for matured pool-tracked undelegations, so it runs after
-		// both. Staking BeginBlock (x/staking BeginBlocker) only persists/prunes HistoricalInfo; delegator UBD
-		// completion runs in staking EndBlock, so ordering staking after poolrebalancer here does not affect UBD
-		// balances for the snapshot.
+		// Slashing and evidence BeginBlock can change staking balances in the same block.
+		// Poolrebalancer BeginBlock snapshots validator slash state, so it runs after both modules.
+		// Staking BeginBlock (x/staking BeginBlocker) only persists/prunes HistoricalInfo, so ordering
+		// staking after poolrebalancer here does not affect slash-snapshot correctness.
 		evidencetypes.ModuleName,
 		poolrebalancertypes.ModuleName,
 		stakingtypes.ModuleName,

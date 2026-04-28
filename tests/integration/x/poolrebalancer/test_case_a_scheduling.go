@@ -15,7 +15,6 @@ func (s *KeeperIntegrationTestSuite) TestSchedulingA_DriftCreatesPendingRedelega
 		0,  // rebalance_threshold_bp
 		1,  // max_ops_per_block
 		sdkmath.ZeroInt(),
-		false,
 	)
 	s.EnableRebalancer(params)
 
@@ -52,7 +51,7 @@ func (s *KeeperIntegrationTestSuite) TestSchedulingA_DriftCreatesPendingRedelega
 // TestSchedulingA_ReducesSourceOverweightInStakingState verifies a successful scheduling
 // pass reduces overweight stake on the drifted source validator in staking state.
 func (s *KeeperIntegrationTestSuite) TestSchedulingA_ReducesSourceOverweightInStakingState() {
-	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt(), false)
+	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt())
 	s.EnableRebalancer(params)
 
 	src := s.validators[0]
@@ -76,4 +75,3 @@ func (s *KeeperIntegrationTestSuite) TestSchedulingA_ReducesSourceOverweightInSt
 		afterSrc.String(),
 	)
 }
-

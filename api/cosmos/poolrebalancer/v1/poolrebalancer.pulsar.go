@@ -16,13 +16,12 @@ import (
 )
 
 var (
-	md_Params                         protoreflect.MessageDescriptor
-	fd_Params_pool_delegator_address  protoreflect.FieldDescriptor
-	fd_Params_max_target_validators   protoreflect.FieldDescriptor
-	fd_Params_rebalance_threshold_bp  protoreflect.FieldDescriptor
-	fd_Params_max_ops_per_block       protoreflect.FieldDescriptor
-	fd_Params_max_move_per_op         protoreflect.FieldDescriptor
-	fd_Params_use_undelegate_fallback protoreflect.FieldDescriptor
+	md_Params                        protoreflect.MessageDescriptor
+	fd_Params_pool_delegator_address protoreflect.FieldDescriptor
+	fd_Params_max_target_validators  protoreflect.FieldDescriptor
+	fd_Params_rebalance_threshold_bp protoreflect.FieldDescriptor
+	fd_Params_max_ops_per_block      protoreflect.FieldDescriptor
+	fd_Params_max_move_per_op        protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -33,7 +32,6 @@ func init() {
 	fd_Params_rebalance_threshold_bp = md_Params.Fields().ByName("rebalance_threshold_bp")
 	fd_Params_max_ops_per_block = md_Params.Fields().ByName("max_ops_per_block")
 	fd_Params_max_move_per_op = md_Params.Fields().ByName("max_move_per_op")
-	fd_Params_use_undelegate_fallback = md_Params.Fields().ByName("use_undelegate_fallback")
 }
 
 var _ protoreflect.Message = (*fastReflection_Params)(nil)
@@ -131,12 +129,6 @@ func (x *fastReflection_Params) Range(f func(protoreflect.FieldDescriptor, proto
 			return
 		}
 	}
-	if x.UseUndelegateFallback != false {
-		value := protoreflect.ValueOfBool(x.UseUndelegateFallback)
-		if !f(fd_Params_use_undelegate_fallback, value) {
-			return
-		}
-	}
 }
 
 // Has reports whether a field is populated.
@@ -162,8 +154,6 @@ func (x *fastReflection_Params) Has(fd protoreflect.FieldDescriptor) bool {
 		return x.MaxOpsPerBlock != uint32(0)
 	case "cosmos.poolrebalancer.v1.Params.max_move_per_op":
 		return x.MaxMovePerOp != ""
-	case "cosmos.poolrebalancer.v1.Params.use_undelegate_fallback":
-		return x.UseUndelegateFallback != false
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.Params"))
@@ -190,8 +180,6 @@ func (x *fastReflection_Params) Clear(fd protoreflect.FieldDescriptor) {
 		x.MaxOpsPerBlock = uint32(0)
 	case "cosmos.poolrebalancer.v1.Params.max_move_per_op":
 		x.MaxMovePerOp = ""
-	case "cosmos.poolrebalancer.v1.Params.use_undelegate_fallback":
-		x.UseUndelegateFallback = false
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.Params"))
@@ -223,9 +211,6 @@ func (x *fastReflection_Params) Get(descriptor protoreflect.FieldDescriptor) pro
 	case "cosmos.poolrebalancer.v1.Params.max_move_per_op":
 		value := x.MaxMovePerOp
 		return protoreflect.ValueOfString(value)
-	case "cosmos.poolrebalancer.v1.Params.use_undelegate_fallback":
-		value := x.UseUndelegateFallback
-		return protoreflect.ValueOfBool(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.Params"))
@@ -256,8 +241,6 @@ func (x *fastReflection_Params) Set(fd protoreflect.FieldDescriptor, value proto
 		x.MaxOpsPerBlock = uint32(value.Uint())
 	case "cosmos.poolrebalancer.v1.Params.max_move_per_op":
 		x.MaxMovePerOp = value.Interface().(string)
-	case "cosmos.poolrebalancer.v1.Params.use_undelegate_fallback":
-		x.UseUndelegateFallback = value.Bool()
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.Params"))
@@ -288,8 +271,6 @@ func (x *fastReflection_Params) Mutable(fd protoreflect.FieldDescriptor) protore
 		panic(fmt.Errorf("field max_ops_per_block of message cosmos.poolrebalancer.v1.Params is not mutable"))
 	case "cosmos.poolrebalancer.v1.Params.max_move_per_op":
 		panic(fmt.Errorf("field max_move_per_op of message cosmos.poolrebalancer.v1.Params is not mutable"))
-	case "cosmos.poolrebalancer.v1.Params.use_undelegate_fallback":
-		panic(fmt.Errorf("field use_undelegate_fallback of message cosmos.poolrebalancer.v1.Params is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.Params"))
@@ -313,8 +294,6 @@ func (x *fastReflection_Params) NewField(fd protoreflect.FieldDescriptor) protor
 		return protoreflect.ValueOfUint32(uint32(0))
 	case "cosmos.poolrebalancer.v1.Params.max_move_per_op":
 		return protoreflect.ValueOfString("")
-	case "cosmos.poolrebalancer.v1.Params.use_undelegate_fallback":
-		return protoreflect.ValueOfBool(false)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.Params"))
@@ -401,9 +380,6 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
-		if x.UseUndelegateFallback {
-			n += 2
-		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -432,16 +408,6 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
-		}
-		if x.UseUndelegateFallback {
-			i--
-			if x.UseUndelegateFallback {
-				dAtA[i] = 1
-			} else {
-				dAtA[i] = 0
-			}
-			i--
-			dAtA[i] = 0x30
 		}
 		if len(x.MaxMovePerOp) > 0 {
 			i -= len(x.MaxMovePerOp)
@@ -642,26 +608,6 @@ func (x *fastReflection_Params) ProtoMethods() *protoiface.Methods {
 				}
 				x.MaxMovePerOp = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
-			case 6:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field UseUndelegateFallback", wireType)
-				}
-				var v int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					v |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				x.UseUndelegateFallback = bool(v != 0)
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -1897,1142 +1843,6 @@ func (x *fastReflection_QueuedRedelegation) ProtoMethods() *protoiface.Methods {
 	}
 }
 
-var (
-	md_PendingUndelegation                   protoreflect.MessageDescriptor
-	fd_PendingUndelegation_delegator_address protoreflect.FieldDescriptor
-	fd_PendingUndelegation_validator_address protoreflect.FieldDescriptor
-	fd_PendingUndelegation_balance           protoreflect.FieldDescriptor
-	fd_PendingUndelegation_completion_time   protoreflect.FieldDescriptor
-)
-
-func init() {
-	file_cosmos_poolrebalancer_v1_poolrebalancer_proto_init()
-	md_PendingUndelegation = File_cosmos_poolrebalancer_v1_poolrebalancer_proto.Messages().ByName("PendingUndelegation")
-	fd_PendingUndelegation_delegator_address = md_PendingUndelegation.Fields().ByName("delegator_address")
-	fd_PendingUndelegation_validator_address = md_PendingUndelegation.Fields().ByName("validator_address")
-	fd_PendingUndelegation_balance = md_PendingUndelegation.Fields().ByName("balance")
-	fd_PendingUndelegation_completion_time = md_PendingUndelegation.Fields().ByName("completion_time")
-}
-
-var _ protoreflect.Message = (*fastReflection_PendingUndelegation)(nil)
-
-type fastReflection_PendingUndelegation PendingUndelegation
-
-func (x *PendingUndelegation) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_PendingUndelegation)(x)
-}
-
-func (x *PendingUndelegation) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[3]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-var _fastReflection_PendingUndelegation_messageType fastReflection_PendingUndelegation_messageType
-var _ protoreflect.MessageType = fastReflection_PendingUndelegation_messageType{}
-
-type fastReflection_PendingUndelegation_messageType struct{}
-
-func (x fastReflection_PendingUndelegation_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_PendingUndelegation)(nil)
-}
-func (x fastReflection_PendingUndelegation_messageType) New() protoreflect.Message {
-	return new(fastReflection_PendingUndelegation)
-}
-func (x fastReflection_PendingUndelegation_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_PendingUndelegation
-}
-
-// Descriptor returns message descriptor, which contains only the protobuf
-// type information for the message.
-func (x *fastReflection_PendingUndelegation) Descriptor() protoreflect.MessageDescriptor {
-	return md_PendingUndelegation
-}
-
-// Type returns the message type, which encapsulates both Go and protobuf
-// type information. If the Go type information is not needed,
-// it is recommended that the message descriptor be used instead.
-func (x *fastReflection_PendingUndelegation) Type() protoreflect.MessageType {
-	return _fastReflection_PendingUndelegation_messageType
-}
-
-// New returns a newly allocated and mutable empty message.
-func (x *fastReflection_PendingUndelegation) New() protoreflect.Message {
-	return new(fastReflection_PendingUndelegation)
-}
-
-// Interface unwraps the message reflection interface and
-// returns the underlying ProtoMessage interface.
-func (x *fastReflection_PendingUndelegation) Interface() protoreflect.ProtoMessage {
-	return (*PendingUndelegation)(x)
-}
-
-// Range iterates over every populated field in an undefined order,
-// calling f for each field descriptor and value encountered.
-// Range returns immediately if f returns false.
-// While iterating, mutating operations may only be performed
-// on the current field descriptor.
-func (x *fastReflection_PendingUndelegation) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.DelegatorAddress != "" {
-		value := protoreflect.ValueOfString(x.DelegatorAddress)
-		if !f(fd_PendingUndelegation_delegator_address, value) {
-			return
-		}
-	}
-	if x.ValidatorAddress != "" {
-		value := protoreflect.ValueOfString(x.ValidatorAddress)
-		if !f(fd_PendingUndelegation_validator_address, value) {
-			return
-		}
-	}
-	if x.Balance != nil {
-		value := protoreflect.ValueOfMessage(x.Balance.ProtoReflect())
-		if !f(fd_PendingUndelegation_balance, value) {
-			return
-		}
-	}
-	if x.CompletionTime != nil {
-		value := protoreflect.ValueOfMessage(x.CompletionTime.ProtoReflect())
-		if !f(fd_PendingUndelegation_completion_time, value) {
-			return
-		}
-	}
-}
-
-// Has reports whether a field is populated.
-//
-// Some fields have the property of nullability where it is possible to
-// distinguish between the default value of a field and whether the field
-// was explicitly populated with the default value. Singular message fields,
-// member fields of a oneof, and proto2 scalar fields are nullable. Such
-// fields are populated only if explicitly set.
-//
-// In other cases (aside from the nullable cases above),
-// a proto3 scalar field is populated if it contains a non-zero value, and
-// a repeated field is populated if it is non-empty.
-func (x *fastReflection_PendingUndelegation) Has(fd protoreflect.FieldDescriptor) bool {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.delegator_address":
-		return x.DelegatorAddress != ""
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.validator_address":
-		return x.ValidatorAddress != ""
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.balance":
-		return x.Balance != nil
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.completion_time":
-		return x.CompletionTime != nil
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.PendingUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.PendingUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// Clear clears the field such that a subsequent Has call reports false.
-//
-// Clearing an extension field clears both the extension type and value
-// associated with the given field number.
-//
-// Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PendingUndelegation) Clear(fd protoreflect.FieldDescriptor) {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.delegator_address":
-		x.DelegatorAddress = ""
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.validator_address":
-		x.ValidatorAddress = ""
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.balance":
-		x.Balance = nil
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.completion_time":
-		x.CompletionTime = nil
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.PendingUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.PendingUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// Get retrieves the value for a field.
-//
-// For unpopulated scalars, it returns the default value, where
-// the default value of a bytes scalar is guaranteed to be a copy.
-// For unpopulated composite types, it returns an empty, read-only view
-// of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_PendingUndelegation) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
-	switch descriptor.FullName() {
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.delegator_address":
-		value := x.DelegatorAddress
-		return protoreflect.ValueOfString(value)
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.validator_address":
-		value := x.ValidatorAddress
-		return protoreflect.ValueOfString(value)
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.balance":
-		value := x.Balance
-		return protoreflect.ValueOfMessage(value.ProtoReflect())
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.completion_time":
-		value := x.CompletionTime
-		return protoreflect.ValueOfMessage(value.ProtoReflect())
-	default:
-		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.PendingUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.PendingUndelegation does not contain field %s", descriptor.FullName()))
-	}
-}
-
-// Set stores the value for a field.
-//
-// For a field belonging to a oneof, it implicitly clears any other field
-// that may be currently set within the same oneof.
-// For extension fields, it implicitly stores the provided ExtensionType.
-// When setting a composite type, it is unspecified whether the stored value
-// aliases the source's memory in any way. If the composite value is an
-// empty, read-only value, then it panics.
-//
-// Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PendingUndelegation) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.delegator_address":
-		x.DelegatorAddress = value.Interface().(string)
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.validator_address":
-		x.ValidatorAddress = value.Interface().(string)
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.balance":
-		x.Balance = value.Message().Interface().(*v1beta1.Coin)
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.completion_time":
-		x.CompletionTime = value.Message().Interface().(*timestamppb.Timestamp)
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.PendingUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.PendingUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// Mutable returns a mutable reference to a composite type.
-//
-// If the field is unpopulated, it may allocate a composite value.
-// For a field belonging to a oneof, it implicitly clears any other field
-// that may be currently set within the same oneof.
-// For extension fields, it implicitly stores the provided ExtensionType
-// if not already stored.
-// It panics if the field does not contain a composite type.
-//
-// Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PendingUndelegation) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.balance":
-		if x.Balance == nil {
-			x.Balance = new(v1beta1.Coin)
-		}
-		return protoreflect.ValueOfMessage(x.Balance.ProtoReflect())
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.completion_time":
-		if x.CompletionTime == nil {
-			x.CompletionTime = new(timestamppb.Timestamp)
-		}
-		return protoreflect.ValueOfMessage(x.CompletionTime.ProtoReflect())
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.delegator_address":
-		panic(fmt.Errorf("field delegator_address of message cosmos.poolrebalancer.v1.PendingUndelegation is not mutable"))
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.validator_address":
-		panic(fmt.Errorf("field validator_address of message cosmos.poolrebalancer.v1.PendingUndelegation is not mutable"))
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.PendingUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.PendingUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// NewField returns a new value that is assignable to the field
-// for the given descriptor. For scalars, this returns the default value.
-// For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_PendingUndelegation) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.delegator_address":
-		return protoreflect.ValueOfString("")
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.validator_address":
-		return protoreflect.ValueOfString("")
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.balance":
-		m := new(v1beta1.Coin)
-		return protoreflect.ValueOfMessage(m.ProtoReflect())
-	case "cosmos.poolrebalancer.v1.PendingUndelegation.completion_time":
-		m := new(timestamppb.Timestamp)
-		return protoreflect.ValueOfMessage(m.ProtoReflect())
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.PendingUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.PendingUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// WhichOneof reports which field within the oneof is populated,
-// returning nil if none are populated.
-// It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_PendingUndelegation) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
-	switch d.FullName() {
-	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.PendingUndelegation", d.FullName()))
-	}
-	panic("unreachable")
-}
-
-// GetUnknown retrieves the entire list of unknown fields.
-// The caller may only mutate the contents of the RawFields
-// if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_PendingUndelegation) GetUnknown() protoreflect.RawFields {
-	return x.unknownFields
-}
-
-// SetUnknown stores an entire list of unknown fields.
-// The raw fields must be syntactically valid according to the wire format.
-// An implementation may panic if this is not the case.
-// Once stored, the caller must not mutate the content of the RawFields.
-// An empty RawFields may be passed to clear the fields.
-//
-// SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PendingUndelegation) SetUnknown(fields protoreflect.RawFields) {
-	x.unknownFields = fields
-}
-
-// IsValid reports whether the message is valid.
-//
-// An invalid message is an empty, read-only value.
-//
-// An invalid message often corresponds to a nil pointer of the concrete
-// message type, but the details are implementation dependent.
-// Validity is not part of the protobuf data model, and may not
-// be preserved in marshaling or other operations.
-func (x *fastReflection_PendingUndelegation) IsValid() bool {
-	return x != nil
-}
-
-// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
-// This method may return nil.
-//
-// The returned methods type is identical to
-// "google.golang.org/protobuf/runtime/protoiface".Methods.
-// Consult the protoiface package documentation for details.
-func (x *fastReflection_PendingUndelegation) ProtoMethods() *protoiface.Methods {
-	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*PendingUndelegation)
-		if x == nil {
-			return protoiface.SizeOutput{
-				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-				Size:              0,
-			}
-		}
-		options := runtime.SizeInputToOptions(input)
-		_ = options
-		var n int
-		var l int
-		_ = l
-		l = len(x.DelegatorAddress)
-		if l > 0 {
-			n += 1 + l + runtime.Sov(uint64(l))
-		}
-		l = len(x.ValidatorAddress)
-		if l > 0 {
-			n += 1 + l + runtime.Sov(uint64(l))
-		}
-		if x.Balance != nil {
-			l = options.Size(x.Balance)
-			n += 1 + l + runtime.Sov(uint64(l))
-		}
-		if x.CompletionTime != nil {
-			l = options.Size(x.CompletionTime)
-			n += 1 + l + runtime.Sov(uint64(l))
-		}
-		if x.unknownFields != nil {
-			n += len(x.unknownFields)
-		}
-		return protoiface.SizeOutput{
-			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-			Size:              n,
-		}
-	}
-
-	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*PendingUndelegation)
-		if x == nil {
-			return protoiface.MarshalOutput{
-				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-				Buf:               input.Buf,
-			}, nil
-		}
-		options := runtime.MarshalInputToOptions(input)
-		_ = options
-		size := options.Size(x)
-		dAtA := make([]byte, size)
-		i := len(dAtA)
-		_ = i
-		var l int
-		_ = l
-		if x.unknownFields != nil {
-			i -= len(x.unknownFields)
-			copy(dAtA[i:], x.unknownFields)
-		}
-		if x.CompletionTime != nil {
-			encoded, err := options.Marshal(x.CompletionTime)
-			if err != nil {
-				return protoiface.MarshalOutput{
-					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-					Buf:               input.Buf,
-				}, err
-			}
-			i -= len(encoded)
-			copy(dAtA[i:], encoded)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
-			i--
-			dAtA[i] = 0x22
-		}
-		if x.Balance != nil {
-			encoded, err := options.Marshal(x.Balance)
-			if err != nil {
-				return protoiface.MarshalOutput{
-					NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-					Buf:               input.Buf,
-				}, err
-			}
-			i -= len(encoded)
-			copy(dAtA[i:], encoded)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
-			i--
-			dAtA[i] = 0x1a
-		}
-		if len(x.ValidatorAddress) > 0 {
-			i -= len(x.ValidatorAddress)
-			copy(dAtA[i:], x.ValidatorAddress)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.ValidatorAddress)))
-			i--
-			dAtA[i] = 0x12
-		}
-		if len(x.DelegatorAddress) > 0 {
-			i -= len(x.DelegatorAddress)
-			copy(dAtA[i:], x.DelegatorAddress)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.DelegatorAddress)))
-			i--
-			dAtA[i] = 0xa
-		}
-		if input.Buf != nil {
-			input.Buf = append(input.Buf, dAtA...)
-		} else {
-			input.Buf = dAtA
-		}
-		return protoiface.MarshalOutput{
-			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-			Buf:               input.Buf,
-		}, nil
-	}
-	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*PendingUndelegation)
-		if x == nil {
-			return protoiface.UnmarshalOutput{
-				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-				Flags:             input.Flags,
-			}, nil
-		}
-		options := runtime.UnmarshalInputToOptions(input)
-		_ = options
-		dAtA := input.Buf
-		l := len(dAtA)
-		iNdEx := 0
-		for iNdEx < l {
-			preIndex := iNdEx
-			var wire uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				wire |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			fieldNum := int32(wire >> 3)
-			wireType := int(wire & 0x7)
-			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PendingUndelegation: wiretype end group for non-group")
-			}
-			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PendingUndelegation: illegal tag %d (wire type %d)", fieldNum, wire)
-			}
-			switch fieldNum {
-			case 1:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field DelegatorAddress", wireType)
-				}
-				var stringLen uint64
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					stringLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				intStringLen := int(stringLen)
-				if intStringLen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + intStringLen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				x.DelegatorAddress = string(dAtA[iNdEx:postIndex])
-				iNdEx = postIndex
-			case 2:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ValidatorAddress", wireType)
-				}
-				var stringLen uint64
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					stringLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				intStringLen := int(stringLen)
-				if intStringLen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + intStringLen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				x.ValidatorAddress = string(dAtA[iNdEx:postIndex])
-				iNdEx = postIndex
-			case 3:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Balance", wireType)
-				}
-				var msglen int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					msglen |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				if msglen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + msglen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				if x.Balance == nil {
-					x.Balance = &v1beta1.Coin{}
-				}
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Balance); err != nil {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-				}
-				iNdEx = postIndex
-			case 4:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field CompletionTime", wireType)
-				}
-				var msglen int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					msglen |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				if msglen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + msglen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				if x.CompletionTime == nil {
-					x.CompletionTime = &timestamppb.Timestamp{}
-				}
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.CompletionTime); err != nil {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-				}
-				iNdEx = postIndex
-			default:
-				iNdEx = preIndex
-				skippy, err := runtime.Skip(dAtA[iNdEx:])
-				if err != nil {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-				}
-				if (skippy < 0) || (iNdEx+skippy) < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if (iNdEx + skippy) > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				if !options.DiscardUnknown {
-					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-				}
-				iNdEx += skippy
-			}
-		}
-
-		if iNdEx > l {
-			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-		}
-		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
-	}
-	return &protoiface.Methods{
-		NoUnkeyedLiterals: struct{}{},
-		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
-		Size:              size,
-		Marshal:           marshal,
-		Unmarshal:         unmarshal,
-		Merge:             nil,
-		CheckInitialized:  nil,
-	}
-}
-
-var _ protoreflect.List = (*_QueuedUndelegation_1_list)(nil)
-
-type _QueuedUndelegation_1_list struct {
-	list *[]*PendingUndelegation
-}
-
-func (x *_QueuedUndelegation_1_list) Len() int {
-	if x.list == nil {
-		return 0
-	}
-	return len(*x.list)
-}
-
-func (x *_QueuedUndelegation_1_list) Get(i int) protoreflect.Value {
-	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
-}
-
-func (x *_QueuedUndelegation_1_list) Set(i int, value protoreflect.Value) {
-	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*PendingUndelegation)
-	(*x.list)[i] = concreteValue
-}
-
-func (x *_QueuedUndelegation_1_list) Append(value protoreflect.Value) {
-	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*PendingUndelegation)
-	*x.list = append(*x.list, concreteValue)
-}
-
-func (x *_QueuedUndelegation_1_list) AppendMutable() protoreflect.Value {
-	v := new(PendingUndelegation)
-	*x.list = append(*x.list, v)
-	return protoreflect.ValueOfMessage(v.ProtoReflect())
-}
-
-func (x *_QueuedUndelegation_1_list) Truncate(n int) {
-	for i := n; i < len(*x.list); i++ {
-		(*x.list)[i] = nil
-	}
-	*x.list = (*x.list)[:n]
-}
-
-func (x *_QueuedUndelegation_1_list) NewElement() protoreflect.Value {
-	v := new(PendingUndelegation)
-	return protoreflect.ValueOfMessage(v.ProtoReflect())
-}
-
-func (x *_QueuedUndelegation_1_list) IsValid() bool {
-	return x.list != nil
-}
-
-var (
-	md_QueuedUndelegation         protoreflect.MessageDescriptor
-	fd_QueuedUndelegation_entries protoreflect.FieldDescriptor
-)
-
-func init() {
-	file_cosmos_poolrebalancer_v1_poolrebalancer_proto_init()
-	md_QueuedUndelegation = File_cosmos_poolrebalancer_v1_poolrebalancer_proto.Messages().ByName("QueuedUndelegation")
-	fd_QueuedUndelegation_entries = md_QueuedUndelegation.Fields().ByName("entries")
-}
-
-var _ protoreflect.Message = (*fastReflection_QueuedUndelegation)(nil)
-
-type fastReflection_QueuedUndelegation QueuedUndelegation
-
-func (x *QueuedUndelegation) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_QueuedUndelegation)(x)
-}
-
-func (x *QueuedUndelegation) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[4]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-var _fastReflection_QueuedUndelegation_messageType fastReflection_QueuedUndelegation_messageType
-var _ protoreflect.MessageType = fastReflection_QueuedUndelegation_messageType{}
-
-type fastReflection_QueuedUndelegation_messageType struct{}
-
-func (x fastReflection_QueuedUndelegation_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_QueuedUndelegation)(nil)
-}
-func (x fastReflection_QueuedUndelegation_messageType) New() protoreflect.Message {
-	return new(fastReflection_QueuedUndelegation)
-}
-func (x fastReflection_QueuedUndelegation_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_QueuedUndelegation
-}
-
-// Descriptor returns message descriptor, which contains only the protobuf
-// type information for the message.
-func (x *fastReflection_QueuedUndelegation) Descriptor() protoreflect.MessageDescriptor {
-	return md_QueuedUndelegation
-}
-
-// Type returns the message type, which encapsulates both Go and protobuf
-// type information. If the Go type information is not needed,
-// it is recommended that the message descriptor be used instead.
-func (x *fastReflection_QueuedUndelegation) Type() protoreflect.MessageType {
-	return _fastReflection_QueuedUndelegation_messageType
-}
-
-// New returns a newly allocated and mutable empty message.
-func (x *fastReflection_QueuedUndelegation) New() protoreflect.Message {
-	return new(fastReflection_QueuedUndelegation)
-}
-
-// Interface unwraps the message reflection interface and
-// returns the underlying ProtoMessage interface.
-func (x *fastReflection_QueuedUndelegation) Interface() protoreflect.ProtoMessage {
-	return (*QueuedUndelegation)(x)
-}
-
-// Range iterates over every populated field in an undefined order,
-// calling f for each field descriptor and value encountered.
-// Range returns immediately if f returns false.
-// While iterating, mutating operations may only be performed
-// on the current field descriptor.
-func (x *fastReflection_QueuedUndelegation) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if len(x.Entries) != 0 {
-		value := protoreflect.ValueOfList(&_QueuedUndelegation_1_list{list: &x.Entries})
-		if !f(fd_QueuedUndelegation_entries, value) {
-			return
-		}
-	}
-}
-
-// Has reports whether a field is populated.
-//
-// Some fields have the property of nullability where it is possible to
-// distinguish between the default value of a field and whether the field
-// was explicitly populated with the default value. Singular message fields,
-// member fields of a oneof, and proto2 scalar fields are nullable. Such
-// fields are populated only if explicitly set.
-//
-// In other cases (aside from the nullable cases above),
-// a proto3 scalar field is populated if it contains a non-zero value, and
-// a repeated field is populated if it is non-empty.
-func (x *fastReflection_QueuedUndelegation) Has(fd protoreflect.FieldDescriptor) bool {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.QueuedUndelegation.entries":
-		return len(x.Entries) != 0
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueuedUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueuedUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// Clear clears the field such that a subsequent Has call reports false.
-//
-// Clearing an extension field clears both the extension type and value
-// associated with the given field number.
-//
-// Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_QueuedUndelegation) Clear(fd protoreflect.FieldDescriptor) {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.QueuedUndelegation.entries":
-		x.Entries = nil
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueuedUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueuedUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// Get retrieves the value for a field.
-//
-// For unpopulated scalars, it returns the default value, where
-// the default value of a bytes scalar is guaranteed to be a copy.
-// For unpopulated composite types, it returns an empty, read-only view
-// of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_QueuedUndelegation) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
-	switch descriptor.FullName() {
-	case "cosmos.poolrebalancer.v1.QueuedUndelegation.entries":
-		if len(x.Entries) == 0 {
-			return protoreflect.ValueOfList(&_QueuedUndelegation_1_list{})
-		}
-		listValue := &_QueuedUndelegation_1_list{list: &x.Entries}
-		return protoreflect.ValueOfList(listValue)
-	default:
-		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueuedUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueuedUndelegation does not contain field %s", descriptor.FullName()))
-	}
-}
-
-// Set stores the value for a field.
-//
-// For a field belonging to a oneof, it implicitly clears any other field
-// that may be currently set within the same oneof.
-// For extension fields, it implicitly stores the provided ExtensionType.
-// When setting a composite type, it is unspecified whether the stored value
-// aliases the source's memory in any way. If the composite value is an
-// empty, read-only value, then it panics.
-//
-// Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_QueuedUndelegation) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.QueuedUndelegation.entries":
-		lv := value.List()
-		clv := lv.(*_QueuedUndelegation_1_list)
-		x.Entries = *clv.list
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueuedUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueuedUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// Mutable returns a mutable reference to a composite type.
-//
-// If the field is unpopulated, it may allocate a composite value.
-// For a field belonging to a oneof, it implicitly clears any other field
-// that may be currently set within the same oneof.
-// For extension fields, it implicitly stores the provided ExtensionType
-// if not already stored.
-// It panics if the field does not contain a composite type.
-//
-// Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_QueuedUndelegation) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.QueuedUndelegation.entries":
-		if x.Entries == nil {
-			x.Entries = []*PendingUndelegation{}
-		}
-		value := &_QueuedUndelegation_1_list{list: &x.Entries}
-		return protoreflect.ValueOfList(value)
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueuedUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueuedUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// NewField returns a new value that is assignable to the field
-// for the given descriptor. For scalars, this returns the default value.
-// For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_QueuedUndelegation) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
-	switch fd.FullName() {
-	case "cosmos.poolrebalancer.v1.QueuedUndelegation.entries":
-		list := []*PendingUndelegation{}
-		return protoreflect.ValueOfList(&_QueuedUndelegation_1_list{list: &list})
-	default:
-		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.QueuedUndelegation"))
-		}
-		panic(fmt.Errorf("message cosmos.poolrebalancer.v1.QueuedUndelegation does not contain field %s", fd.FullName()))
-	}
-}
-
-// WhichOneof reports which field within the oneof is populated,
-// returning nil if none are populated.
-// It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_QueuedUndelegation) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
-	switch d.FullName() {
-	default:
-		panic(fmt.Errorf("%s is not a oneof field in cosmos.poolrebalancer.v1.QueuedUndelegation", d.FullName()))
-	}
-	panic("unreachable")
-}
-
-// GetUnknown retrieves the entire list of unknown fields.
-// The caller may only mutate the contents of the RawFields
-// if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_QueuedUndelegation) GetUnknown() protoreflect.RawFields {
-	return x.unknownFields
-}
-
-// SetUnknown stores an entire list of unknown fields.
-// The raw fields must be syntactically valid according to the wire format.
-// An implementation may panic if this is not the case.
-// Once stored, the caller must not mutate the content of the RawFields.
-// An empty RawFields may be passed to clear the fields.
-//
-// SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_QueuedUndelegation) SetUnknown(fields protoreflect.RawFields) {
-	x.unknownFields = fields
-}
-
-// IsValid reports whether the message is valid.
-//
-// An invalid message is an empty, read-only value.
-//
-// An invalid message often corresponds to a nil pointer of the concrete
-// message type, but the details are implementation dependent.
-// Validity is not part of the protobuf data model, and may not
-// be preserved in marshaling or other operations.
-func (x *fastReflection_QueuedUndelegation) IsValid() bool {
-	return x != nil
-}
-
-// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
-// This method may return nil.
-//
-// The returned methods type is identical to
-// "google.golang.org/protobuf/runtime/protoiface".Methods.
-// Consult the protoiface package documentation for details.
-func (x *fastReflection_QueuedUndelegation) ProtoMethods() *protoiface.Methods {
-	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*QueuedUndelegation)
-		if x == nil {
-			return protoiface.SizeOutput{
-				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-				Size:              0,
-			}
-		}
-		options := runtime.SizeInputToOptions(input)
-		_ = options
-		var n int
-		var l int
-		_ = l
-		if len(x.Entries) > 0 {
-			for _, e := range x.Entries {
-				l = options.Size(e)
-				n += 1 + l + runtime.Sov(uint64(l))
-			}
-		}
-		if x.unknownFields != nil {
-			n += len(x.unknownFields)
-		}
-		return protoiface.SizeOutput{
-			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-			Size:              n,
-		}
-	}
-
-	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*QueuedUndelegation)
-		if x == nil {
-			return protoiface.MarshalOutput{
-				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-				Buf:               input.Buf,
-			}, nil
-		}
-		options := runtime.MarshalInputToOptions(input)
-		_ = options
-		size := options.Size(x)
-		dAtA := make([]byte, size)
-		i := len(dAtA)
-		_ = i
-		var l int
-		_ = l
-		if x.unknownFields != nil {
-			i -= len(x.unknownFields)
-			copy(dAtA[i:], x.unknownFields)
-		}
-		if len(x.Entries) > 0 {
-			for iNdEx := len(x.Entries) - 1; iNdEx >= 0; iNdEx-- {
-				encoded, err := options.Marshal(x.Entries[iNdEx])
-				if err != nil {
-					return protoiface.MarshalOutput{
-						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-						Buf:               input.Buf,
-					}, err
-				}
-				i -= len(encoded)
-				copy(dAtA[i:], encoded)
-				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
-				i--
-				dAtA[i] = 0xa
-			}
-		}
-		if input.Buf != nil {
-			input.Buf = append(input.Buf, dAtA...)
-		} else {
-			input.Buf = dAtA
-		}
-		return protoiface.MarshalOutput{
-			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-			Buf:               input.Buf,
-		}, nil
-	}
-	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*QueuedUndelegation)
-		if x == nil {
-			return protoiface.UnmarshalOutput{
-				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-				Flags:             input.Flags,
-			}, nil
-		}
-		options := runtime.UnmarshalInputToOptions(input)
-		_ = options
-		dAtA := input.Buf
-		l := len(dAtA)
-		iNdEx := 0
-		for iNdEx < l {
-			preIndex := iNdEx
-			var wire uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				wire |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			fieldNum := int32(wire >> 3)
-			wireType := int(wire & 0x7)
-			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueuedUndelegation: wiretype end group for non-group")
-			}
-			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueuedUndelegation: illegal tag %d (wire type %d)", fieldNum, wire)
-			}
-			switch fieldNum {
-			case 1:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
-				}
-				var msglen int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					msglen |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				if msglen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + msglen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				x.Entries = append(x.Entries, &PendingUndelegation{})
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Entries[len(x.Entries)-1]); err != nil {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-				}
-				iNdEx = postIndex
-			default:
-				iNdEx = preIndex
-				skippy, err := runtime.Skip(dAtA[iNdEx:])
-				if err != nil {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-				}
-				if (skippy < 0) || (iNdEx+skippy) < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if (iNdEx + skippy) > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				if !options.DiscardUnknown {
-					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-				}
-				iNdEx += skippy
-			}
-		}
-
-		if iNdEx > l {
-			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-		}
-		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
-	}
-	return &protoiface.Methods{
-		NoUnkeyedLiterals: struct{}{},
-		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
-		Size:              size,
-		Marshal:           marshal,
-		Unmarshal:         unmarshal,
-		Merge:             nil,
-		CheckInitialized:  nil,
-	}
-}
-
 var _ protoreflect.List = (*_GenesisState_2_list)(nil)
 
 type _GenesisState_2_list struct {
@@ -3084,62 +1894,10 @@ func (x *_GenesisState_2_list) IsValid() bool {
 	return x.list != nil
 }
 
-var _ protoreflect.List = (*_GenesisState_3_list)(nil)
-
-type _GenesisState_3_list struct {
-	list *[]*PendingUndelegation
-}
-
-func (x *_GenesisState_3_list) Len() int {
-	if x.list == nil {
-		return 0
-	}
-	return len(*x.list)
-}
-
-func (x *_GenesisState_3_list) Get(i int) protoreflect.Value {
-	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
-}
-
-func (x *_GenesisState_3_list) Set(i int, value protoreflect.Value) {
-	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*PendingUndelegation)
-	(*x.list)[i] = concreteValue
-}
-
-func (x *_GenesisState_3_list) Append(value protoreflect.Value) {
-	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*PendingUndelegation)
-	*x.list = append(*x.list, concreteValue)
-}
-
-func (x *_GenesisState_3_list) AppendMutable() protoreflect.Value {
-	v := new(PendingUndelegation)
-	*x.list = append(*x.list, v)
-	return protoreflect.ValueOfMessage(v.ProtoReflect())
-}
-
-func (x *_GenesisState_3_list) Truncate(n int) {
-	for i := n; i < len(*x.list); i++ {
-		(*x.list)[i] = nil
-	}
-	*x.list = (*x.list)[:n]
-}
-
-func (x *_GenesisState_3_list) NewElement() protoreflect.Value {
-	v := new(PendingUndelegation)
-	return protoreflect.ValueOfMessage(v.ProtoReflect())
-}
-
-func (x *_GenesisState_3_list) IsValid() bool {
-	return x.list != nil
-}
-
 var (
 	md_GenesisState                       protoreflect.MessageDescriptor
 	fd_GenesisState_params                protoreflect.FieldDescriptor
 	fd_GenesisState_pending_redelegations protoreflect.FieldDescriptor
-	fd_GenesisState_pending_undelegations protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -3147,7 +1905,6 @@ func init() {
 	md_GenesisState = File_cosmos_poolrebalancer_v1_poolrebalancer_proto.Messages().ByName("GenesisState")
 	fd_GenesisState_params = md_GenesisState.Fields().ByName("params")
 	fd_GenesisState_pending_redelegations = md_GenesisState.Fields().ByName("pending_redelegations")
-	fd_GenesisState_pending_undelegations = md_GenesisState.Fields().ByName("pending_undelegations")
 }
 
 var _ protoreflect.Message = (*fastReflection_GenesisState)(nil)
@@ -3159,7 +1916,7 @@ func (x *GenesisState) ProtoReflect() protoreflect.Message {
 }
 
 func (x *GenesisState) slowProtoReflect() protoreflect.Message {
-	mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[5]
+	mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3227,12 +1984,6 @@ func (x *fastReflection_GenesisState) Range(f func(protoreflect.FieldDescriptor,
 			return
 		}
 	}
-	if len(x.PendingUndelegations) != 0 {
-		value := protoreflect.ValueOfList(&_GenesisState_3_list{list: &x.PendingUndelegations})
-		if !f(fd_GenesisState_pending_undelegations, value) {
-			return
-		}
-	}
 }
 
 // Has reports whether a field is populated.
@@ -3252,8 +2003,6 @@ func (x *fastReflection_GenesisState) Has(fd protoreflect.FieldDescriptor) bool 
 		return x.Params != nil
 	case "cosmos.poolrebalancer.v1.GenesisState.pending_redelegations":
 		return len(x.PendingRedelegations) != 0
-	case "cosmos.poolrebalancer.v1.GenesisState.pending_undelegations":
-		return len(x.PendingUndelegations) != 0
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.GenesisState"))
@@ -3274,8 +2023,6 @@ func (x *fastReflection_GenesisState) Clear(fd protoreflect.FieldDescriptor) {
 		x.Params = nil
 	case "cosmos.poolrebalancer.v1.GenesisState.pending_redelegations":
 		x.PendingRedelegations = nil
-	case "cosmos.poolrebalancer.v1.GenesisState.pending_undelegations":
-		x.PendingUndelegations = nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.GenesisState"))
@@ -3300,12 +2047,6 @@ func (x *fastReflection_GenesisState) Get(descriptor protoreflect.FieldDescripto
 			return protoreflect.ValueOfList(&_GenesisState_2_list{})
 		}
 		listValue := &_GenesisState_2_list{list: &x.PendingRedelegations}
-		return protoreflect.ValueOfList(listValue)
-	case "cosmos.poolrebalancer.v1.GenesisState.pending_undelegations":
-		if len(x.PendingUndelegations) == 0 {
-			return protoreflect.ValueOfList(&_GenesisState_3_list{})
-		}
-		listValue := &_GenesisState_3_list{list: &x.PendingUndelegations}
 		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
@@ -3333,10 +2074,6 @@ func (x *fastReflection_GenesisState) Set(fd protoreflect.FieldDescriptor, value
 		lv := value.List()
 		clv := lv.(*_GenesisState_2_list)
 		x.PendingRedelegations = *clv.list
-	case "cosmos.poolrebalancer.v1.GenesisState.pending_undelegations":
-		lv := value.List()
-		clv := lv.(*_GenesisState_3_list)
-		x.PendingUndelegations = *clv.list
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.GenesisState"))
@@ -3368,12 +2105,6 @@ func (x *fastReflection_GenesisState) Mutable(fd protoreflect.FieldDescriptor) p
 		}
 		value := &_GenesisState_2_list{list: &x.PendingRedelegations}
 		return protoreflect.ValueOfList(value)
-	case "cosmos.poolrebalancer.v1.GenesisState.pending_undelegations":
-		if x.PendingUndelegations == nil {
-			x.PendingUndelegations = []*PendingUndelegation{}
-		}
-		value := &_GenesisState_3_list{list: &x.PendingUndelegations}
-		return protoreflect.ValueOfList(value)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.GenesisState"))
@@ -3393,9 +2124,6 @@ func (x *fastReflection_GenesisState) NewField(fd protoreflect.FieldDescriptor) 
 	case "cosmos.poolrebalancer.v1.GenesisState.pending_redelegations":
 		list := []*PendingRedelegation{}
 		return protoreflect.ValueOfList(&_GenesisState_2_list{list: &list})
-	case "cosmos.poolrebalancer.v1.GenesisState.pending_undelegations":
-		list := []*PendingUndelegation{}
-		return protoreflect.ValueOfList(&_GenesisState_3_list{list: &list})
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: cosmos.poolrebalancer.v1.GenesisState"))
@@ -3475,12 +2203,6 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 				n += 1 + l + runtime.Sov(uint64(l))
 			}
 		}
-		if len(x.PendingUndelegations) > 0 {
-			for _, e := range x.PendingUndelegations {
-				l = options.Size(e)
-				n += 1 + l + runtime.Sov(uint64(l))
-			}
-		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -3509,22 +2231,6 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
-		}
-		if len(x.PendingUndelegations) > 0 {
-			for iNdEx := len(x.PendingUndelegations) - 1; iNdEx >= 0; iNdEx-- {
-				encoded, err := options.Marshal(x.PendingUndelegations[iNdEx])
-				if err != nil {
-					return protoiface.MarshalOutput{
-						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
-						Buf:               input.Buf,
-					}, err
-				}
-				i -= len(encoded)
-				copy(dAtA[i:], encoded)
-				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
-				i--
-				dAtA[i] = 0x1a
-			}
 		}
 		if len(x.PendingRedelegations) > 0 {
 			for iNdEx := len(x.PendingRedelegations) - 1; iNdEx >= 0; iNdEx-- {
@@ -3675,40 +2381,6 @@ func (x *fastReflection_GenesisState) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
-			case 3:
-				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PendingUndelegations", wireType)
-				}
-				var msglen int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					msglen |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				if msglen < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				postIndex := iNdEx + msglen
-				if postIndex < 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
-				}
-				if postIndex > l {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-				}
-				x.PendingUndelegations = append(x.PendingUndelegations, &PendingUndelegation{})
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.PendingUndelegations[len(x.PendingUndelegations)-1]); err != nil {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
-				}
-				iNdEx = postIndex
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -3769,12 +2441,10 @@ type Params struct {
 	MaxTargetValidators uint32 `protobuf:"varint,2,opt,name=max_target_validators,json=maxTargetValidators,proto3" json:"max_target_validators,omitempty"`
 	// rebalance_threshold_bp is the drift threshold in basis points.
 	RebalanceThresholdBp uint32 `protobuf:"varint,3,opt,name=rebalance_threshold_bp,json=rebalanceThresholdBp,proto3" json:"rebalance_threshold_bp,omitempty"`
-	// max_ops_per_block caps redelegate/undelegate operations per block.
+	// max_ops_per_block caps redelegation operations per block.
 	MaxOpsPerBlock uint32 `protobuf:"varint,4,opt,name=max_ops_per_block,json=maxOpsPerBlock,proto3" json:"max_ops_per_block,omitempty"`
 	// max_move_per_op caps the amount moved per operation (0 = no cap).
 	MaxMovePerOp string `protobuf:"bytes,5,opt,name=max_move_per_op,json=maxMovePerOp,proto3" json:"max_move_per_op,omitempty"`
-	// use_undelegate_fallback enables undelegation when no safe redelegation move exists.
-	UseUndelegateFallback bool `protobuf:"varint,6,opt,name=use_undelegate_fallback,json=useUndelegateFallback,proto3" json:"use_undelegate_fallback,omitempty"`
 }
 
 func (x *Params) Reset() {
@@ -3830,13 +2500,6 @@ func (x *Params) GetMaxMovePerOp() string {
 		return x.MaxMovePerOp
 	}
 	return ""
-}
-
-func (x *Params) GetUseUndelegateFallback() bool {
-	if x != nil {
-		return x.UseUndelegateFallback
-	}
-	return false
 }
 
 // PendingRedelegation is an in-flight redelegation tracked for transitive redelegation safety.
@@ -3943,102 +2606,6 @@ func (x *QueuedRedelegation) GetEntries() []*PendingRedelegation {
 	return nil
 }
 
-// PendingUndelegation is an in-flight undelegation tracked for later cleanup and (optional) slash handling.
-type PendingUndelegation struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	DelegatorAddress string                 `protobuf:"bytes,1,opt,name=delegator_address,json=delegatorAddress,proto3" json:"delegator_address,omitempty"`
-	ValidatorAddress string                 `protobuf:"bytes,2,opt,name=validator_address,json=validatorAddress,proto3" json:"validator_address,omitempty"`
-	Balance          *v1beta1.Coin          `protobuf:"bytes,3,opt,name=balance,proto3" json:"balance,omitempty"`
-	CompletionTime   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=completion_time,json=completionTime,proto3" json:"completion_time,omitempty"`
-}
-
-func (x *PendingUndelegation) Reset() {
-	*x = PendingUndelegation{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[3]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *PendingUndelegation) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PendingUndelegation) ProtoMessage() {}
-
-// Deprecated: Use PendingUndelegation.ProtoReflect.Descriptor instead.
-func (*PendingUndelegation) Descriptor() ([]byte, []int) {
-	return file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *PendingUndelegation) GetDelegatorAddress() string {
-	if x != nil {
-		return x.DelegatorAddress
-	}
-	return ""
-}
-
-func (x *PendingUndelegation) GetValidatorAddress() string {
-	if x != nil {
-		return x.ValidatorAddress
-	}
-	return ""
-}
-
-func (x *PendingUndelegation) GetBalance() *v1beta1.Coin {
-	if x != nil {
-		return x.Balance
-	}
-	return nil
-}
-
-func (x *PendingUndelegation) GetCompletionTime() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CompletionTime
-	}
-	return nil
-}
-
-// QueuedUndelegation groups undelegations that share the same (completion time, delegator) queue key.
-type QueuedUndelegation struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	Entries []*PendingUndelegation `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
-}
-
-func (x *QueuedUndelegation) Reset() {
-	*x = QueuedUndelegation{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[4]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *QueuedUndelegation) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*QueuedUndelegation) ProtoMessage() {}
-
-// Deprecated: Use QueuedUndelegation.ProtoReflect.Descriptor instead.
-func (*QueuedUndelegation) Descriptor() ([]byte, []int) {
-	return file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *QueuedUndelegation) GetEntries() []*PendingUndelegation {
-	if x != nil {
-		return x.Entries
-	}
-	return nil
-}
-
 // GenesisState defines the poolrebalancer module's genesis state.
 type GenesisState struct {
 	state         protoimpl.MessageState
@@ -4046,16 +2613,15 @@ type GenesisState struct {
 	unknownFields protoimpl.UnknownFields
 
 	Params *Params `protobuf:"bytes,1,opt,name=params,proto3" json:"params,omitempty"`
-	// pending_redelegations and pending_undelegations allow restoring in-flight state on restart.
+	// pending_redelegations allow restoring in-flight state on restart.
 	// They are optional for initial deployments.
 	PendingRedelegations []*PendingRedelegation `protobuf:"bytes,2,rep,name=pending_redelegations,json=pendingRedelegations,proto3" json:"pending_redelegations,omitempty"`
-	PendingUndelegations []*PendingUndelegation `protobuf:"bytes,3,rep,name=pending_undelegations,json=pendingUndelegations,proto3" json:"pending_undelegations,omitempty"`
 }
 
 func (x *GenesisState) Reset() {
 	*x = GenesisState{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[5]
+		mi := &file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4069,7 +2635,7 @@ func (*GenesisState) ProtoMessage() {}
 
 // Deprecated: Use GenesisState.ProtoReflect.Descriptor instead.
 func (*GenesisState) Descriptor() ([]byte, []int) {
-	return file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDescGZIP(), []int{5}
+	return file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GenesisState) GetParams() *Params {
@@ -4082,13 +2648,6 @@ func (x *GenesisState) GetParams() *Params {
 func (x *GenesisState) GetPendingRedelegations() []*PendingRedelegation {
 	if x != nil {
 		return x.PendingRedelegations
-	}
-	return nil
-}
-
-func (x *GenesisState) GetPendingUndelegations() []*PendingUndelegation {
-	if x != nil {
-		return x.PendingUndelegations
 	}
 	return nil
 }
@@ -4106,7 +2665,7 @@ var file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDesc = []byte{
 	0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x6f, 0x67, 0x6f, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a,
 	0x1f, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66,
 	0x2f, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x22, 0xd1, 0x02, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x34, 0x0a, 0x16, 0x70,
+	0x22, 0xb8, 0x02, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x34, 0x0a, 0x16, 0x70,
 	0x6f, 0x6f, 0x6c, 0x5f, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x6f, 0x72, 0x5f, 0x61, 0x64,
 	0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x14, 0x70, 0x6f, 0x6f,
 	0x6c, 0x44, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x6f, 0x72, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73,
@@ -4123,93 +2682,64 @@ var file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDesc = []byte{
 	0x76, 0x65, 0x5f, 0x70, 0x65, 0x72, 0x5f, 0x6f, 0x70, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x42,
 	0x1d, 0xc8, 0xde, 0x1f, 0x00, 0xda, 0xde, 0x1f, 0x15, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73,
 	0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x6d, 0x61, 0x74, 0x68, 0x2e, 0x49, 0x6e, 0x74, 0x52, 0x0c,
-	0x6d, 0x61, 0x78, 0x4d, 0x6f, 0x76, 0x65, 0x50, 0x65, 0x72, 0x4f, 0x70, 0x12, 0x36, 0x0a, 0x17,
-	0x75, 0x73, 0x65, 0x5f, 0x75, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x65, 0x5f, 0x66,
-	0x61, 0x6c, 0x6c, 0x62, 0x61, 0x63, 0x6b, 0x18, 0x06, 0x20, 0x01, 0x28, 0x08, 0x52, 0x15, 0x75,
-	0x73, 0x65, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x65, 0x46, 0x61, 0x6c, 0x6c,
-	0x62, 0x61, 0x63, 0x6b, 0x22, 0xb2, 0x02, 0x0a, 0x13, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67,
-	0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x2b, 0x0a, 0x11,
-	0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x6f, 0x72, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73,
-	0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x10, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74,
-	0x6f, 0x72, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x32, 0x0a, 0x15, 0x73, 0x72, 0x63,
-	0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65,
-	0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x13, 0x73, 0x72, 0x63, 0x56, 0x61, 0x6c,
-	0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x32, 0x0a,
-	0x15, 0x64, 0x73, 0x74, 0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x5f, 0x61,
-	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x13, 0x64, 0x73,
-	0x74, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73,
-	0x73, 0x12, 0x37, 0x0a, 0x06, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28,
-	0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e,
-	0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x04, 0xc8, 0xde,
-	0x1f, 0x00, 0x52, 0x06, 0x61, 0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x4d, 0x0a, 0x0f, 0x63, 0x6f,
-	0x6d, 0x70, 0x6c, 0x65, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x18, 0x05, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x42,
-	0x08, 0xc8, 0xde, 0x1f, 0x00, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0e, 0x63, 0x6f, 0x6d, 0x70, 0x6c,
-	0x65, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x22, 0x63, 0x0a, 0x12, 0x51, 0x75, 0x65,
-	0x75, 0x65, 0x64, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12,
-	0x4d, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b,
-	0x32, 0x2d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65,
-	0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e, 0x64,
-	0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42,
-	0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x22, 0xf9,
-	0x01, 0x0a, 0x13, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65,
-	0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x2b, 0x0a, 0x11, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61,
-	0x74, 0x6f, 0x72, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x10, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x6f, 0x72, 0x41, 0x64, 0x64, 0x72,
-	0x65, 0x73, 0x73, 0x12, 0x2b, 0x0a, 0x11, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72,
-	0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x10,
-	0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
-	0x12, 0x39, 0x0a, 0x07, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28,
-	0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e,
-	0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43, 0x6f, 0x69, 0x6e, 0x42, 0x04, 0xc8, 0xde,
-	0x1f, 0x00, 0x52, 0x07, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x12, 0x4d, 0x0a, 0x0f, 0x63,
-	0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x18, 0x04,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70,
-	0x42, 0x08, 0xc8, 0xde, 0x1f, 0x00, 0x90, 0xdf, 0x1f, 0x01, 0x52, 0x0e, 0x63, 0x6f, 0x6d, 0x70,
-	0x6c, 0x65, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x22, 0x63, 0x0a, 0x12, 0x51, 0x75,
-	0x65, 0x75, 0x65, 0x64, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x12, 0x4d, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28,
-	0x0b, 0x32, 0x2d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72,
-	0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e,
-	0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x22,
-	0xa2, 0x02, 0x0a, 0x0c, 0x47, 0x65, 0x6e, 0x65, 0x73, 0x69, 0x73, 0x53, 0x74, 0x61, 0x74, 0x65,
-	0x12, 0x3e, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b,
-	0x32, 0x20, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65,
-	0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x72, 0x61,
-	0x6d, 0x73, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73,
-	0x12, 0x68, 0x0a, 0x15, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x72, 0x65, 0x64, 0x65,
-	0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32,
-	0x2d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62,
-	0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e, 0x64, 0x69,
-	0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x04,
-	0xc8, 0xde, 0x1f, 0x00, 0x52, 0x14, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x64,
-	0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x68, 0x0a, 0x15, 0x70, 0x65,
-	0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f, 0x75, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2d, 0x2e, 0x63, 0x6f, 0x73, 0x6d,
-	0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65,
-	0x72, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65,
-	0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x14,
-	0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x55, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74,
-	0x69, 0x6f, 0x6e, 0x73, 0x42, 0xf5, 0x01, 0x0a, 0x1c, 0x63, 0x6f, 0x6d, 0x2e, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63,
-	0x65, 0x72, 0x2e, 0x76, 0x31, 0x42, 0x13, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
-	0x61, 0x6e, 0x63, 0x65, 0x72, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x3a, 0x63, 0x6f,
-	0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x63,
-	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61,
-	0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x3b, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61,
-	0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x76, 0x31, 0xa2, 0x02, 0x03, 0x43, 0x50, 0x58, 0xaa, 0x02,
-	0x18, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61,
-	0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x56, 0x31, 0xca, 0x02, 0x18, 0x43, 0x6f, 0x73, 0x6d,
-	0x6f, 0x73, 0x5c, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65,
-	0x72, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x24, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x50, 0x6f,
-	0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x5c, 0x56, 0x31, 0x5c,
-	0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x1a, 0x43, 0x6f,
-	0x73, 0x6d, 0x6f, 0x73, 0x3a, 0x3a, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61,
-	0x6e, 0x63, 0x65, 0x72, 0x3a, 0x3a, 0x56, 0x31, 0xc8, 0xe1, 0x1e, 0x00, 0x62, 0x06, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x33,
+	0x6d, 0x61, 0x78, 0x4d, 0x6f, 0x76, 0x65, 0x50, 0x65, 0x72, 0x4f, 0x70, 0x4a, 0x04, 0x08, 0x06,
+	0x10, 0x07, 0x52, 0x17, 0x75, 0x73, 0x65, 0x5f, 0x75, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61,
+	0x74, 0x65, 0x5f, 0x66, 0x61, 0x6c, 0x6c, 0x62, 0x61, 0x63, 0x6b, 0x22, 0xb2, 0x02, 0x0a, 0x13,
+	0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x12, 0x2b, 0x0a, 0x11, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x6f, 0x72,
+	0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x10,
+	0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x6f, 0x72, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
+	0x12, 0x32, 0x0a, 0x15, 0x73, 0x72, 0x63, 0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f,
+	0x72, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x13, 0x73, 0x72, 0x63, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x41, 0x64, 0x64,
+	0x72, 0x65, 0x73, 0x73, 0x12, 0x32, 0x0a, 0x15, 0x64, 0x73, 0x74, 0x5f, 0x76, 0x61, 0x6c, 0x69,
+	0x64, 0x61, 0x74, 0x6f, 0x72, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x13, 0x64, 0x73, 0x74, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f,
+	0x72, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x37, 0x0a, 0x06, 0x61, 0x6d, 0x6f, 0x75,
+	0x6e, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x19, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
+	0x73, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x2e, 0x76, 0x31, 0x62, 0x65, 0x74, 0x61, 0x31, 0x2e, 0x43,
+	0x6f, 0x69, 0x6e, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x06, 0x61, 0x6d, 0x6f, 0x75, 0x6e,
+	0x74, 0x12, 0x4d, 0x0a, 0x0f, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x69, 0x6f, 0x6e, 0x5f,
+	0x74, 0x69, 0x6d, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f,
+	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d,
+	0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x42, 0x08, 0xc8, 0xde, 0x1f, 0x00, 0x90, 0xdf, 0x1f, 0x01,
+	0x52, 0x0e, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x69, 0x6f, 0x6e, 0x54, 0x69, 0x6d, 0x65,
+	0x22, 0x63, 0x0a, 0x12, 0x51, 0x75, 0x65, 0x75, 0x65, 0x64, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65,
+	0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x4d, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65,
+	0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
+	0x2e, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e,
+	0x76, 0x31, 0x2e, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65,
+	0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x07, 0x65, 0x6e,
+	0x74, 0x72, 0x69, 0x65, 0x73, 0x22, 0xd5, 0x01, 0x0a, 0x0c, 0x47, 0x65, 0x6e, 0x65, 0x73, 0x69,
+	0x73, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x3e, 0x0a, 0x06, 0x70, 0x61, 0x72, 0x61, 0x6d, 0x73,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e,
+	0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76,
+	0x31, 0x2e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x06,
+	0x70, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x68, 0x0a, 0x15, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e,
+	0x67, 0x5f, 0x72, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18,
+	0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70,
+	0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31,
+	0x2e, 0x50, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61,
+	0x74, 0x69, 0x6f, 0x6e, 0x42, 0x04, 0xc8, 0xde, 0x1f, 0x00, 0x52, 0x14, 0x70, 0x65, 0x6e, 0x64,
+	0x69, 0x6e, 0x67, 0x52, 0x65, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
+	0x4a, 0x04, 0x08, 0x03, 0x10, 0x04, 0x52, 0x15, 0x70, 0x65, 0x6e, 0x64, 0x69, 0x6e, 0x67, 0x5f,
+	0x75, 0x6e, 0x64, 0x65, 0x6c, 0x65, 0x67, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x42, 0xf5, 0x01,
+	0x0a, 0x1c, 0x63, 0x6f, 0x6d, 0x2e, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2e, 0x70, 0x6f, 0x6f,
+	0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e, 0x76, 0x31, 0x42, 0x13,
+	0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x50, 0x72,
+	0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x3a, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b,
+	0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x2f, 0x70,
+	0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2f, 0x76, 0x31,
+	0x3b, 0x70, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x76,
+	0x31, 0xa2, 0x02, 0x03, 0x43, 0x50, 0x58, 0xaa, 0x02, 0x18, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
+	0x2e, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x2e,
+	0x56, 0x31, 0xca, 0x02, 0x18, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x50, 0x6f, 0x6f, 0x6c,
+	0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x5c, 0x56, 0x31, 0xe2, 0x02, 0x24,
+	0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x5c, 0x50, 0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c,
+	0x61, 0x6e, 0x63, 0x65, 0x72, 0x5c, 0x56, 0x31, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61,
+	0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x1a, 0x43, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x3a, 0x3a, 0x50,
+	0x6f, 0x6f, 0x6c, 0x72, 0x65, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x65, 0x72, 0x3a, 0x3a, 0x56,
+	0x31, 0xc8, 0xe1, 0x1e, 0x00, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -4224,32 +2754,26 @@ func file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDescGZIP() []byte {
 	return file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDescData
 }
 
-var file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_cosmos_poolrebalancer_v1_poolrebalancer_proto_goTypes = []interface{}{
 	(*Params)(nil),                // 0: cosmos.poolrebalancer.v1.Params
 	(*PendingRedelegation)(nil),   // 1: cosmos.poolrebalancer.v1.PendingRedelegation
 	(*QueuedRedelegation)(nil),    // 2: cosmos.poolrebalancer.v1.QueuedRedelegation
-	(*PendingUndelegation)(nil),   // 3: cosmos.poolrebalancer.v1.PendingUndelegation
-	(*QueuedUndelegation)(nil),    // 4: cosmos.poolrebalancer.v1.QueuedUndelegation
-	(*GenesisState)(nil),          // 5: cosmos.poolrebalancer.v1.GenesisState
-	(*v1beta1.Coin)(nil),          // 6: cosmos.base.v1beta1.Coin
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*GenesisState)(nil),          // 3: cosmos.poolrebalancer.v1.GenesisState
+	(*v1beta1.Coin)(nil),          // 4: cosmos.base.v1beta1.Coin
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_cosmos_poolrebalancer_v1_poolrebalancer_proto_depIdxs = []int32{
-	6, // 0: cosmos.poolrebalancer.v1.PendingRedelegation.amount:type_name -> cosmos.base.v1beta1.Coin
-	7, // 1: cosmos.poolrebalancer.v1.PendingRedelegation.completion_time:type_name -> google.protobuf.Timestamp
+	4, // 0: cosmos.poolrebalancer.v1.PendingRedelegation.amount:type_name -> cosmos.base.v1beta1.Coin
+	5, // 1: cosmos.poolrebalancer.v1.PendingRedelegation.completion_time:type_name -> google.protobuf.Timestamp
 	1, // 2: cosmos.poolrebalancer.v1.QueuedRedelegation.entries:type_name -> cosmos.poolrebalancer.v1.PendingRedelegation
-	6, // 3: cosmos.poolrebalancer.v1.PendingUndelegation.balance:type_name -> cosmos.base.v1beta1.Coin
-	7, // 4: cosmos.poolrebalancer.v1.PendingUndelegation.completion_time:type_name -> google.protobuf.Timestamp
-	3, // 5: cosmos.poolrebalancer.v1.QueuedUndelegation.entries:type_name -> cosmos.poolrebalancer.v1.PendingUndelegation
-	0, // 6: cosmos.poolrebalancer.v1.GenesisState.params:type_name -> cosmos.poolrebalancer.v1.Params
-	1, // 7: cosmos.poolrebalancer.v1.GenesisState.pending_redelegations:type_name -> cosmos.poolrebalancer.v1.PendingRedelegation
-	3, // 8: cosmos.poolrebalancer.v1.GenesisState.pending_undelegations:type_name -> cosmos.poolrebalancer.v1.PendingUndelegation
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	0, // 3: cosmos.poolrebalancer.v1.GenesisState.params:type_name -> cosmos.poolrebalancer.v1.Params
+	1, // 4: cosmos.poolrebalancer.v1.GenesisState.pending_redelegations:type_name -> cosmos.poolrebalancer.v1.PendingRedelegation
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_cosmos_poolrebalancer_v1_poolrebalancer_proto_init() }
@@ -4295,30 +2819,6 @@ func file_cosmos_poolrebalancer_v1_poolrebalancer_proto_init() {
 			}
 		}
 		file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*PendingUndelegation); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueuedUndelegation); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_cosmos_poolrebalancer_v1_poolrebalancer_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*GenesisState); i {
 			case 0:
 				return &v.state
@@ -4337,7 +2837,7 @@ func file_cosmos_poolrebalancer_v1_poolrebalancer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_cosmos_poolrebalancer_v1_poolrebalancer_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

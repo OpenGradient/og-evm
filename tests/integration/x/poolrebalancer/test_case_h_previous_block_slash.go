@@ -2,9 +2,6 @@ package poolrebalancer
 
 import (
 	sdkmath "cosmossdk.io/math"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	poolrebalancertypes "github.com/cosmos/evm/x/poolrebalancer/types"
 )
 
 // TestPreviousBlockSlash_PrioritizesRedelegation verifies that a validator slashed in block H
@@ -14,7 +11,6 @@ func (s *KeeperIntegrationTestSuite) TestPreviousBlockSlash_PrioritizesRedelegat
 		0,
 		1,
 		sdkmath.ZeroInt(),
-		false,
 	)
 	s.EnableRebalancer(params)
 
@@ -39,7 +35,6 @@ func (s *KeeperIntegrationTestSuite) TestPreviousBlockSlash_ExcludedFromDestinat
 		0,
 		2,
 		sdkmath.ZeroInt(),
-		false,
 	)
 	s.EnableRebalancer(params)
 
@@ -64,7 +59,6 @@ func (s *KeeperIntegrationTestSuite) TestPreviousBlockSlash_RespectsMaxOps() {
 		0,
 		1,
 		sdkmath.ZeroInt(),
-		false,
 	)
 	s.EnableRebalancer(params)
 
@@ -78,41 +72,6 @@ func (s *KeeperIntegrationTestSuite) TestPreviousBlockSlash_RespectsMaxOps() {
 	s.Require().Len(s.PendingRedelegations(), 1, "slash-priority must still honor max_ops_per_block")
 }
 
-// TestPreviousBlockSlash_PrioritizesUndelegationFallback verifies that when slash-priority
-// redelegation is blocked, fallback undelegation prefers the slashed validator first.
-func (s *KeeperIntegrationTestSuite) TestPreviousBlockSlash_PrioritizesUndelegationFallback() {
-	params := s.DefaultEnabledParams(
-		0,
-		1,
-		sdkmath.ZeroInt(),
-		true,
-	)
-	s.EnableRebalancer(params)
-
-	slashedVal := s.validators[0]
-	blockingSrc := s.validators[1]
-
-	// Seed an immature redelegation to slashedVal so redelegations out of slashedVal are blocked.
-	immatureCompletion := s.ctx.BlockTime().Add(s.unbondingSec).UTC()
-	s.SeedPendingRedelegation(poolrebalancertypes.PendingRedelegation{
-		DelegatorAddress:    s.poolDel.String(),
-		SrcValidatorAddress: blockingSrc.OperatorAddress,
-		DstValidatorAddress: slashedVal.OperatorAddress,
-		Amount:              sdk.NewCoin(s.bondDenom, sdkmath.OneInt()),
-		CompletionTime:      immatureCompletion,
-	})
-
-	s.DelegateExtraToValidator(slashedVal)
-	s.RecordSlashEvent(slashedVal)
-
-	s.WithBlockHeight(s.ctx.BlockHeight() + 1)
-	s.Require().NoError(s.RunBeginThenEndBlock())
-
-	undels := s.PendingUndelegations()
-	s.Require().Len(undels, 1, "expected one fallback undelegation")
-	s.Require().Equal(slashedVal.OperatorAddress, undels[0].ValidatorAddress, "fallback should target slashed validator first")
-}
-
 // TestPreviousBlockSlash_NoSlashRegression verifies that existing scheduling behavior still works
 // when no slash event was recorded in the previous block.
 func (s *KeeperIntegrationTestSuite) TestPreviousBlockSlash_NoSlashRegression() {
@@ -120,7 +79,6 @@ func (s *KeeperIntegrationTestSuite) TestPreviousBlockSlash_NoSlashRegression() 
 		0,
 		1,
 		sdkmath.ZeroInt(),
-		false,
 	)
 	s.EnableRebalancer(params)
 

@@ -11,12 +11,11 @@ import (
 // DefaultParams returns the default module parameters.
 func DefaultParams() Params {
 	return Params{
-		PoolDelegatorAddress:  "", // empty = rebalancer disabled until set
-		MaxTargetValidators:   uint32(30),
-		RebalanceThresholdBp:  uint32(50), // 0.5%
-		MaxOpsPerBlock:        uint32(5),
-		MaxMovePerOp:          math.ZeroInt(), // 0 means no cap
-		UseUndelegateFallback: true,
+		PoolDelegatorAddress: "", // empty = rebalancer disabled until set
+		MaxTargetValidators:  uint32(30),
+		RebalanceThresholdBp: uint32(50), // 0.5%
+		MaxOpsPerBlock:       uint32(5),
+		MaxMovePerOp:         math.ZeroInt(), // 0 means no cap
 	}
 }
 
@@ -79,47 +78,6 @@ func (pr PendingRedelegation) Validate() error {
 	return nil
 }
 
-// Validate validates a pending undelegation record (e.g. for genesis import).
-func (pu PendingUndelegation) Validate() error {
-	if _, err := sdk.AccAddressFromBech32(pu.DelegatorAddress); err != nil {
-		return fmt.Errorf("invalid delegator_address: %w", err)
-	}
-	if _, err := sdk.ValAddressFromBech32(pu.ValidatorAddress); err != nil {
-		return fmt.Errorf("invalid validator_address: %w", err)
-	}
-	if err := pu.Balance.Validate(); err != nil {
-		return fmt.Errorf("invalid balance: %w", err)
-	}
-	if !pu.Balance.IsPositive() {
-		return fmt.Errorf("balance must be positive")
-	}
-	if pu.CompletionTime.IsZero() {
-		return fmt.Errorf("completion_time must be set")
-	}
-	return nil
-}
-
-// ValidatePoolTrackedPendingUndelegations enforces the pool-tracked undelegation
-// queue invariant for genesis: queued undelegations require a configured pool
-// delegator and each queued delegator must match params.pool_delegator_address.
-func ValidatePoolTrackedPendingUndelegations(gs *GenesisState) error {
-	if len(gs.PendingUndelegations) == 0 {
-		return nil
-	}
-	if gs.Params.PoolDelegatorAddress == "" {
-		return fmt.Errorf("pending undelegations require params.pool_delegator_address to be set")
-	}
-	for i, entry := range gs.PendingUndelegations {
-		if entry.DelegatorAddress != gs.Params.PoolDelegatorAddress {
-			return fmt.Errorf(
-				"pending_undelegations[%d].delegator_address %q must match params.pool_delegator_address %q",
-				i, entry.DelegatorAddress, gs.Params.PoolDelegatorAddress,
-			)
-		}
-	}
-	return nil
-}
-
 // Validate checks genesis params using the same stateless rules as Params.Validate; pool
 // delegator safety still depends on keeper validation when InitGenesis calls SetParams.
 func (gs *GenesisState) Validate() error {
@@ -130,14 +88,6 @@ func (gs *GenesisState) Validate() error {
 		if err := pr.Validate(); err != nil {
 			return fmt.Errorf("pending_redelegations[%d]: %w", i, err)
 		}
-	}
-	for i, pu := range gs.PendingUndelegations {
-		if err := pu.Validate(); err != nil {
-			return fmt.Errorf("pending_undelegations[%d]: %w", i, err)
-		}
-	}
-	if err := ValidatePoolTrackedPendingUndelegations(gs); err != nil {
-		return err
 	}
 	return nil
 }

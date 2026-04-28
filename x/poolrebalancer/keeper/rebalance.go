@@ -187,20 +187,6 @@ func (k Keeper) emitRedelegationFailureEvent(ctx context.Context, del sdk.AccAdd
 	)
 }
 
-func (k Keeper) emitUndelegationFailureEvent(ctx context.Context, del sdk.AccAddress, val sdk.ValAddress, coin sdk.Coin, reason string) {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeUndelegationFailed,
-			sdk.NewAttribute(types.AttributeKeyDelegator, del.String()),
-			sdk.NewAttribute(types.AttributeKeyValidator, val.String()),
-			sdk.NewAttribute(types.AttributeKeyAmount, coin.Amount.String()),
-			sdk.NewAttribute(types.AttributeKeyDenom, coin.Denom),
-			sdk.NewAttribute(types.AttributeKeyReason, reason),
-		),
-	)
-}
-
 // PickBestRedelegation selects a single (src, dst, amount) move based on deltas.
 // Ties are broken deterministically by (src,dst) ordering. If maxMove is non-zero, it caps the amount.
 func (k Keeper) PickBestRedelegation(
@@ -281,80 +267,12 @@ func (k Keeper) pickBestRedelegationWithRestrictions(
 	return bestSrc, bestDst, bestAmt, true
 }
 
-// PickResidualUndelegation selects a single undelegation as a fallback when redelegation isn't possible.
-// It targets the most overweight validator among deltas, skipping any keys in skipVals (e.g. sources that
-// already failed undelegation this block). Amount is capped by MaxMovePerOp (if set).
-func (k Keeper) PickResidualUndelegation(ctx context.Context, deltas map[string]math.Int, skipVals map[string]struct{}) (val string, amt math.Int, ok bool, err error) {
-	return k.pickResidualUndelegationWithRestrictions(ctx, deltas, skipVals, nil)
-}
-
-// pickResidualUndelegationWithRestrictions mirrors PickResidualUndelegation but can restrict the
-// candidate validator set. Slash-priority fallback uses this to undelegate from previously slashed
-// validators first when redelegation is blocked.
-func (k Keeper) pickResidualUndelegationWithRestrictions(
-	ctx context.Context,
-	deltas map[string]math.Int,
-	skipVals map[string]struct{},
-	allowedVals map[string]struct{},
-) (val string, amt math.Int, ok bool, err error) {
-	maxMove, err := k.GetMaxMovePerOp(ctx)
-	if err != nil {
-		return "", math.ZeroInt(), false, err
-	}
-
-	bestVal := ""
-	bestOver := math.ZeroInt()
-
-	keys := make([]string, 0, len(deltas))
-	for k := range deltas {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		if allowedVals != nil {
-			if _, ok := allowedVals[k]; !ok {
-				continue
-			}
-		}
-		if skipVals != nil {
-			if _, skip := skipVals[k]; skip {
-				continue
-			}
-		}
-		d := deltas[k]
-		if !d.IsNegative() {
-			continue
-		}
-		over := d.Abs()
-		if over.GT(bestOver) || (over.Equal(bestOver) && (bestVal == "" || k < bestVal)) {
-			bestOver = over
-			bestVal = k
-		}
-	}
-
-	if bestVal == "" || bestOver.IsZero() {
-		return "", math.ZeroInt(), false, nil
-	}
-
-	move := bestOver
-	if !maxMove.IsZero() {
-		move = minInt(move, maxMove)
-	}
-	if move.IsZero() {
-		return "", math.ZeroInt(), false, nil
-	}
-
-	return bestVal, move, true, nil
-}
-
 // ProcessRebalance compares current stake to target and applies up to MaxOpsPerBlock operations.
 // It is intended to be called from EndBlock after pending queues are cleaned up.
 //
 // Slash-aware behavior:
 // - previous-block slashed validators are excluded from same-block destinations/targets
 // - redelegation priority first tries to move stake away from those validators
-// - if fallback is enabled and redelegation is blocked, undelegation also prefers those validators
 // - if all target validators were slashed in the previous block, rebalance cleanly no-ops
 func (k Keeper) ProcessRebalance(ctx context.Context) error {
 	// Fast-path exits: not configured, no targets, or nothing bonded.
@@ -375,8 +293,8 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 	}
 	targetVals = filterTargetValidators(targetVals, slashedVals)
 	if len(targetVals) == 0 {
-		// Conservatively do nothing for this block rather than forcing undelegation-only behavior when
-		// every same-block target was slashed in the previous block.
+		// Conservatively do nothing for this block when every same-block target was slashed
+		// in the previous block.
 		return nil
 	}
 	stakeByValidator, total, err := k.GetDelegatorStakeByValidator(ctx, del)
@@ -417,15 +335,13 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 
 	// Apply params to the operation loop.
 	maxOps := params.MaxOpsPerBlock
-	useUndel := params.UseUndelegateFallback
 	bondDenom, err := k.stakingKeeper.BondDenom(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Apply operations (redelegate first, then optional undelegate fallback).
+	// Apply operations using redelegations only.
 	blocked := make(map[string]map[string]struct{})
-	undelSkipped := make(map[string]struct{})
 	keys := make([]string, 0, len(deltas))
 	for key := range deltas {
 		keys = append(keys, key)
@@ -475,40 +391,7 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 			blocked[srcKey][dstKey] = struct{}{}
 			continue
 		}
-
-		if !useUndel {
-			break
-		}
-
-		valKey, undelAmt, ok, err := "", math.ZeroInt(), false, error(nil)
-		if len(slashedVals) > 0 {
-			valKey, undelAmt, ok, err = k.pickResidualUndelegationWithRestrictions(ctx, deltas, undelSkipped, slashedVals)
-		}
-		if err != nil {
-			return err
-		}
-		if !ok {
-			valKey, undelAmt, ok, err = k.PickResidualUndelegation(ctx, deltas, undelSkipped)
-		}
-		if err != nil {
-			return err
-		}
-		if !ok {
-			break
-		}
-
-		valAddr, err := sdk.ValAddressFromBech32(valKey)
-		if err != nil {
-			return err
-		}
-		coin := sdk.NewCoin(bondDenom, undelAmt)
-		if _, _, err := k.BeginTrackedUndelegation(ctx, del, valAddr, coin); err != nil {
-			k.emitUndelegationFailureEvent(ctx, del, valAddr, coin, err.Error())
-			undelSkipped[valKey] = struct{}{}
-			continue
-		}
-		deltas[valKey] = deltas[valKey].Add(undelAmt)
-		opsDone++
+		break
 	}
 
 	if opsDone > 0 {
@@ -518,7 +401,6 @@ func (k Keeper) ProcessRebalance(ctx context.Context) error {
 				types.EventTypeRebalanceSummary,
 				sdk.NewAttribute(types.AttributeKeyDelegator, del.String()),
 				sdk.NewAttribute(types.AttributeKeyOpsDone, strconv.FormatUint(uint64(opsDone), 10)),
-				sdk.NewAttribute(types.AttributeKeyUseFallback, strconv.FormatBool(useUndel)),
 			),
 		)
 	}

@@ -12,12 +12,11 @@ import (
 // TestTransitiveSafety_BlockedWhileDstImmature verifies that redelegation from a
 // source validator is blocked while an immature redelegation already targets it.
 func (s *KeeperIntegrationTestSuite) TestTransitiveSafety_BlockedWhileDstImmature() {
-	// Keep fallback off so this test only exercises redelegation blocking.
+	// Redelegation-only mode: this test exercises blocking semantics only.
 	params := s.DefaultEnabledParams(
 		0, // threshold
 		1, // max ops
 		sdkmath.ZeroInt(),
-		false,
 	)
 	s.EnableRebalancer(params)
 
@@ -77,7 +76,7 @@ func (s *KeeperIntegrationTestSuite) TestTransitiveSafety_BlockedWhileDstImmatur
 // destination entry matures, redelegation from that source can be scheduled again.
 func (s *KeeperIntegrationTestSuite) TestTransitiveSafety_UnblocksAfterDstMaturity() {
 	// Same starting setup as blocked case.
-	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt(), false)
+	params := s.DefaultEnabledParams(0, 1, sdkmath.ZeroInt())
 	s.EnableRebalancer(params)
 
 	xVal := s.validators[0]
@@ -110,7 +109,7 @@ func (s *KeeperIntegrationTestSuite) TestTransitiveSafety_UnblocksAfterDstMaturi
 	s.Require().True(s.poolKeeper.HasImmatureRedelegationTo(s.ctx, s.poolDel, xSDKValAddr, s.bondDenom))
 
 	// Move past completion so the seed can mature and get cleaned up.
-	// Only redelegation queue entries mature at this time; undelegation queue remains empty.
+	// Only pending redelegation tracking entries are expected to mature here.
 	s.WithBlockTime(immatureCompletion.Add(1 * time.Second))
 	s.Require().NoError(s.RunBeginThenEndBlock())
 

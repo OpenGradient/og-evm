@@ -87,25 +87,3 @@ func setPoolDelegatorForTest(t *testing.T, ctx sdk.Context, k *Keeper, poolDel s
 	params.PoolDelegatorAddress = poolDel.String()
 	require.NoError(t, k.SetParams(ctx, params))
 }
-
-func seedPendingUndelegationUnchecked(t *testing.T, ctx sdk.Context, k Keeper, entry types.PendingUndelegation) {
-	t.Helper()
-	del, err := sdk.AccAddressFromBech32(entry.DelegatorAddress)
-	require.NoError(t, err)
-	val, err := sdk.ValAddressFromBech32(entry.ValidatorAddress)
-	require.NoError(t, err)
-
-	store := k.storeService.OpenKVStore(ctx)
-	queueKey := types.GetPendingUndelegationQueueKey(entry.CompletionTime, del)
-	var queued types.QueuedUndelegation
-	bz, err := store.Get(queueKey)
-	require.NoError(t, err)
-	if len(bz) > 0 {
-		require.NoError(t, k.cdc.Unmarshal(bz, &queued))
-	}
-	queued.Entries = append(queued.Entries, entry)
-	require.NoError(t, store.Set(queueKey, k.cdc.MustMarshal(&queued)))
-
-	indexKey := types.GetPendingUndelegationByValIndexKey(val, entry.CompletionTime, entry.Balance.Denom, del)
-	require.NoError(t, store.Set(indexKey, []byte{}))
-}
