@@ -78,6 +78,48 @@ dev_account_private_key_from_file() {
   ' "$f"
 }
 
+# Sum delegations for a delegator in current staking bond denom (wei-like integer).
+staking_delegations_bond_total_wei() {
+  local node_rpc="$1"
+  local delegator="$2"
+  local bond_denom dels_json
+  bond_denom="$(evmd query staking params --node "$node_rpc" -o json 2>/dev/null | jq -r '.params.bond_denom // .bond_denom // empty' 2>/dev/null || true)"
+  dels_json="$(evmd query staking delegations "$delegator" --node "$node_rpc" -o json 2>/dev/null || true)"
+  if [[ -z "$dels_json" ]]; then
+    echo "0"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    print(0)
+    sys.exit(0)
+data = json.loads(raw)
+denom = sys.argv[1]
+total = 0
+for r in data.get("delegation_responses", []):
+    bal = (r or {}).get("balance") or {}
+    if denom and bal.get("denom") != denom:
+        continue
+    amt = bal.get("amount", "0")
+    try:
+        total += int(str(amt))
+    except Exception:
+        pass
+print(total)
+' "$bond_denom" <<<"$dels_json" 2>/dev/null || echo "0"
+  else
+    # Fallback for environments without python3. `awk` avoids scientific notation.
+    if [[ -n "$bond_denom" ]]; then
+      echo "$dels_json" | jq -r --arg denom "$bond_denom" '.delegation_responses[]? | select(.balance.denom == $denom) | .balance.amount' 2>/dev/null | awk '{s+=$1} END {printf "%.0f\n", s+0}'
+    else
+      echo "$dels_json" | jq -r '.delegation_responses[]? | .balance.amount' 2>/dev/null | awk '{s+=$1} END {printf "%.0f\n", s+0}'
+    fi
+  fi
+}
+
 # --- Bech32 account → 0x for cast (uses CHAIN_HOME when set) ---
 
 evmd_debug_addr() {
@@ -116,6 +158,28 @@ normalize_cast_uint256_output() {
     python3 -c "print(int('$s',16))" 2>/dev/null && return 0
   fi
   return 1
+}
+
+# uint256 helpers for shell assertions.
+uint256_eq() {
+  local a="${1:-0}" b="${2:-0}"
+  [[ "$a" =~ ^[0-9]+$ ]] || return 1
+  [[ "$b" =~ ^[0-9]+$ ]] || return 1
+  [[ "$a" == "$b" ]]
+}
+
+uint256_gt() {
+  local a="${1:-0}" b="${2:-0}"
+  [[ "$a" =~ ^[0-9]+$ ]] || return 1
+  [[ "$b" =~ ^[0-9]+$ ]] || return 1
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) > int(sys.argv[2]) else 1)" "$a" "$b"
+  else
+    # Fallback lexical compare by length for big integers.
+    (( ${#a} > ${#b} )) && return 0
+    (( ${#a} < ${#b} )) && return 1
+    [[ "$a" > "$b" ]]
+  fi
 }
 
 # View call without extra args; returns decimal string or n/a.
@@ -270,6 +334,45 @@ cast_send_expect_success() {
   fi
   echo "error: transaction reverted (status=$(echo "$json" | jq -r .status)) target=$target sig=$sig" >&2
   return 1
+}
+
+# Expect a tx to revert (receipt status != 0x1).
+cast_send_expect_revert() {
+  local rpc="$1"
+  local pk="$2"
+  local target="$3"
+  local sig="$4"
+  shift 4
+  local errf raw json status errtxt
+  wait_evm_nonce_settled_for_pk "$pk" "$rpc" 45
+  errf="$(mktemp -t cast_revert.XXXXXX)"
+  if [[ -n "${CAST_SEND_GAS_LIMIT:-}" ]]; then
+    raw="$(cast send --json --rpc-url "$rpc" --private-key "$pk" --gas-limit "${CAST_SEND_GAS_LIMIT}" "$target" "$sig" "$@" 2>"$errf")" || true
+  else
+    raw="$(cast send --json --rpc-url "$rpc" --private-key "$pk" "$target" "$sig" "$@" 2>"$errf")" || true
+  fi
+  errtxt="$(<"$errf")"
+  rm -f "$errf"
+  # cast can return non-zero with "execution reverted" and no JSON receipt.
+  # For expect-revert assertions this should be considered success.
+  if [[ -n "$errtxt" && "$errtxt" == *"execution reverted"* ]]; then
+    return 0
+  fi
+  if [[ -n "$errtxt" && "$errtxt" == *"transaction reverted"* ]]; then
+    return 0
+  fi
+  if ! json="$(cast_stdout_to_receipt_json "$raw")"; then
+    echo "error: cast send did not return parseable JSON receipt for expect-revert (target=$target sig=$sig)" >&2
+    [[ -n "$raw" ]] && echo "$raw" >&2
+    [[ -n "$errtxt" ]] && echo "$errtxt" >&2
+    return 1
+  fi
+  status="$(echo "$json" | jq -r '.status // empty')"
+  if [[ "$status" == "0x1" || "$status" == "0x01" ]]; then
+    echo "error: expected revert but transaction succeeded target=$target sig=$sig" >&2
+    return 1
+  fi
+  return 0
 }
 
 # Standard pool onboarding: approve bond for pool, then deposit(uint256).

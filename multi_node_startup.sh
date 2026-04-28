@@ -8,9 +8,12 @@ LOGLEVEL="info"
 BASEFEE=10000000
 BASEDIR="${BASEDIR:-"$HOME/.og-evm-devnet"}"
 VALIDATOR_COUNT="${VALIDATOR_COUNT:-3}"
+DEV_ACCOUNT_COUNT="${DEV_ACCOUNT_COUNT:-10}"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 NODE_NUMBER="${NODE_NUMBER:-}"
 START_VALIDATOR="${START_VALIDATOR:-false}"
+START_ALL_VALIDATORS="${START_ALL_VALIDATORS:-false}"
 GENERATE_GENESIS="${GENERATE_GENESIS:-false}"
 
 get_p2p_port() { echo $((26656 + ($1 * 100))); }
@@ -22,6 +25,17 @@ get_val_mnemonic() {
   local idx="$1"
   local var_name="VAL${idx}_MNEMONIC"
   echo "${!var_name:-}"
+}
+
+auto_generate_validator_mnemonic() {
+  local idx="$1"
+  local tmp_home key_name out mnemonic
+  tmp_home="$(mktemp -d "${TMPDIR:-/tmp}/multi-node-mnemonic-${idx}-XXXXXX")"
+  key_name="autoval${idx}"
+  out="$(evmd keys add "$key_name" --keyring-backend test --algo "$KEYALGO" --home "$tmp_home" 2>&1 || true)"
+  mnemonic="$(echo "$out" | awk 'NF{line=$0} END{print line}')"
+  rm -rf "$tmp_home"
+  echo "$mnemonic"
 }
 
 get_home_dir() { echo "$BASEDIR/val$1"; }
@@ -36,8 +50,10 @@ usage() {
   echo "Environment Variables:"
   echo "  GENERATE_GENESIS=true    Generate genesis for all validators"
   echo "  START_VALIDATOR=true     Start a validator"
+  echo "  START_ALL_VALIDATORS=true Start all validators (val0 foreground, others background)"
   echo "  NODE_NUMBER=0..N-1       Which validator to start"
   echo "  VALIDATOR_COUNT=3        Validator count for genesis/startup"
+  echo "  DEV_ACCOUNT_COUNT=10     Number of funded dev accounts to generate"
   echo "  BASEDIR=path             Base directory (default: ~/.og-evm-devnet)"
   echo ""
   echo "Options:"
@@ -198,6 +214,11 @@ generate_dev_accounts() {
 }
 
 generate_genesis() {
+  if [[ ! "$DEV_ACCOUNT_COUNT" =~ ^[0-9]+$ ]] || (( DEV_ACCOUNT_COUNT < 1 )); then
+    echo "Error: DEV_ACCOUNT_COUNT must be a positive integer (got: $DEV_ACCOUNT_COUNT)" >&2
+    exit 1
+  fi
+
   echo "=========================================="
   echo "Generating genesis for $VALIDATOR_COUNT validators..."
   echo "Base directory: $BASEDIR"
@@ -226,8 +247,13 @@ generate_genesis() {
     MNEMONIC=$(get_val_mnemonic $i)
     VALKEY="val${i}"
     if [[ -z "$MNEMONIC" ]]; then
-      echo "Error: VAL${i}_MNEMONIC is required for validator $i"
-      exit 1
+      MNEMONIC="$(auto_generate_validator_mnemonic "$i")"
+      if [[ -z "$MNEMONIC" ]]; then
+        echo "Error: VAL${i}_MNEMONIC is required for validator $i" >&2
+        exit 1
+      fi
+      export "VAL${i}_MNEMONIC=$MNEMONIC"
+      echo "Auto-generated mnemonic for validator $i"
     fi
 
 
@@ -264,7 +290,7 @@ generate_genesis() {
 
   echo ""
   echo ">>> Step 4: Generating dev accounts..."
-  generate_dev_accounts 10 "$(get_home_dir 0)"
+  generate_dev_accounts "$DEV_ACCOUNT_COUNT" "$(get_home_dir 0)"
 
   echo ""
   echo ">>> Step 5: Copying genesis to all validators..."
@@ -338,7 +364,7 @@ generate_genesis() {
   if (( VALIDATOR_COUNT > 3 )); then
     echo "  ├── ...              (Validator 3..$((VALIDATOR_COUNT - 1)) home)"
   fi
-  echo "  ├── dev_accounts.txt (10 funded dev accounts)"
+  echo "  ├── dev_accounts.txt (${DEV_ACCOUNT_COUNT} funded dev accounts)"
   echo "  └── node_ids.txt"
   echo ""
   echo "Port mapping:"
@@ -350,6 +376,17 @@ generate_genesis() {
   echo "Dev accounts funded: 1000000000000000000000000ogwei each"
   echo "Dev keys saved to: $BASEDIR/dev_accounts.txt"
   echo "=========================================="
+}
+
+start_all_validators() {
+  local i
+  mkdir -p "$BASEDIR/logs"
+  for i in $(seq 1 $((VALIDATOR_COUNT - 1))); do
+    echo "Starting validator $i in background (logs: $BASEDIR/logs/val${i}.log)"
+    START_VALIDATOR=true NODE_NUMBER="$i" VALIDATOR_COUNT="$VALIDATOR_COUNT" BASEDIR="$BASEDIR" \
+      bash "$SCRIPT_PATH" >"$BASEDIR/logs/val${i}.log" 2>&1 &
+  done
+  START_VALIDATOR=true NODE_NUMBER=0 VALIDATOR_COUNT="$VALIDATOR_COUNT" BASEDIR="$BASEDIR" bash "$SCRIPT_PATH"
 }
 
 start_validator() {
@@ -404,7 +441,11 @@ if [[ "$START_VALIDATOR" == "true" ]]; then
   start_validator
 fi
 
-if [[ "$GENERATE_GENESIS" != "true" && "$START_VALIDATOR" != "true" ]]; then
+if [[ "$START_ALL_VALIDATORS" == "true" ]]; then
+  start_all_validators
+fi
+
+if [[ "$GENERATE_GENESIS" != "true" && "$START_VALIDATOR" != "true" && "$START_ALL_VALIDATORS" != "true" ]]; then
   echo "No mode specified."
   echo ""
   echo "To generate genesis:"
@@ -412,6 +453,9 @@ if [[ "$GENERATE_GENESIS" != "true" && "$START_VALIDATOR" != "true" ]]; then
   echo ""
   echo "To start a validator:"
   echo "  START_VALIDATOR=true NODE_NUMBER=0 $0"
+  echo ""
+  echo "To start all validators:"
+  echo "  START_ALL_VALIDATORS=true $0"
   echo ""
   usage
 fi

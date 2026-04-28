@@ -4,12 +4,11 @@ set -euo pipefail
 # rebalance_scenario_runner.sh — local E2E for x/poolrebalancer with a CommunityPool contract delegator.
 # Interactive / manual inspection (pending queues, watch modes), not a deterministic CI harness.
 #
-# Scenarios: happy_path | caps | threshold_boundary | fallback | expansion | credit_focus
-# Watch: watch (queues + pool reads) | watch credit (ledger + pending undelegations)
+# Scenarios: happy_path | caps | threshold_boundary | expansion
+# Watch: watch (queues + pool reads)
 # user_flow_multikey: CommunityPool multi-account E2E (user_flow_multikey.sh); see usage() "user_flow_multikey — what it is for"
 #
-# Caveat: low minStake can let stake() drain stakeablePrincipalLedger in the same block as a credit; credit_focus
-# raises minStake on purpose. Undelegation maturity follows wall clock (header time vs completion), not block height.
+# Caveat: user-withdraw undelegation maturity follows wall clock (header time vs completion), not block height.
 # ============================================================================
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -24,12 +23,6 @@ POOL_OWNER_PK="${POOL_OWNER_PK:-0x88cbead91aee890d27bf06e003ade3d4e952427e88f88d
 POOL_DEPOSITOR_PK="${POOL_DEPOSITOR_PK:-0x741de4f8988ea941d3ff0287911ca4074e62b7d45c991a51186455366f10b544}" # gitleaks:allow
 MODULE_EVM="${MODULE_EVM:-0x786c305E2aAc2168BB7555Ef522c5F20a2cd0dA9}"
 BOND_PRECOMPILE="${BOND_PRECOMPILE:-0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE}"
-# CommunityPool minStakeAmount — credit_focus uses constructor + seed computed min (max_move*mult+1); MODE=max finishes with uint256 max setConfig.
-COMMUNITY_POOL_UINT256_MAX="115792089237316195423570985008687907853269984665640564039457584007913129639935"
-# credit_focus: CREDIT_FOCUS_MIN_STAKE_MODE=computed (default) → minStake = max_move * MULT + 1 in constructor + seed (uint256 max in ctor would block initial stake() after deposit).
-# MODE=max → same computed ctor/seed, then final setConfig applies uint256 max (needs working owner tx).
-CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER="${CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER:-4}"
-CREDIT_FOCUS_MIN_STAKE_MODE="${CREDIT_FOCUS_MIN_STAKE_MODE:-computed}"
 POOL_CONTRACT_ADDR="${POOL_CONTRACT_ADDR:-}"
 GOV_FROM="${GOV_FROM:-mykey}"
 GOV_HOME="${GOV_HOME:-}"
@@ -56,8 +49,6 @@ USER_SET_MAX_OPS_PER_BLOCK=false
 [[ -n "${POOLREBALANCER_MAX_OPS_PER_BLOCK+x}" ]] && USER_SET_MAX_OPS_PER_BLOCK=true
 USER_SET_MAX_MOVE_PER_OP=false
 [[ -n "${POOLREBALANCER_MAX_MOVE_PER_OP+x}" ]] && USER_SET_MAX_MOVE_PER_OP=true
-USER_SET_USE_UNDELEGATE_FALLBACK=false
-[[ -n "${POOLREBALANCER_USE_UNDELEGATE_FALLBACK+x}" ]] && USER_SET_USE_UNDELEGATE_FALLBACK=true
 USER_SET_STAKING_MAX_ENTRIES=false
 [[ -n "${STAKING_MAX_ENTRIES+x}" ]] && USER_SET_STAKING_MAX_ENTRIES=true
 USER_SET_IMBALANCE_MINOR_DELEGATION=false
@@ -70,8 +61,6 @@ USER_SET_POLL_SAMPLES=false
 [[ -n "${POLL_SAMPLES+x}" ]] && USER_SET_POLL_SAMPLES=true
 USER_SET_POLL_SLEEP_SECS=false
 [[ -n "${POLL_SLEEP_SECS+x}" ]] && USER_SET_POLL_SLEEP_SECS=true
-USER_SET_COMMUNITY_POOL_POST_SEED_MIN_STAKE=false
-[[ -n "${COMMUNITY_POOL_POST_SEED_MIN_STAKE+x}" && -n "${COMMUNITY_POOL_POST_SEED_MIN_STAKE}" ]] && USER_SET_COMMUNITY_POOL_POST_SEED_MIN_STAKE=true
 
 SCENARIO="${SCENARIO:-happy_path}"
 VALIDATOR_COUNT="${VALIDATOR_COUNT:-}"
@@ -84,9 +73,8 @@ DEMO_PROFILE="${DEMO_PROFILE:-medium}"
 POOLREBALANCER_THRESHOLD_BP="${POOLREBALANCER_THRESHOLD_BP:-0}"
 POOLREBALANCER_MAX_OPS_PER_BLOCK="${POOLREBALANCER_MAX_OPS_PER_BLOCK:-2}"
 POOLREBALANCER_MAX_MOVE_PER_OP="${POOLREBALANCER_MAX_MOVE_PER_OP:-100000000000000000000}" # 1e20
-POOLREBALANCER_USE_UNDELEGATE_FALLBACK="${POOLREBALANCER_USE_UNDELEGATE_FALLBACK:-false}"
 
-# Tune staking params so maturity/fallback behavior is visible in test runs.
+# Tune staking params so maturity behavior is visible in test runs.
 STAKING_UNBONDING_TIME="${STAKING_UNBONDING_TIME:-30s}"
 STAKING_MAX_ENTRIES="${STAKING_MAX_ENTRIES:-100}"
 
@@ -106,11 +94,8 @@ WATCH_COMPACT="${WATCH_COMPACT:-false}"
 LOG_STREAM_PIDS=()
 CURRENT_PHASE="init"
 SETUP_STARTED="false"
-FALLBACK_SEEN_REDELEGATION="false"
-FALLBACK_UND_DEADLINE_SAMPLES="${FALLBACK_UND_DEADLINE_SAMPLES:-15}"
 POOL_DEL_ADDR=""
 POOL_EVM_ADDR=""
-WATCH_CREDIT_MODE="false"
 RESOLVED_GOV_FROM=""
 RESOLVED_GOV_HOME=""
 WATCH_INITIAL_DELEGATIONS_LOGGED="false"
@@ -158,7 +143,6 @@ What gets patched before node start:
     - rebalance_threshold_bp=$POOLREBALANCER_THRESHOLD_BP
     - max_ops_per_block=$POOLREBALANCER_MAX_OPS_PER_BLOCK
     - max_move_per_op=$POOLREBALANCER_MAX_MOVE_PER_OP
-    - use_undelegate_fallback=$POOLREBALANCER_USE_UNDELEGATE_FALLBACK
 
 Runtime setup after chain start:
   - deploy CommunityPool contract (unless POOL_CONTRACT_ADDR is provided)
@@ -176,7 +160,6 @@ Manual caveats: low minStake → same-block stake() can zero the ledger after a 
 Commands:
   run (default)                     Full test setup + scenario execution
   watch                             Live monitor for an already running test chain
-  watch credit                      Same chain; focused on CommunityPool ledger + pending undelegation credit path
   user_flow_multikey                CommunityPool multi-account E2E (see block below); then polls RPCs and runs the script.
   help                              Show this help
 
@@ -191,14 +174,45 @@ user_flow_multikey — what it is for:
   What you see:  Structured logs — pool aggregates (totalUnits, principalAssets, totalStaked,
             stakeablePrincipalLedger), per-user snapshots (native balance, bond ERC20, pool units) before/after
             each step, maturity waits, and native balance deltas when claimRewards runs.
+  Optional stress: pass --stress-profile 100users (alias: stress100) to run an opt-in
+            throughput profile (high user count + retry-oriented knobs) and print aggregate
+            success/failure + retry metrics. This does not replace default USER_COUNT=5 runs.
   Prerequisites:  Validators already running; \$BASEDIR/dev_accounts.txt; pool wired
             (poolrebalancer.params.pool_delegator_address). This command waits until that param is set
             (or use POOL_CONTRACT_ADDR=0x… to skip the wait). Does not start nodes or run gov.
+
+community_pool_edge_cases — what it is for:
+  Purpose:  Scripted CommunityPool checks with explicit pass/fail (ACL reverts, reconcile recovery, withdraw math, …).
+  Phases (run one at a time via positional arg, or combine with all / comma list):
+    auth              Step 1 — non-owner reverts on privileged calls
+    drift             Step 2 — owner skew syncTotalStaked; poll reconcile vs staking
+    withdraw_sizing   Step 3 — one withdraw(); amountOut formula + pendingRebalanceUnbondReserve unchanged
+    liquidity         Step 4 — claimWithdraw(requestId) reverts before maturity; optional matured-claim stress
+    dust              Step 5 — dust deposit/withdraw rounding reverts + setConfig boundary/no-op stake checks
+    rewards           Step 6 — multi-harvest + claimRewards sanity + reserve invariants
+    all               Runs auth,drift,withdraw_sizing,liquidity,dust,rewards in one process (same as auth,drift,withdraw_sizing,liquidity,dust,rewards)
+  Default:  No positional arg → COMMUNITY_POOL_EDGE_PHASES defaults to auth only (single case) unless you set COMMUNITY_POOL_EDGE_PHASES in the environment.
+  Positional arg overrides COMMUNITY_POOL_EDGE_PHASES when present.
+  What runs:  tests/e2e/poolrebalancer/community_pool_edge_cases.sh
+  Signers:  AUTH_NON_OWNER_ACCOUNT (default dev1); POOL_OWNER_PK or dev0 for drift/rewards; WITHDRAW_SIZING_ACCOUNT (default dev2) for withdraw_sizing; LIQUIDITY_ACCOUNT (default WITHDRAW_SIZING_ACCOUNT) for liquidity; DUST_ACCOUNT/DUST_SECONDARY_ACCOUNT for dust; REWARDS_ACCOUNT for claimRewards.
+  Tunables:  DRIFT_*, POOL_DEL_BECH32, WITHDRAW_SIZING_*, LIQUIDITY_*, CLAIM_STRESS_*, DUST_*, REWARDS_*, SKIP_EMPTY_POOL_HARVEST, …
+  Prerequisites:  Same as user_flow_multikey; does not start nodes or run gov.
+            withdraw_sizing/liquidity auto-deposit from dev accounts by default when units/stake are missing.
+            Prefer happy_path/caps for deterministic user-withdraw checks.
 
 CLI options:
   -n, --nodes <count>               Number of validators/nodes to run
   -s, --scenario <name>             Scenario name (same as SCENARIO env var)
   -p, --profile <name>              Demo profile: slow|medium|fast
+  --stress-profile <name>           user_flow_multikey profile (100users|stress100)
+  --user-count <n>                  user_flow_multikey USER_COUNT override
+  --withdraw-users <n>              user_flow_multikey WITHDRAW_USERS override
+  --flow-mode <name>                user_flow_multikey mode: serial|parallel
+  --deposit-concurrency <n>         user_flow_multikey deposit worker concurrency
+  --withdraw-concurrency <n>        user_flow_multikey withdraw submit worker concurrency
+  --claim-concurrency <n>           user_flow_multikey claimWithdraw worker concurrency
+  --claim-rewards-concurrency <n>   user_flow_multikey claimRewards worker concurrency
+  --batch-delay-ms <n>              user_flow_multikey inter-batch delay milliseconds
   -h, --help                        Show this help
 
 Scenarios:
@@ -220,27 +234,11 @@ Scenarios:
     Params: default poolrebalancer rebalance_threshold_bp=5000.
     Watch for: little or no scheduling when drift stays below threshold.
 
-  fallback
-    Goal: verify undelegation fallback is used when redelegation path is constrained.
-    Setup: source-heavy contract skew + fallback enabled + low staking max_entries.
-    Params: default poolrebalancer use_undelegate_fallback=true; default staking max_entries=1.
-    Watch for: pending undelegations appearing alongside or after redelegations.
-
   expansion
     Goal: verify the target validator set can expand to bonded validators outside the initial seed set.
     Setup: five validators; pool stakes from contract across three validators only (main + two minor deposits).
     Params: max_target_validators=5, max_ops_per_block=1, max_move_per_op=1e19, larger minor seed amount.
     Watch for: redelegations with dst outside the initial three-validator delegation set (expansion_progress in logs).
-
-  credit_focus
-    Goal: stress the mature-undelegation → creditStakeableFromRebalance path with visible ledger churn.
-    Setup: same skew seed as happy_path/fallback.
-    Params: fallback on; staking max_entries=1 (redelegation slots exhausted quickly); unbonding_time=15s;
-            max_ops_per_block=1; max_move_per_op=5e17 (many small steps); longer default poll window.
-    Deploy + seed: minStakeAmount = max_move * CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER + 1 (constructor + seed setConfig).
-    Optional CREDIT_FOCUS_MIN_STAKE_MODE=max sets final minStake to uint256 max. COMMUNITY_POOL_POST_SEED_MIN_STAKE
-    (if set) overrides that final minStake floor.
-    Watch for: pending_und waves and stakeablePrincipalLedger / totalStaked; use: watch credit in another shell.
 
 Profiles:
   slow                              max_ops_per_block=1, capped move per op
@@ -257,15 +255,14 @@ Environment variables:
   VAL0_MNEMONIC ... VALN_MNEMONIC  Optional explicit mnemonics. Any missing values are auto-generated.
 
   POOLREBALANCER_MAX_TARGET_VALIDATORS
-  SCENARIO                          happy_path|caps|threshold_boundary|fallback|expansion|credit_focus
-                                    (aliases: baseline_3val, max_target_gt_bonded_3val, fallback_path_3val,
+  SCENARIO                          happy_path|caps|threshold_boundary|expansion
+                                    (aliases: baseline_3val, max_target_gt_bonded_3val,
                                     target_set_expansion_5val — normalized in apply_scenario_defaults)
   VALIDATOR_COUNT                   Validators to start (default 3; expansion defaults to 5 if unset)
   DEMO_PROFILE                      slow|medium|fast tuning for rebalance visibility (default: medium)
   POOLREBALANCER_THRESHOLD_BP
   POOLREBALANCER_MAX_OPS_PER_BLOCK
   POOLREBALANCER_MAX_MOVE_PER_OP
-  POOLREBALANCER_USE_UNDELEGATE_FALLBACK
   POOL_DELEGATOR_MODE               contract|eoa (default: contract)
   POOL_OWNER_PK                     Private key for deploying/configuring CommunityPool
   POOL_DEPOSITOR_PK                 Private key for CommunityPool deposit txs during seeding
@@ -274,9 +271,6 @@ Environment variables:
   EVM_RPC                           EVM RPC endpoint for cast calls (default: http://127.0.0.1:8545)
   POOL_CONTRACT_ADDR                Optional existing CommunityPool EVM address to reuse
   POOL_SEED_DEPOSIT_AMOUNT          Main contract seed amount (raw uint, default: 200000000000000000000)
-  COMMUNITY_POOL_POST_SEED_MIN_STAKE  If set and non-empty: overrides credit_focus final minStake.
-  CREDIT_FOCUS_MIN_STAKE_MODE         computed (default) = max_move * multiplier + 1; max = final setConfig to uint256 max.
-  CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER  Used when MODE=computed (default 4).
   GOV_FROM                          Key name used for gov submit/vote (default: mykey)
   GOV_HOME                          Home for gov signer keyring (auto-detected if empty)
   GOV_DEPOSIT                       Gov proposal deposit (default: 10000000ogwei)
@@ -289,21 +283,52 @@ Environment variables:
   USER_FLOW_CHAIN_NOT_READY_POLL_INTERVAL_SECS  user_flow_multikey: poll while evmd/not-ready or query errors (default: 5)
   USER_FLOW_POOL_DELEGATOR_MAX_WAIT_SECS       user_flow_multikey: give up after this many seconds (default: 0 = no limit)
 
-  STAKING_UNBONDING_TIME            Reduce so pending queues mature quickly (default: 30s; credit_focus defaults 15s)
-  STAKING_MAX_ENTRIES               Raise/lower redelegation/undelegation entry pressure (default: 100)
+  COMMUNITY_POOL_EDGE_PHASES        community_pool_edge_cases: comma-separated phases (default: auth if unset; or pass positional arg / all)
+  AUTH_NON_OWNER_ACCOUNT            community_pool_edge_cases: dev account name for non-owner txs (default: dev1)
+  DRIFT_SKEW_WEI                     community_pool_edge_cases: added to totalStaked for drift test (default: 1e18 wei)
+  DRIFT_RECOVER_MAX_WAIT_SECS        community_pool_edge_cases: wait for reconcile to match staking (default: 180)
+  POOL_DEL_BECH32                    community_pool_edge_cases: optional pool delegator bech32 override
+  WITHDRAW_SIZING_ACCOUNT            community_pool_edge_cases: dev account with LP units for withdraw test (default: dev2)
+  WITHDRAW_SIZING_FRACTION_BP        community_pool_edge_cases: basis points of user units to withdraw (default: 1000 = 10%)
+  WITHDRAW_SIZING_CANDIDATE_BP_LIST  ordered fallback BPs when withdraw reverts (default: 1000,500,200,100,50,20,10,5,1)
+  WITHDRAW_SIZING_PENDING_RESERVE_POLL_SECS  optional wait for pendingRebalanceUnbondReserve>0 (default: 60; 0=skip)
+  WITHDRAW_SIZING_GAS_LIMIT          gas limit for withdraw() tx (default: 9500000)
+  WITHDRAW_SIZING_AUTO_DEPOSIT       if 1, auto approve+deposit when withdraw_sizing preconditions are missing (default: 1)
+  WITHDRAW_SIZING_AUTO_DEPOSIT_USERS number of dev accounts to auto-deposit from (dev0..devN-1, default: 3)
+  WITHDRAW_SIZING_AUTO_DEPOSIT_AMOUNT_WEI  auto-deposit amount per account (default: 100000000000000000000)
+  WITHDRAW_SIZING_AUTO_DEPOSIT_INTERVAL_SECS  seconds between auto-deposit txs (default: 1)
+  WITHDRAW_SIZING_TOTAL_STAKED_WAIT_SECS  wait after auto-deposit for totalStaked>0 (default: 120)
+  LIQUIDITY_ACCOUNT                 liquidity phase: dev account for withdraw+claim flow (default: WITHDRAW_SIZING_ACCOUNT)
+  LIQUIDITY_FRACTION_BP             liquidity phase: basis points of user units to withdraw (default: WITHDRAW_SIZING_FRACTION_BP)
+  LIQUIDITY_CANDIDATE_BP_LIST       liquidity phase: ordered fallback BPs when withdraw reverts
+  LIQUIDITY_GAS_LIMIT               liquidity phase: gas limit for withdraw()/claimWithdraw() txs
+  LIQUIDITY_MATURITY_MAX_WAIT_SECS  liquidity phase: max wall-clock wait for maturity in optional stress (default: 300)
+  CLAIM_STRESS_INSUFFICIENT_LIQUID  liquidity phase: if 1, best-effort retry matured claimWithdraw (default: 0)
+  CLAIM_STRESS_MAX_ATTEMPTS         liquidity phase: retries after maturity in optional stress (default: 20)
+  CLAIM_STRESS_POLL_INTERVAL_SECS   liquidity phase: seconds between optional stress retries (default: 2)
+  DUST_ACCOUNT                      dust phase: primary dev account for seed deposit / withdraw(1) revert (default: dev1)
+  DUST_SECONDARY_ACCOUNT            dust phase: secondary dev account for deposit(1) revert (default: dev2)
+  DUST_SEED_DEPOSIT_AMOUNT_WEI      dust phase: seed deposit amount before no-op stake + dust reverts (default: 1e18)
+  DUST_BOUNDARY_MAX_VALIDATORS      dust phase: valid boundary maxValidators used in setConfig (default: 1)
+  DUST_HIGH_MIN_STAKE_AMOUNT_WEI    dust phase: elevated minStakeAmount used to force stake() no-op (default: uint256 max)
+  REWARDS_ACCOUNT                   rewards phase: dev account that calls claimRewards() (default: dev1)
+  REWARDS_HARVEST_COUNT             rewards phase: number of owner harvest() calls (default: 3)
+  REWARDS_HARVEST_INTERVAL_SECS     rewards phase: sleep between harvests (default: 1)
+  REWARDS_REQUIRE_HARVEST_SUCCESS   rewards phase: if 1, require harvest() to succeed; if 0, allow graceful skip (default: 0)
+  SKIP_EMPTY_POOL_HARVEST           rewards phase: if 1, skip empty-pool harvest path with Forge pointer (default: 1)
 
-  POLL_SAMPLES                      Initial poll samples before giving up if no pending ops (default: 25; credit_focus 90)
+  STAKING_UNBONDING_TIME            Reduce so pending queues mature quickly (default: 30s)
+  STAKING_MAX_ENTRIES               Raise/lower redelegation entry pressure (default: 100)
+
+  POLL_SAMPLES                      Initial poll samples before giving up if no pending ops (default: 25)
   POLL_SLEEP_SECS                   Seconds between samples (default: 2)
 
   IMBALANCE_MAIN_DELEGATION         Large delegation to validator[0]
   IMBALANCE_MINOR_DELEGATION        Small delegations to validator[1], validator[2]
-  WATCH_COMPACT                     Compact lines for `watch` (not watch credit; default: false)
-  CREDIT_WATCH_USE_ENV_POOL_EVM     If true, watch credit keeps POOL_EVM_ADDR from env instead of chain
-  FALLBACK_UND_DEADLINE_SAMPLES     Fallback deadline (samples) to observe pending undelegations (default: 15)
+  WATCH_COMPACT                     Compact lines for watch mode (default: false)
 
 Note:
   Any variable set in the environment overrides scenario defaults when the script respects USER_SET_* flags.
-  For undelegation → contract credit, read "Manual caveats" above before interpreting stakeablePrincipalLedger.
 
 Examples:
   # Standard rebalance flow
@@ -315,15 +340,8 @@ Examples:
   # Threshold gating (expect no scheduling for small drift)
   bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh --scenario threshold_boundary --nodes 3
 
-  # Fallback-focused profile
-  bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh --scenario fallback --nodes 3 --profile slow
-
   # Target-set expansion (5 validators; pool initially delegated to 3)
   bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh --scenario expansion --nodes 5 --profile medium
-
-  # Undelegation credit path (pair with watch credit in another shell)
-  bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh --scenario credit_focus --nodes 3 --profile medium
-  SCENARIO=credit_focus bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh watch credit
 
   bash tests/e2e/poolrebalancer/rebalance_scenario_runner.sh watch
 
@@ -426,20 +444,111 @@ run_user_flow_multikey_subcommand() {
   fi
   ensure_evm_rpc_ready || exit 1
   echo "==> EVM_RPC=$EVM_RPC — invoking user_flow_multikey.sh"
+  if [[ -n "${PARSED_USER_FLOW_STRESS_PROFILE:-}" ]]; then
+    export USER_FLOW_STRESS_PROFILE="$PARSED_USER_FLOW_STRESS_PROFILE"
+    echo "==> USER_FLOW_STRESS_PROFILE=$USER_FLOW_STRESS_PROFILE (from subcommand)"
+  fi
+  if [[ -n "${PARSED_USER_FLOW_USER_COUNT:-}" ]]; then
+    export USER_COUNT="$PARSED_USER_FLOW_USER_COUNT"
+    echo "==> USER_COUNT=$USER_COUNT (from subcommand)"
+  fi
+  if [[ -n "${PARSED_USER_FLOW_WITHDRAW_USERS:-}" ]]; then
+    export WITHDRAW_USERS="$PARSED_USER_FLOW_WITHDRAW_USERS"
+    echo "==> WITHDRAW_USERS=$WITHDRAW_USERS (from subcommand)"
+  fi
+  if [[ -n "${PARSED_USER_FLOW_MODE:-}" ]]; then
+    export USER_FLOW_MODE="$PARSED_USER_FLOW_MODE"
+    echo "==> USER_FLOW_MODE=$USER_FLOW_MODE (from subcommand)"
+  fi
+  if [[ -n "${PARSED_DEPOSIT_CONCURRENCY:-}" ]]; then
+    export DEPOSIT_CONCURRENCY="$PARSED_DEPOSIT_CONCURRENCY"
+    echo "==> DEPOSIT_CONCURRENCY=$DEPOSIT_CONCURRENCY (from subcommand)"
+  fi
+  if [[ -n "${PARSED_WITHDRAW_CONCURRENCY:-}" ]]; then
+    export WITHDRAW_CONCURRENCY="$PARSED_WITHDRAW_CONCURRENCY"
+    echo "==> WITHDRAW_CONCURRENCY=$WITHDRAW_CONCURRENCY (from subcommand)"
+  fi
+  if [[ -n "${PARSED_CLAIM_CONCURRENCY:-}" ]]; then
+    export CLAIM_CONCURRENCY="$PARSED_CLAIM_CONCURRENCY"
+    echo "==> CLAIM_CONCURRENCY=$CLAIM_CONCURRENCY (from subcommand)"
+  fi
+  if [[ -n "${PARSED_CLAIM_REWARDS_CONCURRENCY:-}" ]]; then
+    export CLAIM_REWARDS_CONCURRENCY="$PARSED_CLAIM_REWARDS_CONCURRENCY"
+    echo "==> CLAIM_REWARDS_CONCURRENCY=$CLAIM_REWARDS_CONCURRENCY (from subcommand)"
+  fi
+  if [[ -n "${PARSED_BATCH_DELAY_MS:-}" ]]; then
+    export BATCH_DELAY_MS="$PARSED_BATCH_DELAY_MS"
+    echo "==> BATCH_DELAY_MS=$BATCH_DELAY_MS (from subcommand)"
+  fi
+  bash "$script"
+}
+
+user_flow_chain_ready() {
+  local status_url h
+  status_url="$(tendermint_status_url)"
+  h="$(curl -sS --max-time 1 "$status_url" 2>/dev/null | jq -r '.result.sync_info.latest_block_height // "0"' 2>/dev/null || echo "0")"
+  [[ "$h" =~ ^[0-9]+$ ]] || h=0
+  (( h > 0 ))
+}
+
+user_flow_pool_delegator_ready() {
+  local out del
+  out="$(evmd query poolrebalancer params --node "$NODE_RPC" -o json 2>/dev/null || true)"
+  del="$(echo "$out" | jq -r '.params.pool_delegator_address // empty' 2>/dev/null || true)"
+  [[ -n "$del" ]]
+}
+
+# Preconditions: BASEDIR/dev_accounts.txt; chain up. Optional POOL_CONTRACT_ADDR skips wait.
+run_community_pool_edge_cases_subcommand() {
+  local script="$ROOT_DIR/tests/e2e/poolrebalancer/community_pool_edge_cases.sh"
+  if [[ ! -f "$script" ]]; then
+    echo "error: missing $script" >&2
+    exit 1
+  fi
+  if [[ ! -f "$BASEDIR/dev_accounts.txt" ]]; then
+    echo "error: missing $BASEDIR/dev_accounts.txt" >&2
+    echo "hint: start a devnet with this runner (or multi_node_startup) so dev accounts exist" >&2
+    exit 1
+  fi
+  if [[ -z "${CHAIN_HOME:-}" ]] || [[ "${CHAIN_HOME}" == "${BASEDIR}" ]]; then
+    export CHAIN_HOME="$BASEDIR/val0"
+  fi
+  echo "==> community_pool_edge_cases: BASEDIR=$BASEDIR CHAIN_HOME=$CHAIN_HOME NODE_RPC=$NODE_RPC"
+  if [[ -n "${POOL_CONTRACT_ADDR:-}" ]]; then
+    echo "==> POOL_CONTRACT_ADDR is set; skipping wait for poolrebalancer.params.pool_delegator_address"
+  else
+    wait_for_pool_delegator_address_configured || exit 1
+  fi
+  ensure_evm_rpc_ready || exit 1
+  echo "==> EVM_RPC=$EVM_RPC — invoking community_pool_edge_cases.sh"
+  if [[ -n "${PARSED_COMMUNITY_POOL_EDGE_PHASES:-}" ]]; then
+    if [[ "$PARSED_COMMUNITY_POOL_EDGE_PHASES" == "all" ]]; then
+      export COMMUNITY_POOL_EDGE_PHASES="auth,drift,withdraw_sizing,liquidity,dust,rewards"
+    else
+      export COMMUNITY_POOL_EDGE_PHASES="$PARSED_COMMUNITY_POOL_EDGE_PHASES"
+    fi
+    echo "==> COMMUNITY_POOL_EDGE_PHASES=$COMMUNITY_POOL_EDGE_PHASES (from subcommand)"
+  fi
   bash "$script"
 }
 
 parse_cli_args() {
   local subcommand=""
+  PARSED_COMMUNITY_POOL_EDGE_PHASES=""
+  PARSED_USER_FLOW_STRESS_PROFILE=""
+  PARSED_USER_FLOW_USER_COUNT=""
+  PARSED_USER_FLOW_WITHDRAW_USERS=""
+  PARSED_USER_FLOW_MODE=""
+  PARSED_DEPOSIT_CONCURRENCY=""
+  PARSED_WITHDRAW_CONCURRENCY=""
+  PARSED_CLAIM_CONCURRENCY=""
+  PARSED_CLAIM_REWARDS_CONCURRENCY=""
+  PARSED_BATCH_DELAY_MS=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       watch)
         subcommand="watch"
         shift
-        if [[ "${1:-}" == "credit" ]]; then
-          WATCH_CREDIT_MODE="true"
-          shift
-        fi
         ;;
       help)
         subcommand="help"
@@ -447,6 +556,10 @@ parse_cli_args() {
         ;;
       user_flow_multikey)
         subcommand="user_flow_multikey"
+        shift
+        ;;
+      community_pool_edge_cases)
+        subcommand="community_pool_edge_cases"
         shift
         ;;
       -n|--nodes)
@@ -477,6 +590,110 @@ parse_cli_args() {
         subcommand="help"
         shift
         ;;
+      --stress-profile)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        PARSED_USER_FLOW_STRESS_PROFILE="$2"
+        shift 2
+        ;;
+      --user-count)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ ! "$2" =~ ^[0-9]+$ ]] || (( "$2" < 1 )); then
+          echo "error: --user-count must be a positive integer (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_USER_FLOW_USER_COUNT="$2"
+        shift 2
+        ;;
+      --withdraw-users)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ ! "$2" =~ ^[0-9]+$ ]]; then
+          echo "error: --withdraw-users must be a non-negative integer (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_USER_FLOW_WITHDRAW_USERS="$2"
+        shift 2
+        ;;
+      --flow-mode)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ "$2" != "serial" && "$2" != "parallel" ]]; then
+          echo "error: --flow-mode must be serial or parallel (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_USER_FLOW_MODE="$2"
+        shift 2
+        ;;
+      --deposit-concurrency)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ ! "$2" =~ ^[0-9]+$ ]] || (( "$2" < 1 )); then
+          echo "error: --deposit-concurrency must be a positive integer (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_DEPOSIT_CONCURRENCY="$2"
+        shift 2
+        ;;
+      --withdraw-concurrency)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ ! "$2" =~ ^[0-9]+$ ]] || (( "$2" < 1 )); then
+          echo "error: --withdraw-concurrency must be a positive integer (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_WITHDRAW_CONCURRENCY="$2"
+        shift 2
+        ;;
+      --claim-concurrency)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ ! "$2" =~ ^[0-9]+$ ]] || (( "$2" < 1 )); then
+          echo "error: --claim-concurrency must be a positive integer (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_CLAIM_CONCURRENCY="$2"
+        shift 2
+        ;;
+      --claim-rewards-concurrency)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ ! "$2" =~ ^[0-9]+$ ]] || (( "$2" < 1 )); then
+          echo "error: --claim-rewards-concurrency must be a positive integer (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_CLAIM_REWARDS_CONCURRENCY="$2"
+        shift 2
+        ;;
+      --batch-delay-ms)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for $1" >&2
+          exit 1
+        fi
+        if [[ ! "$2" =~ ^[0-9]+$ ]]; then
+          echo "error: --batch-delay-ms must be a non-negative integer (got: $2)" >&2
+          exit 1
+        fi
+        PARSED_BATCH_DELAY_MS="$2"
+        shift 2
+        ;;
       --)
         shift
         break
@@ -486,8 +703,13 @@ parse_cli_args() {
         shift
         ;;
       *)
-        echo "unknown argument: $1" >&2
-        return 1
+        if [[ "$subcommand" == "community_pool_edge_cases" && -z "${PARSED_COMMUNITY_POOL_EDGE_PHASES:-}" ]]; then
+          PARSED_COMMUNITY_POOL_EDGE_PHASES="$1"
+          shift
+        else
+          echo "unknown argument: $1" >&2
+          return 1
+        fi
         ;;
     esac
   done
@@ -775,12 +997,10 @@ patch_genesis_poolrebalancer_params() {
      --argjson thr "$POOLREBALANCER_THRESHOLD_BP" \
      --argjson maxOps "$POOLREBALANCER_MAX_OPS_PER_BLOCK" \
      --arg maxMove "$POOLREBALANCER_MAX_MOVE_PER_OP" \
-     --argjson useUndel "$POOLREBALANCER_USE_UNDELEGATE_FALLBACK" \
      ' .app_state.poolrebalancer.params.max_target_validators = $maxTargets
        | .app_state.poolrebalancer.params.rebalance_threshold_bp = $thr
        | .app_state.poolrebalancer.params.max_ops_per_block = $maxOps
        | .app_state.poolrebalancer.params.max_move_per_op = $maxMove
-       | .app_state.poolrebalancer.params.use_undelegate_fallback = $useUndel
      ' "$gen0" > "$tmp"
 
   mv "$tmp" "$gen0"
@@ -956,7 +1176,6 @@ log_pool_contract_setup_banner() {
   echo "  Params already chosen for this run (genesis + scenario):"
   echo "    poolrebalancer: max_target_validators=$POOLREBALANCER_MAX_TARGET_VALIDATORS  threshold_bp=$POOLREBALANCER_THRESHOLD_BP"
   echo "                    max_ops_per_block=$POOLREBALANCER_MAX_OPS_PER_BLOCK  max_move_per_op=$POOLREBALANCER_MAX_MOVE_PER_OP"
-  echo "                    use_undelegate_fallback=$POOLREBALANCER_USE_UNDELEGATE_FALLBACK"
   echo "    staking:        unbonding_time=$STAKING_UNBONDING_TIME  max_entries=$STAKING_MAX_ENTRIES"
   echo "    validators:     VALIDATOR_COUNT=$VALIDATOR_COUNT  EVM_RPC=$EVM_RPC"
   echo "──────────────────────────────────────────────────────────────────────────────"
@@ -975,7 +1194,7 @@ deploy_pool_contract_if_needed() {
   else
     echo "==> Deploying CommunityPool contract (contract creation via cast send --create)"
     echo "    Typical wait: one mined block + any gas-price retry; if this hangs, check validator logs and EVM RPC reachability."
-    local owner bytecode ctor_args data deploy_raw deploy_err owner_balance gp2
+  local owner bytecode ctor_args data deploy_raw deploy_err owner_balance gp2
     if ! cast chain-id --rpc-url "$EVM_RPC" >/dev/null 2>&1; then
       echo "error: EVM RPC is not reachable at $EVM_RPC (cast chain-id failed)" >&2
       exit 1
@@ -990,27 +1209,8 @@ deploy_pool_contract_if_needed() {
       echo "error: missing CommunityPool bytecode in contracts/solidity/pool/CommunityPool.json" >&2
       exit 1
     fi
-    local ctor_min_stake=1
-    if [[ "$SCENARIO" == "credit_focus" ]]; then
-      ctor_min_stake="$(compute_credit_focus_post_seed_min_stake)"
-      if command -v python3 >/dev/null 2>&1 && [[ "$ctor_min_stake" =~ ^[0-9]+$ ]]; then
-        if ! python3 -c "import sys; sys.exit(0 if int('$ctor_min_stake') > 1 else 1)"; then
-          echo "error: credit_focus constructor minStakeAmount=$ctor_min_stake (fix POOLREBALANCER_MAX_MOVE_PER_OP / scenario order)" >&2
-          exit 1
-        fi
-      elif [[ "$ctor_min_stake" == "1" ]]; then
-        echo "error: credit_focus constructor minStake resolved to 1 (need python3 for large ints or valid max_move)" >&2
-        exit 1
-      fi
-      echo "==> credit_focus: constructor minStakeAmount=$ctor_min_stake"
-      echo "    Why: max_move_per_op * CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER(${CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER:-4}) + 1"
-      echo "    → typical undelegation credits stay BELOW minStake so stakeablePrincipalLedger stays visible after credit;"
-      echo "    EndBlock stake() only delegates when ledger >= minStake (otherwise it no-ops)."
-    else
-      echo "==> Constructor minStakeAmount=1 (default for this scenario): credits can be auto-staked same block if ledger reaches minStake;"
-      echo "    use credit_focus or raise minStake via setConfig if you need to observe liquid ledger longer."
-    fi
-    ctor_args="$(cast abi-encode "constructor(address,uint32,uint32,uint256,address)" "$BOND_PRECOMPILE" 10 5 "$ctor_min_stake" "$owner")"
+    echo "==> Constructor minStakeAmount=1"
+    ctor_args="$(cast abi-encode "constructor(address,uint32,uint32,uint256,address)" "$BOND_PRECOMPILE" 10 5 1 "$owner")"
     data="${bytecode}${ctor_args#0x}"
     deploy_err="$(mktemp -t pool_deploy_err.XXXXXX)"
     deploy_raw="$(cast send --json --rpc-url "$EVM_RPC" --private-key "$POOL_OWNER_PK" --create "$data" 2>"$deploy_err" || true)"
@@ -1062,8 +1262,7 @@ set_pool_delegator_param_runtime() {
         max_target_validators:.params.max_target_validators,
         rebalance_threshold_bp:.params.rebalance_threshold_bp,
         max_ops_per_block:.params.max_ops_per_block,
-        max_move_per_op:.params.max_move_per_op,
-        use_undelegate_fallback:.params.use_undelegate_fallback
+        max_move_per_op:.params.max_move_per_op
       }
     }],
     metadata:"",
@@ -1216,25 +1415,6 @@ wait_for_pool_stake_activation() {
   done
 }
 
-# credit_focus post-seed minStake: strictly above most batched credit sums so stake() keeps skipping (CommunityPool.stake early-return).
-compute_credit_focus_post_seed_min_stake() {
-  local mm mul
-  mm="${POOLREBALANCER_MAX_MOVE_PER_OP:-0}"
-  mul="${CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER:-4}"
-  if ! [[ "$mm" =~ ^[0-9]+$ ]]; then
-    echo "$COMMUNITY_POOL_UINT256_MAX"
-    return 0
-  fi
-  if ! [[ "$mul" =~ ^[0-9]+$ ]]; then
-    mul=4
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c "print(int('$mm') * int('$mul') + 1)"
-  else
-    echo $(( mm * mul + 1 ))
-  fi
-}
-
 seed_contract_imbalance() {
   CURRENT_PHASE="seed_contract_imbalance"
   echo "==> Creating contract-driven initial imbalance (scenario=$SCENARIO)"
@@ -1248,7 +1428,7 @@ seed_contract_imbalance() {
     expansion)
       seed_max_validators=3
       ;;
-    threshold_boundary|happy_path|caps|fallback|credit_focus)
+    threshold_boundary|happy_path|caps)
       seed_max_validators=1
       ;;
     *)
@@ -1257,15 +1437,8 @@ seed_contract_imbalance() {
       ;;
   esac
 
-  local seed_step_min_stake=1
-  if [[ "$SCENARIO" == "credit_focus" ]]; then
-    seed_step_min_stake="$(compute_credit_focus_post_seed_min_stake)"
-    echo "credit_focus: pre-seed setConfig — minStake stays $seed_step_min_stake (same as constructor)."
-    echo "  Why: we only narrow max_validators to $seed_max_validators for skewed deposit/stake; minStake unchanged so"
-    echo "  accounting matches deploy and credits are still below minStake during seed."
-  fi
-  echo "==> Applying CommunityPool setConfig for seeding (max_retrieve=10 max_validators=$seed_max_validators minStake=$seed_step_min_stake)"
-  set_pool_contract_config 10 "$seed_max_validators" "$seed_step_min_stake"
+  echo "==> Applying CommunityPool setConfig for seeding (max_retrieve=10 max_validators=$seed_max_validators minStake=1)"
+  set_pool_contract_config 10 "$seed_max_validators" 1
 
   case "$SCENARIO" in
     threshold_boundary)
@@ -1278,7 +1451,7 @@ seed_contract_imbalance() {
       deposit_to_pool_once "$seed_amount_minor"
       deposit_to_pool_once "$seed_amount_minor"
       ;;
-    happy_path|caps|fallback|credit_focus)
+    happy_path|caps)
       echo "==> Seeding contract deposits for skew profile: main=$seed_amount_main minor=$seed_amount_minor"
       deposit_to_pool_once "$seed_amount_main"
       deposit_to_pool_once "$seed_amount_minor"
@@ -1297,155 +1470,13 @@ seed_contract_imbalance() {
   fi
 
   # Restore broader staking spread for post-seed automation behavior.
-  # EndBlock order: CompletePendingUndelegations → creditStakeableFromRebalance (ledger up) →
-  # MaybeRunCommunityPoolAutomation → stake() delegates stakeablePrincipalLedger when >= minStakeAmount.
-  # With minStakeAmount=1, the same block usually drains the ledger again, so RPC shows stakeablePrincipalLedger=0.
-  # minStakeAmount gates stake(): stake() only delegates when stakeablePrincipalLedger >= minStake (strict).
-  # creditStakeableFromRebalance ignores minStake; for a visible ledger after credit, keep minStake above typical
-  # credit_focus final minStake: computed (default) matches constructor/seed; max = uint256 after seed (optional).
   local post_seed_min_stake="1"
-  if [[ "$SCENARIO" == "credit_focus" ]]; then
-    if [[ "$USER_SET_COMMUNITY_POOL_POST_SEED_MIN_STAKE" == "true" && "$COMMUNITY_POOL_POST_SEED_MIN_STAKE" == "1" ]]; then
-      echo "error: COMMUNITY_POOL_POST_SEED_MIN_STAKE=1 defeats credit_focus (auto-stake after credit). Unset or use a large wei / uint256 max." >&2
-      exit 1
-    fi
-    case "${CREDIT_FOCUS_MIN_STAKE_MODE:-computed}" in
-      computed|"")
-        post_seed_min_stake="$(compute_credit_focus_post_seed_min_stake)"
-        if command -v python3 >/dev/null 2>&1 && [[ "$post_seed_min_stake" =~ ^[0-9]+$ ]]; then
-          if ! python3 -c "import sys; sys.exit(0 if int('$post_seed_min_stake') > 1 else 1)"; then
-            echo "error: credit_focus final minStakeAmount=$post_seed_min_stake (max_move_per_op zero?). Check POOLREBALANCER_MAX_MOVE_PER_OP." >&2
-            exit 1
-          fi
-        elif [[ "$post_seed_min_stake" == "1" ]]; then
-          echo "error: credit_focus final minStake resolved to 1" >&2
-          exit 1
-        fi
-        ;;
-      max)
-        post_seed_min_stake="$COMMUNITY_POOL_UINT256_MAX"
-        ;;
-      *)
-        echo "error: invalid CREDIT_FOCUS_MIN_STAKE_MODE=${CREDIT_FOCUS_MIN_STAKE_MODE:-} (expected computed or max)" >&2
-        exit 1
-        ;;
-    esac
-  fi
-  if [[ "$USER_SET_COMMUNITY_POOL_POST_SEED_MIN_STAKE" == "true" ]]; then
-    if [[ "$SCENARIO" == "credit_focus" ]]; then
-      local cf_default
-      cf_default="$(compute_credit_focus_post_seed_min_stake)"
-      if [[ "$COMMUNITY_POOL_POST_SEED_MIN_STAKE" != "$COMMUNITY_POOL_UINT256_MAX" ]] && command -v python3 >/dev/null 2>&1 \
-        && [[ "$COMMUNITY_POOL_POST_SEED_MIN_STAKE" =~ ^[0-9]+$ && "$cf_default" =~ ^[0-9]+$ ]] \
-        && python3 -c "import sys; sys.exit(0 if int('$COMMUNITY_POOL_POST_SEED_MIN_STAKE') <= int('$cf_default') else 1)"; then
-        echo "==> warning: COMMUNITY_POOL_POST_SEED_MIN_STAKE=$COMMUNITY_POOL_POST_SEED_MIN_STAKE <= credit_focus default $cf_default (max_move * ${CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER:-4} + 1); stake() may consume credited ledger same block" >&2
-      fi
-    fi
-    post_seed_min_stake="$COMMUNITY_POOL_POST_SEED_MIN_STAKE"
-  fi
   echo "==> Final CommunityPool setConfig (max_retrieve=10 max_validators=5 minStake=$post_seed_min_stake)"
-  if [[ "$SCENARIO" == "credit_focus" ]]; then
-    echo "credit_focus: minStakeAmount CHANGE after seed — from seed-time $seed_step_min_stake → final $post_seed_min_stake"
-    echo "  What changed: max_validators 1→5 (rebalance can target more vals). minStake:"
-    if [[ "$USER_SET_COMMUNITY_POOL_POST_SEED_MIN_STAKE" == "true" ]]; then
-      echo "    → COMMUNITY_POOL_POST_SEED_MIN_STAKE override ($COMMUNITY_POOL_POST_SEED_MIN_STAKE)."
-    elif [[ "${CREDIT_FOCUS_MIN_STAKE_MODE:-computed}" == "max" ]]; then
-      echo "    → CREDIT_FOCUS_MIN_STAKE_MODE=max → uint256 max so stake() never consumes a post-credit ledger (observe credits cleanly)."
-    else
-      echo "    → stays computed ($post_seed_min_stake): still max_move*mult+1; typical credit batches stay below minStake."
-    fi
-    echo "  Why tweak minStake at all: creditStakeableFromRebalance ignores minStake; stake() does not — high min keeps liquid ledger visible."
-  fi
   wait_evm_nonce_settled_for_pk "$POOL_OWNER_PK" 90
   set_pool_contract_config 10 5 "$post_seed_min_stake" || exit 1
-  if [[ "$SCENARIO" == "credit_focus" ]]; then
-    local verify_ms
-    verify_ms="$(pool_call_uint256 "minStakeAmount()(uint256)")"
-    if [[ "$verify_ms" != "$post_seed_min_stake" ]]; then
-      echo "error: credit_focus setConfig wanted minStakeAmount=$post_seed_min_stake but on-chain read '$verify_ms'" >&2
-      echo "hint: COMMUNITY_POOL_POST_SEED_MIN_STAKE may disagree; check cast tx, POOL_OWNER_PK, POOL_EVM_ADDR=$POOL_EVM_ADDR" >&2
-      exit 1
-    fi
-    if [[ "$post_seed_min_stake" == "$COMMUNITY_POOL_UINT256_MAX" ]]; then
-      echo "credit_focus_verify: on-chain minStakeAmount=uint256 max (stake() will not consume credited ledger)"
-    elif [[ "$USER_SET_COMMUNITY_POOL_POST_SEED_MIN_STAKE" != "true" && "${CREDIT_FOCUS_MIN_STAKE_MODE:-computed}" != "max" ]]; then
-      echo "credit_focus_verify: on-chain minStakeAmount=$verify_ms — raise CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER if batched maturities auto-stake"
-    else
-      echo "credit_focus_verify: on-chain minStakeAmount=$verify_ms (COMMUNITY_POOL_POST_SEED_MIN_STAKE override)"
-    fi
-  fi
 }
 
-compute_expected_credit_from_staking_snapshot() {
-  local pending_json="$1"
-  local expected=0
-  local triples
-  triples="$(echo "$pending_json" | jq -r '.undelegations[]? | "\(.validator_address)|\(.completion_time)"' | sort -u)"
-  if [[ -z "$triples" ]]; then
-    echo "0"
-    return 0
-  fi
-  while IFS='|' read -r val completion; do
-    [[ -z "$val" || -z "$completion" ]] && continue
-    local ubd sum_for_triple completion_prefix
-    completion_prefix="${completion:0:19}"
-    ubd="$(evmd query staking unbonding-delegation "$POOL_DEL_ADDR" "$val" --node "$NODE_RPC" -o json 2>/dev/null || echo '{}')"
-    sum_for_triple="$(echo "$ubd" | jq -r --arg p "$completion_prefix" '[.entries[]? | select((.completion_time // "")[0:19] == $p) | (.balance // "0" | tonumber)] | add // 0')"
-    if [[ "$sum_for_triple" =~ ^[0-9]+$ ]]; then
-      expected=$((expected + sum_for_triple))
-    fi
-  done <<< "$triples"
-  echo "$expected"
-}
-
-# For watch credit: compare Tendermint latest_block_time to earliest pending undelegation completion (RFC3339).
-# Optional $3 = stakeablePrincipalLedger (decimal string) for clearer WAIT text when ledger already credited.
-credit_watch_maturity_countdown_line() {
-  local bt="$1" ec="$2"
-  local ledger="${3:-}"
-  if [[ -z "$bt" || -z "$ec" || "$bt" == "n/a" || "$ec" == "n/a" ]]; then
-    echo "credit_watch_maturity: (missing block_time or completion_time)"
-    return 0
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    BT_ISO="$bt" EC_ISO="$ec" LEDGER="${ledger:-}" python3 <<'PY'
-from datetime import datetime, timezone
-import os
-
-def parse_iso(s):
-    s = (s or "").strip()
-    if not s:
-        raise ValueError("empty timestamp")
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    return datetime.fromisoformat(s)
-
-try:
-    bt = parse_iso(os.environ.get("BT_ISO", ""))
-    ec = parse_iso(os.environ.get("EC_ISO", ""))
-    if bt.tzinfo is None:
-        bt = bt.replace(tzinfo=timezone.utc)
-    if ec.tzinfo is None:
-        ec = ec.replace(tzinfo=timezone.utc)
-    led = os.environ.get("LEDGER", "").strip()
-    liq = int(led) if led.isdigit() else 0
-    if bt >= ec:
-        print("maturity: READY (undelegation head can be credited to stakeablePrincipalLedger)")
-    else:
-        sec = (ec - bt).total_seconds()
-        if liq > 0:
-            print(f"maturity: WAIT ~{sec:.0f}s (ledger may already show earlier credits)")
-        else:
-            print(f"maturity: WAIT ~{sec:.0f}s (ledger often flat until then)")
-except Exception as e:
-    print(f"credit_watch_maturity: parse failed ({e})")
-PY
-    return 0
-  fi
-  echo "credit_watch_maturity: install python3 for wait estimate"
-}
-
-# First-line context for watch / watch credit when the chain is up but setup has not wired the pool yet.
+# First-line context for watch when the chain is up but setup has not wired the pool yet.
 log_watch_pool_delegator_setup_hint() {
   local mode_label="${1:-watch}"
   local node="${NODE_RPC:-tcp://127.0.0.1:26657}"
@@ -1505,7 +1536,7 @@ watch_rebalance_status() {
   status_url="$(tendermint_status_url)"
 
   while true; do
-    local h params del pr pu stakeable total_staked principal_assets reward_reserve caller_raw caller_lc module_lc automation_ready pending_red_json pending_und_json
+    local h params del pr stakeable total_staked principal_assets reward_reserve caller_raw caller_lc module_lc automation_ready pending_red_json
     h="$(curl -sS --max-time 2 "$status_url" | jq -r '.result.sync_info.latest_block_height // "n/a"')"
     if [[ -z "$h" || "$h" == "n/a" || "$h" == "$last_h" ]]; then
       sleep 1
@@ -1521,9 +1552,7 @@ watch_rebalance_status() {
       fi
     fi
     pending_red_json="$(evmd query poolrebalancer pending-redelegations --node "$node" -o json 2>/dev/null || echo '{"redelegations":[]}' )"
-    pending_und_json="$(evmd query poolrebalancer pending-undelegations --node "$node" -o json 2>/dev/null || echo '{"undelegations":[]}' )"
     pr="$(echo "$pending_red_json" | jq -r '.redelegations | length // 0')"
-    pu="$(echo "$pending_und_json" | jq -r '.undelegations | length // 0')"
     stakeable="n/a"
     total_staked="n/a"
     principal_assets="n/a"
@@ -1544,11 +1573,11 @@ watch_rebalance_status() {
     fi
 
     if [[ "$WATCH_COMPACT" == "true" ]]; then
-      echo "watch phase=$CURRENT_PHASE height=$h pending_red=$pr pending_und=$pu stakeable=$stakeable total_staked=$total_staked principal_assets=$principal_assets reward_reserve=$reward_reserve automation_ready=$automation_ready scenario=$SCENARIO"
+      echo "watch phase=$CURRENT_PHASE height=$h pending_red=$pr stakeable=$stakeable total_staked=$total_staked principal_assets=$principal_assets reward_reserve=$reward_reserve automation_ready=$automation_ready scenario=$SCENARIO"
     else
       echo "----- rebalance watch -----"
-      echo "phase=$CURRENT_PHASE height=$h pending_red=$pr pending_und=$pu stakeable=$stakeable total_staked=$total_staked principal_assets=$principal_assets reward_reserve=$reward_reserve automation_ready=$automation_ready"
-      echo "$params" | jq -r '.params | {pool_delegator_address,max_target_validators,rebalance_threshold_bp,max_ops_per_block,max_move_per_op,use_undelegate_fallback}'
+      echo "phase=$CURRENT_PHASE height=$h pending_red=$pr stakeable=$stakeable total_staked=$total_staked principal_assets=$principal_assets reward_reserve=$reward_reserve automation_ready=$automation_ready"
+      echo "$params" | jq -r '.params | {pool_delegator_address,max_target_validators,rebalance_threshold_bp,max_ops_per_block,max_move_per_op}'
 
       if [[ -n "$del" ]]; then
         local del_json
@@ -1558,7 +1587,7 @@ watch_rebalance_status() {
           local del_count
           del_count="$(echo "$del_json" | jq -r '.delegation_responses | length // 0')"
           if [[ "$del_count" =~ ^[0-9]+$ ]] && (( del_count > 0 )); then
-            if [[ "$pr" == "0" && "$pu" == "0" ]]; then
+            if [[ "$pr" == "0" ]]; then
               echo "pre_rebalance_initial_delegations:"
             else
               echo "initial_delegations_first_observed (pending already started):"
@@ -1575,172 +1604,6 @@ watch_rebalance_status() {
   done
 }
 
-watch_credit_contract_status() {
-  CURRENT_PHASE="watch_credit"
-  # visual separator for readability between heights
-  local CREDIT_WATCH_RULE="──────────────────────────────────────────────────────────────────────────────"
-  # Stale POOL_EVM_ADDR in the shell points cast at the wrong deployment (common minStakeAmount=1 symptom).
-  if [[ "${CREDIT_WATCH_USE_ENV_POOL_EVM:-}" != "true" ]]; then
-    POOL_EVM_ADDR=""
-    POOL_DEL_ADDR=""
-  fi
-  printf '%s\n' "$CREDIT_WATCH_RULE"
-  echo " watch credit  |  pool address from chain (CREDIT_WATCH_USE_ENV_POOL_EVM=true to pin env)"
-  printf '%s\n' "$CREDIT_WATCH_RULE"
-
-  local last_h="" baseline_done="false"
-  local base_s="" base_ts="" base_pa=""
-  local staking_expected_credit="" prev_pu=""
-  local prev_earliest_comp=""
-  local prev_stakeable=""
-  local credit_watch_diag_min1_done="false"
-  local credit_watch_pool_logged="false"
-  local staking_unbond_param=""
-  local status_url node
-  status_url="$(tendermint_status_url)"
-  node="${NODE_RPC:-tcp://127.0.0.1:26657}"
-
-  while true; do
-    local h params del pr pu stakeable total_staked principal_assets pending_und_json pending_red_json
-    local status_json bt_iso earliest_comp
-    status_json="$(curl -sS --max-time 2 "$status_url")"
-    h="$(echo "$status_json" | jq -r '.result.sync_info.latest_block_height // "n/a"')"
-    bt_iso="$(echo "$status_json" | jq -r '.result.sync_info.latest_block_time // "n/a"')"
-    if [[ -z "$h" || "$h" == "n/a" || "$h" == "$last_h" ]]; then
-      sleep 1
-      continue
-    fi
-    last_h="$h"
-
-    params="$(evmd query poolrebalancer params --node "$node" -o json 2>/dev/null || echo '{}')"
-    del="$(echo "$params" | jq -r '.params.pool_delegator_address // empty')"
-    if [[ -z "${POOL_EVM_ADDR:-}" && -n "$del" ]]; then
-      POOL_EVM_ADDR="$(resolve_evm_hex_from_bech32 "$del")"
-      if [[ -n "$POOL_EVM_ADDR" ]]; then
-        POOL_DEL_ADDR="$del"
-      fi
-    fi
-    if [[ "$credit_watch_pool_logged" != "true" && -n "${POOL_EVM_ADDR:-}" && -n "${POOL_DEL_ADDR:-}" ]]; then
-      credit_watch_pool_logged="true"
-      echo "pool EVM=$POOL_EVM_ADDR delegator=$POOL_DEL_ADDR rpc=$EVM_RPC"
-    fi
-
-    pending_red_json="$(evmd query poolrebalancer pending-redelegations --node "$node" -o json 2>/dev/null || echo '{"redelegations":[]}' )"
-    pending_und_json="$(evmd query poolrebalancer pending-undelegations --node "$node" -o json 2>/dev/null || echo '{"undelegations":[]}' )"
-    pr="$(echo "$pending_red_json" | jq -r '.redelegations | length // 0')"
-    pu="$(echo "$pending_und_json" | jq -r '.undelegations | length // 0')"
-    earliest_comp="$(echo "$pending_und_json" | jq -r '
-      [.undelegations[]? | .completion_time // empty]
-      | map(select(type == "string"))
-      | sort
-      | .[0] // "n/a"
-    ')"
-    if [[ -z "$staking_unbond_param" ]]; then
-      staking_unbond_param="$(evmd query staking params --node "$node" -o json 2>/dev/null | jq -r '.params.unbonding_time // .unbonding_time // "n/a"')"
-    fi
-
-    stakeable="n/a"
-    total_staked="n/a"
-    principal_assets="n/a"
-    local min_stake_amt="n/a"
-    if [[ -n "${POOL_EVM_ADDR:-}" ]]; then
-      stakeable="$(pool_call_uint256 "stakeablePrincipalLedger()(uint256)")"
-      total_staked="$(pool_call_uint256 "totalStaked()(uint256)")"
-      principal_assets="$(pool_call_uint256 "principalAssets()(uint256)")"
-      min_stake_amt="$(pool_call_uint256 "minStakeAmount()(uint256)")"
-    fi
-
-    if [[ "$stakeable" =~ ^[0-9]+$ ]]; then
-      if [[ -n "$prev_stakeable" && "$prev_stakeable" =~ ^[0-9]+$ ]] && (( stakeable != prev_stakeable )); then
-        local st_delta
-        st_delta=$(( stakeable - prev_stakeable ))
-        printf '%s\n' "$CREDIT_WATCH_RULE"
-        echo "*** stakeablePrincipalLedger changed height=$h: $prev_stakeable -> $stakeable (delta $st_delta) ***"
-        if (( st_delta > 0 )); then
-          echo "    (likely creditStakeableFromRebalance or deposit)"
-        elif (( st_delta < 0 )); then
-          echo "    (often stake())"
-        fi
-        printf '%s\n' "$CREDIT_WATCH_RULE"
-      fi
-      prev_stakeable="$stakeable"
-    fi
-
-    if [[ "$baseline_done" != "true" && "$stakeable" =~ ^[0-9]+$ && "$total_staked" =~ ^[0-9]+$ && "$principal_assets" =~ ^[0-9]+$ ]]; then
-      base_s="$stakeable"
-      base_ts="$total_staked"
-      base_pa="$principal_assets"
-      baseline_done="true"
-      printf '%s\n' "$CREDIT_WATCH_RULE"
-      echo " baseline captured height=$h stakeablePrincipalLedger=$base_s totalStaked=$base_ts principalAssets=$base_pa pending_red=$pr pending_und=$pu"
-      printf '%s\n' "$CREDIT_WATCH_RULE"
-    fi
-
-    if [[ -z "$prev_pu" ]]; then
-      prev_pu="$pu"
-    fi
-    if [[ "$pu" =~ ^[0-9]+$ && "$prev_pu" =~ ^[0-9]+$ ]]; then
-      if (( pu > 0 && prev_pu == 0 )); then
-        staking_expected_credit="$(compute_expected_credit_from_staking_snapshot "$pending_und_json")"
-        echo "expected_credit_wei=$staking_expected_credit (staking unbonding snapshot when pending_und turned on)"
-      fi
-      if (( pu == 0 && prev_pu > 0 )); then
-        local ds dts dpa
-        ds="n/a"
-        dts="n/a"
-        dpa="n/a"
-        if [[ "$baseline_done" == "true" && "$stakeable" =~ ^[0-9]+$ && "$total_staked" =~ ^[0-9]+$ && "$principal_assets" =~ ^[0-9]+$ ]]; then
-          ds=$(( stakeable - base_s ))
-          dts=$(( total_staked - base_ts ))
-          dpa=$(( principal_assets - base_pa ))
-        fi
-        echo "pending_und cleared height=$h stakeablePrincipalLedger=$stakeable totalStaked=$total_staked principalAssets=$principal_assets vs_baseline d_stakeable=$ds d_totalStaked=$dts d_principal=$dpa expected_credit_was=${staking_expected_credit:-n/a}"
-        staking_expected_credit=""
-      fi
-    fi
-    if [[ -n "${prev_earliest_comp:-}" && "$prev_earliest_comp" != "n/a" && "$earliest_comp" != "n/a" && "$earliest_comp" != "$prev_earliest_comp" ]]; then
-      echo "undelegation queue head advanced pending_und=$pu"
-    fi
-    prev_pu="$pu"
-    if [[ "$pu" =~ ^[0-9]+$ && "$pu" -gt 0 ]]; then
-      prev_earliest_comp="$earliest_comp"
-    else
-      prev_earliest_comp=""
-    fi
-
-    local ds2="n/a" dts2="n/a" dpa2="n/a"
-    if [[ "$baseline_done" == "true" && "$stakeable" =~ ^[0-9]+$ && "$total_staked" =~ ^[0-9]+$ && "$principal_assets" =~ ^[0-9]+$ ]]; then
-      ds2=$(( stakeable - base_s ))
-      dts2=$(( total_staked - base_ts ))
-      dpa2=$(( principal_assets - base_pa ))
-    fi
-    local und_compact
-    und_compact="$(echo "$pending_und_json" | jq -c '[.undelegations[]? | {v:.validator_address, amt:.balance.amount, den:.balance.denom}]' 2>/dev/null || echo '[]')"
-
-    printf '%s\n' "$CREDIT_WATCH_RULE"
-    echo " height $h"
-    echo " stakeablePrincipalLedger=$stakeable | totalStaked=$total_staked | principalAssets=$principal_assets | minStake=$min_stake_amt"
-    echo " pending_red=$pr | pending_und=$pu | unbonding_time=$staking_unbond_param"
-    if [[ "$baseline_done" == "true" && "$ds2" =~ ^-?[0-9]+$ ]]; then
-      echo " vs_baseline: delta_stakeable=$ds2  delta_totalStaked=$dts2  delta_principal=$dpa2"
-    fi
-    if [[ "$pu" =~ ^[0-9]+$ ]] && (( pu > 0 )); then
-      echo " undelegations: $und_compact"
-      [[ -n "$staking_expected_credit" && "$staking_expected_credit" != "0" ]] && echo " expected_credit_wei=$staking_expected_credit (compare to ledger jump after maturity)"
-      credit_watch_maturity_countdown_line "$bt_iso" "$earliest_comp" "$stakeable"
-      if [[ "$min_stake_amt" == "1" && "$credit_watch_diag_min1_done" != "true" ]]; then
-        credit_watch_diag_min1_done="true"
-        local exp_ms
-        exp_ms="$(compute_credit_focus_post_seed_min_stake)"
-        echo " diag: minStake=1 — wrong pool/config; credit_focus expects ~$exp_ms wei or uint256 max."
-      fi
-    fi
-    printf '%s\n' "$CREDIT_WATCH_RULE"
-    echo
-    sleep 1
-  done
-}
-
 setup_localnet() {
   CURRENT_PHASE="setup_localnet"
   SETUP_STARTED="true"
@@ -1749,7 +1612,7 @@ setup_localnet() {
 
   echo "==> Generating test genesis ($VALIDATOR_COUNT validators) at $BASEDIR"
   # multi_node_startup.sh is verbose during init; silence setup noise here.
-  (cd "$ROOT_DIR" && VALIDATOR_COUNT="$VALIDATOR_COUNT" GENERATE_GENESIS=true ./multi_node_startup.sh -y >/dev/null 2>&1)
+  (cd "$ROOT_DIR" && VALIDATOR_COUNT="$VALIDATOR_COUNT" DEV_ACCOUNT_COUNT="${DEV_ACCOUNT_COUNT:-100}" GENERATE_GENESIS=true ./multi_node_startup.sh -y >/dev/null 2>&1)
   resolve_pool_runtime_keys
 
 }
@@ -1757,7 +1620,7 @@ setup_localnet() {
 configure_genesis_params() {
   CURRENT_PHASE="configure_genesis"
   echo "==> Pool delegator mode = $POOL_DELEGATOR_MODE"
-  echo "==> SCENARIO=$SCENARIO VALIDATOR_COUNT=$VALIDATOR_COUNT DEMO_PROFILE=$DEMO_PROFILE threshold_bp=$POOLREBALANCER_THRESHOLD_BP max_target_validators=$POOLREBALANCER_MAX_TARGET_VALIDATORS max_ops_per_block=$POOLREBALANCER_MAX_OPS_PER_BLOCK max_move_per_op=$POOLREBALANCER_MAX_MOVE_PER_OP fallback=$POOLREBALANCER_USE_UNDELEGATE_FALLBACK"
+  echo "==> SCENARIO=$SCENARIO VALIDATOR_COUNT=$VALIDATOR_COUNT DEMO_PROFILE=$DEMO_PROFILE threshold_bp=$POOLREBALANCER_THRESHOLD_BP max_target_validators=$POOLREBALANCER_MAX_TARGET_VALIDATORS max_ops_per_block=$POOLREBALANCER_MAX_OPS_PER_BLOCK max_move_per_op=$POOLREBALANCER_MAX_MOVE_PER_OP"
   echo "==> Patching genesis staking params (unbonding_time + max_entries)"
   patch_genesis_staking_params
   echo "==> Patching genesis poolrebalancer params (pool_delegator_address configured at runtime)"
@@ -1865,29 +1728,6 @@ run_sanity_checks() {
     echo "scenario_check expansion: bonded=$bonded_count initial_seeded=${#EXPANSION_INITIAL_DELEGATED[@]} extra_targets=${#EXPANSION_MISSING_DSTS[@]}"
   fi
 
-  if [[ "$SCENARIO" == "credit_focus" && "$POOL_DELEGATOR_MODE" == "contract" ]]; then
-    local ms_hex evm_hex
-    evm_hex="${POOL_EVM_ADDR:-}"
-    if [[ -z "$evm_hex" ]]; then
-      evm_hex="$(resolve_evm_hex_from_bech32 "$POOL_DEL_ADDR")"
-    fi
-    if [[ -n "$evm_hex" ]]; then
-      POOL_EVM_ADDR="$evm_hex"
-      ms_hex="$(pool_call_uint256 "minStakeAmount()(uint256)")"
-      echo "credit_focus_observability: CommunityPool minStakeAmount=$ms_hex"
-      if [[ "$ms_hex" == "1" || "$ms_hex" == "0" ]]; then
-        echo "error: credit_focus expects minStakeAmount > 1 after final setConfig (got $ms_hex). This matches intermediate seed-only config — unset COMMUNITY_POOL_POST_SEED_MIN_STAKE, stop nodes, re-run:  $0 --scenario credit_focus --nodes \$N" >&2
-        exit 1
-      fi
-      if [[ "$ms_hex" == "$COMMUNITY_POOL_UINT256_MAX" ]]; then
-        echo "  => min stake is uint256 max: EndBlock stake() should no-op; watch credit should show stakeablePrincipalLedger jump after unbonding matures."
-      elif [[ "$ms_hex" =~ ^[0-9]+$ ]] && (( ${#ms_hex} >= 70 )); then
-        echo "  => min stake is huge: EndBlock stake() should no-op."
-      elif [[ "$ms_hex" =~ ^[0-9]+$ ]]; then
-        echo "  => credit_focus minStake=$ms_hex: stake() only when stakeablePrincipalLedger >= minStake; raise CREDIT_FOCUS_MIN_STAKE_MOVE_MULTIPLIER if credits auto-restake."
-      fi
-    fi
-  fi
 }
 
 update_expansion_observed_dsts() {
@@ -1933,57 +1773,40 @@ observe_and_monitor() {
   # - wait until any pending operations appear
   # - validate generic invariants
   for i in $(seq 1 "$POLL_SAMPLES"); do
-    local height pending pendingUndel
+    local height pending
     height="$(curl -sS --max-time 2 "$(tendermint_status_url)" | jq -r '.result.sync_info.latest_block_height')"
     local j
     j="$(evmd query poolrebalancer pending-redelegations --node "$NODE_RPC" -o json)"
     update_expansion_observed_dsts "$j"
     pending="$(echo "$j" | jq -r '.redelegations | length')"
-    pendingUndel="$(evmd query poolrebalancer pending-undelegations --node "$NODE_RPC" -o json | jq -r '.undelegations | length')"
     if [[ "$WATCH_COMPACT" == "true" ]]; then
-      echo "sample=$i phase=$CURRENT_PHASE height=$height pending_red=$pending pending_und=$pendingUndel scenario=$SCENARIO"
+      echo "sample=$i phase=$CURRENT_PHASE height=$height pending_red=$pending scenario=$SCENARIO"
     else
-      echo "sample=$i phase=$CURRENT_PHASE height=$height pending_red=$pending pending_und=$pendingUndel"
+      echo "sample=$i phase=$CURRENT_PHASE height=$height pending_red=$pending"
     fi
     if [[ "$SCENARIO" == "expansion" ]]; then
       local seen expected
       seen="$(expansion_observed_count)"
       expected="${#EXPANSION_MISSING_DSTS[@]}"
       echo "expansion_progress: observed_new_destinations=$seen/$expected"
-    elif [[ "$SCENARIO" == "fallback" ]]; then
-      if (( pending > 0 )); then
-        FALLBACK_SEEN_REDELEGATION="true"
-      fi
-      echo "fallback_progress: seen_redelegation=$FALLBACK_SEEN_REDELEGATION undelegations=$pendingUndel deadline_sample=$FALLBACK_UND_DEADLINE_SAMPLES"
-    elif [[ "$SCENARIO" == "credit_focus" ]]; then
-      if (( pending > 0 )); then
-        FALLBACK_SEEN_REDELEGATION="true"
-      fi
-      echo "credit_focus: pending_red=$pending pending_und=$pendingUndel unbonding=$STAKING_UNBONDING_TIME"
     fi
 
-    if (( pending > 0 || pendingUndel > 0 )); then
-      if (( pending > 0 )); then
-        check_pending_invariants "$j" "$POOLREBALANCER_MAX_MOVE_PER_OP" "$POOLREBALANCER_MAX_OPS_PER_BLOCK"
-      fi
+    if (( pending > 0 )); then
+      check_pending_invariants "$j" "$POOLREBALANCER_MAX_MOVE_PER_OP" "$POOLREBALANCER_MAX_OPS_PER_BLOCK"
       echo "info: pending operations observed; continuing monitor"
       if [[ "$KEEP_RUNNING" != "true" ]]; then
         exit 0
       fi
       CURRENT_PHASE="steady_monitor"
       echo "==> KEEP_RUNNING=true, continuing in monitor mode (Ctrl+C to stop)"
-      if [[ "$SCENARIO" == "credit_focus" ]]; then
-        echo "hint: other shell — SCENARIO=credit_focus $0 watch credit"
-      fi
       while true; do
-        local monitorHeight monitorRed monitorUnd
+        local monitorHeight monitorRed
         monitorHeight="$(curl -sS --max-time 2 "$(tendermint_status_url)" | jq -r '.result.sync_info.latest_block_height')"
         monitorRed="$(evmd query poolrebalancer pending-redelegations --node "$NODE_RPC" -o json | jq -r '.redelegations | length')"
-        monitorUnd="$(evmd query poolrebalancer pending-undelegations --node "$NODE_RPC" -o json | jq -r '.undelegations | length')"
         if [[ "$WATCH_COMPACT" == "true" ]]; then
-          echo "monitor phase=$CURRENT_PHASE height=$monitorHeight pending_red=$monitorRed pending_und=$monitorUnd scenario=$SCENARIO"
+          echo "monitor phase=$CURRENT_PHASE height=$monitorHeight pending_red=$monitorRed scenario=$SCENARIO"
         else
-          echo "monitor phase=$CURRENT_PHASE height=$monitorHeight pending_red=$monitorRed pending_und=$monitorUnd"
+          echo "monitor phase=$CURRENT_PHASE height=$monitorHeight pending_red=$monitorRed"
         fi
         sleep "$POLL_SLEEP_SECS"
       done
@@ -2016,29 +1839,6 @@ apply_scenario_defaults() {
       if [[ "$USER_SET_MAX_OPS_PER_BLOCK" != "true" ]]; then POOLREBALANCER_MAX_OPS_PER_BLOCK=2; fi
       if [[ "$USER_SET_MAX_MOVE_PER_OP" != "true" ]]; then POOLREBALANCER_MAX_MOVE_PER_OP=100000000000000000000; fi
       ;;
-    fallback)
-      if [[ -z "$VALIDATOR_COUNT" ]]; then VALIDATOR_COUNT=3; fi
-      if [[ "$USER_SET_USE_UNDELEGATE_FALLBACK" != "true" ]]; then POOLREBALANCER_USE_UNDELEGATE_FALLBACK=true; fi
-      # Small cap + single-op profile makes fallback behavior easy to observe.
-      if [[ "$USER_SET_MAX_OPS_PER_BLOCK" != "true" ]]; then POOLREBALANCER_MAX_OPS_PER_BLOCK=1; fi
-      if [[ "$USER_SET_MAX_MOVE_PER_OP" != "true" ]]; then POOLREBALANCER_MAX_MOVE_PER_OP=1000000000000000000; fi
-      # Tight staking entry limit blocks repeated redelegations quickly and
-      # makes fallback undelegations appear sooner in local runs.
-      if [[ "$USER_SET_STAKING_MAX_ENTRIES" != "true" ]]; then STAKING_MAX_ENTRIES=1; fi
-      ;;
-    credit_focus)
-      # Undelegation-heavy profile: fallback on, tiny staking entry cap, short unbonding, small per-op moves
-      # so redelegation slots fill fast and most work is undelegate → mature → creditStakeableFromRebalance.
-      if [[ -z "$VALIDATOR_COUNT" ]]; then VALIDATOR_COUNT=3; fi
-      if [[ "$USER_SET_USE_UNDELEGATE_FALLBACK" != "true" ]]; then POOLREBALANCER_USE_UNDELEGATE_FALLBACK=true; fi
-      if [[ "$USER_SET_STAKING_MAX_ENTRIES" != "true" ]]; then STAKING_MAX_ENTRIES=1; fi
-      if [[ "$USER_SET_STAKING_UNBONDING_TIME" != "true" ]]; then STAKING_UNBONDING_TIME=15s; fi
-      if [[ "$USER_SET_THRESHOLD_BP" != "true" ]]; then POOLREBALANCER_THRESHOLD_BP=0; fi
-      if [[ "$USER_SET_MAX_OPS_PER_BLOCK" != "true" ]]; then POOLREBALANCER_MAX_OPS_PER_BLOCK=1; fi
-      if [[ "$USER_SET_MAX_MOVE_PER_OP" != "true" ]]; then POOLREBALANCER_MAX_MOVE_PER_OP=500000000000000000; fi
-      if [[ "$USER_SET_POLL_SAMPLES" != "true" ]]; then POLL_SAMPLES=90; fi
-      if [[ "$USER_SET_POLL_SLEEP_SECS" != "true" ]]; then POLL_SLEEP_SECS=2; fi
-      ;;
     expansion)
       if [[ -z "$VALIDATOR_COUNT" ]]; then VALIDATOR_COUNT=5; fi
       if [[ "$USER_SET_MAX_TARGET_VALIDATORS" != "true" ]]; then POOLREBALANCER_MAX_TARGET_VALIDATORS=5; fi
@@ -2056,13 +1856,6 @@ apply_scenario_defaults() {
       if [[ -z "$VALIDATOR_COUNT" ]]; then VALIDATOR_COUNT=3; fi
       if [[ "$USER_SET_MAX_TARGET_VALIDATORS" != "true" ]]; then POOLREBALANCER_MAX_TARGET_VALIDATORS=5; fi
       ;;
-    fallback_path_3val)
-      SCENARIO="fallback"
-      if [[ -z "$VALIDATOR_COUNT" ]]; then VALIDATOR_COUNT=3; fi
-      if [[ "$USER_SET_USE_UNDELEGATE_FALLBACK" != "true" ]]; then POOLREBALANCER_USE_UNDELEGATE_FALLBACK=true; fi
-      if [[ "$USER_SET_MAX_OPS_PER_BLOCK" != "true" ]]; then POOLREBALANCER_MAX_OPS_PER_BLOCK=1; fi
-      if [[ "$USER_SET_MAX_MOVE_PER_OP" != "true" ]]; then POOLREBALANCER_MAX_MOVE_PER_OP=1000000000000000000; fi
-      ;;
     target_set_expansion_5val)
       SCENARIO="expansion"
       if [[ -z "$VALIDATOR_COUNT" ]]; then VALIDATOR_COUNT=5; fi
@@ -2070,7 +1863,7 @@ apply_scenario_defaults() {
       ;;
     *)
       echo "invalid SCENARIO: $SCENARIO" >&2
-      echo "expected: happy_path|caps|threshold_boundary|fallback|expansion|credit_focus" >&2
+      echo "expected: happy_path|caps|threshold_boundary|expansion" >&2
       exit 1
       ;;
   esac
@@ -2089,7 +1882,7 @@ main() {
     require_bin jq
     require_bin curl
     require_bin evmd
-    # Match main() tuning so compute_credit_focus_post_seed_min_stake / hints align with seeded chains.
+    # Match main() tuning so watch output aligns with seeded chains.
     apply_scenario_defaults
     case "${DEMO_PROFILE:-medium}" in
       slow)
@@ -2106,18 +1899,8 @@ main() {
         exit 1
         ;;
     esac
-    local watch_mode_label="watch"
-    if [[ "$WATCH_CREDIT_MODE" == "true" ]]; then
-      watch_mode_label="watch credit"
-    fi
-    log_watch_pool_delegator_setup_hint "$watch_mode_label"
-    if [[ "$WATCH_CREDIT_MODE" == "true" ]]; then
-      require_bin cast
-      ensure_evm_rpc_ready
-      watch_credit_contract_status
-    else
-      watch_rebalance_status
-    fi
+    log_watch_pool_delegator_setup_hint "watch"
+    watch_rebalance_status
     exit 0
   fi
   if [[ "$PARSED_SUBCOMMAND" == "help" ]]; then
@@ -2130,7 +1913,25 @@ main() {
     require_bin curl
     require_bin evmd
     require_bin cast
+    apply_scenario_defaults
+    if [[ ! "$VALIDATOR_COUNT" =~ ^[0-9]+$ ]] || (( VALIDATOR_COUNT < 1 )); then
+      echo "invalid --nodes/VALIDATOR_COUNT: $VALIDATOR_COUNT (expected positive integer)" >&2
+      exit 1
+    fi
     run_user_flow_multikey_subcommand
+    exit 0
+  fi
+  if [[ "$PARSED_SUBCOMMAND" == "community_pool_edge_cases" ]]; then
+    require_bin jq
+    require_bin curl
+    require_bin evmd
+    require_bin cast
+    apply_scenario_defaults
+    if [[ ! "$VALIDATOR_COUNT" =~ ^[0-9]+$ ]] || (( VALIDATOR_COUNT < 1 )); then
+      echo "invalid --nodes/VALIDATOR_COUNT: $VALIDATOR_COUNT (expected positive integer)" >&2
+      exit 1
+    fi
+    run_community_pool_edge_cases_subcommand
     exit 0
   fi
 
