@@ -13,4 +13,3 @@ func TestCommunityPoolPrecompileIntegrationTestSuite(t *testing.T) {
 	create := testapp.ToEvmAppCreator[evm.Erc20IntegrationApp](integration.CreateEvmd, "evm.Erc20IntegrationApp")
 	communitypooltests.TestCommunityPoolIntegrationSuite(t, create)
 }
-

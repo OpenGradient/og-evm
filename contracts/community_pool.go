@@ -9,4 +9,3 @@ import (
 func LoadCommunityPool() (evmtypes.CompiledContract, error) {
 	return contractutils.LoadContractFromJSONFile("solidity/pool/CommunityPool.json")
 }
-

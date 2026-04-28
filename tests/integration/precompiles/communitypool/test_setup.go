@@ -83,4 +83,3 @@ func (s *IntegrationTestSuite) SetupTest() {
 	s.bondTokenPC = bondTokenPC
 	s.communityPoolContract = poolContract
 }
-

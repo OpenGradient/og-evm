@@ -22,40 +22,40 @@ This document captures assumptions that the `communitypool` integration suite de
 ## Behavioral assumptions under test
 
 - Deposit/withdraw accounting uses floor rounding and must never over-mint shares.
-- Dust deposits that mint zero units must revert and preserve unit state.
 - Owner-gated methods (`setConfig`, `syncTotalStaked`, `transferOwnership`) enforce access control.
 - `stake()` and `harvest()` are restricted to `owner` or configured `automationCaller`.
-- `creditStakeableFromRebalance` is restricted to `owner` or `automationCaller` (same as `stake` / `harvest`). The poolrebalancer module uses `CallEVM` from the module EVM account, which must therefore be allowed to call it (typically `automationCaller` is set to that address).
-- `reconcileStakedBuckets` is restricted to `automationCaller` only (not `owner`). On-chain bucket repair from staking truth is expected to use that caller (again, usually the module EVM address).
-- `principalAssets` is `stakeablePrincipalLedger + totalStaked + pendingRebalanceUnbondReserve`; `pricePerUnit` and deposit minting use that total.
-- User `withdraw` sizes `amountOut` from **`totalStaked` only** (proportional to units burned). It does **not** reduce `pendingRebalanceUnbondReserve`; that bucket tracks module rebalance unbond-in-flight until credited or reconciled.
+- `reconcileTotalStaked` is restricted to `automationCaller` only (not `owner`).
+- `syncTotalStaked` remains owner-only break-glass for bonded accounting sync.
+- `principalAssets` is `stakeablePrincipalLedger + totalStaked`; `pricePerUnit` and deposit minting use that total.
+- User `withdraw` sizes `amountOut` from **`totalStaked` only** (proportional to units burned).
+- Conservative pre-audit policy: any `withdraw` requires all withdraw-relevant principal to be bonded.
+  If `stakeablePrincipalLedger > 0`, withdraw reverts.
 - Full-exit safety rule: `withdraw(userUnits == totalUnits)` reverts with
-  `FullExitLeavesNonStakedPrincipal(uint256,uint256)` when either
-  `stakeablePrincipalLedger > 0` or `pendingRebalanceUnbondReserve > 0`.
+  `FullExitLeavesNonStakedPrincipal(uint256)` when `stakeablePrincipalLedger > 0`.
+- Partial withdraw under non-bonded principal reverts with
+  `WithdrawRequiresAllPrincipalBonded(uint256)`.
 - `stake()` delegates through `staking.delegateToBondedValidators(address(this), liquid, maxValidators)`.
 - The staking precompile path is atomic at transaction scope: if any internal per-validator delegate fails, no partial delegation state persists.
 - Validator selection policy for `stake()` is the first `maxValidators` bonded validators in staking precompile query order.
 - Poolrebalancer target selection is independently the staking keeper bonded-by-power top-`max_target_validators` set. Exact ordering equivalence is not required; rebalance is the intended drift-correction path.
 - Delegation split policy is deterministic: `amount / n` base per validator and `amount % n` remainder distributed as `+1` to the first remainder validators.
-- `syncTotalStaked` is accounting-only and must not create staking side effects. It updates bonded `totalStaked` only; it does not set `pendingRebalanceUnbondReserve` (full bucket sync is `reconcileStakedBuckets`).
+- `syncTotalStaked` is accounting-only and must not create staking side effects. It updates bonded `totalStaked` only.
+- Withdraw maturity lifecycle is covered end-to-end: withdraw request creation, maturity advance, `claimWithdraw` payout, request claimed flag, and reserve invariants.
+- Integration asserts `claimWithdraw` return values and state transitions; exact ERC20 wallet balance-delta equality is validated in Forge tests where token flows are fully deterministic.
 
-## Poolrebalancer stub + matured-credit assumptions
+## Out-of-scope / covered elsewhere
 
-Some specs construct a `poolrebalancerkeeper.Keeper` with a stub `EVMKeeper` and call `poolrebalancer.BeginBlocker` / `EndBlocker` directly:
+- Dust deposit (`ZeroMintedUnits`) and specific `FullExitLeavesNonStakedPrincipal` edge cases are covered in Forge tests under `contracts/test/pool/`.
+- Detailed staking-precompile internal atomicity and validator ordering semantics are covered in precompile and module-level tests; this integration suite validates contract behavior against chain wiring.
 
-- **Matured undelegation credits** (`creditStakeableFromRebalance`) rely on a **transient-store snapshot** written in **`BeginBlocker`** (`PrepareMaturedPoolUndelegationCredits`). Calling **`EndBlocker` alone** in a context where matured module-queue batches exist but **`BeginBlocker` did not run that block** can fail (missing snapshot). Full `network.NextBlock()` runs the app’s ordered Begin/EndBlock for all modules, which is why some scenarios advance blocks instead of only invoking `EndBlocker`.
-- For ordering details and operator behavior on a real node, see `docs/poolrebalancer/community_pool_runbook.md`.
+## Poolrebalancer assumptions
 
-## Where keeper and integration tests cover poolrebalancer safety
-
-- **Failed credit before queue cleanup** (EVM execution revert or `CallEVM` transport error): `CompletePendingUndelegations` must retain module queue rows, validator index keys, and the BeginBlock transient credit sum; `CommunityPoolReconcileDirty` is set only after a **successful** credit. Exercised in [`x/poolrebalancer/keeper/undelegation_test.go`](../../../../x/poolrebalancer/keeper/undelegation_test.go) (`TestCompletePendingUndelegations_RetainsQueueOnCreditVMFailure`, `TestCompletePendingUndelegations_RetainsQueueOnCreditCallEVMError`, `TestCompletePendingUndelegations_RetryAfterCreditVMFailureSucceeds`).
-- **Unset `PoolDelegatorAddress`** with matured queue rows is now treated as invalid state: `PrepareMaturedPoolUndelegationCredits` errors when matured module-queue batches exist while `pool_delegator_address` is empty. This preserves strict accounting and prevents silent queue cleanup without credit. Exercised by `TestPrepareMaturedPoolUndelegationCredits_ErrWhenPoolDelegatorEmptyWithMaturedRows` in `x/poolrebalancer/keeper/undelegation_test.go`.
-- **Integration cross-check**: when `EndBlocker` fails on matured batches **before** any EVM credit (missing transient snapshot), the spec *fails poolrebalancer EndBlock alone on matured undelegations then clears via full block progression* in [`test_integration.go`](./test_integration.go) asserts unchanged CommunityPool views (`pendingRebalanceUnbondReserve`, `stakeablePrincipalLedger`, `totalStaked`, `principalAssets`).
+- Poolrebalancer EndBlock automation continues to run `harvest`/`stake` and bonded-only reconcile via `reconcileTotalStaked`.
 
 ## Stability notes
 
 - Integration suites built on `network.NewUnitTestNetwork` (CommunityPool Ginkgo, poolrebalancer stub-EVM, etc.) need **`-tags=test`** (singular, not `tests`) so the `test`-tag build of `x/vm/types` provides `EVMConfigurator.ResetTestConfig`.
-- Two UBD entries sharing `CompletionTime` but differing `CreationHeight`: logic is covered in `x/poolrebalancer/keeper` unit tests. Real-staking coverage lives in **`tests/integration/x/poolrebalancer`** (`TestUndelegationMultiEntry_SameCompletionDifferentCreationHeight`), using short genesis `UnbondingTime` and `NextBlockAfter(0)` on the second leg so both entries share the same completion instant.
+- Redelegation queue maturity and cleanup semantics are covered by `x/poolrebalancer/keeper` unit tests and the poolrebalancer integration suite.
 
 - If staking precompile validator ordering or bonded-set query semantics change, tests should still hold if rebalance converges stake into the keeper target set; update expectations only if the explicit policy above changes.
 - If default gas behavior changes in factory or precompiles, tx helper gas defaults may need adjustment.

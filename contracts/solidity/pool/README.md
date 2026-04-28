@@ -4,14 +4,14 @@ The `CommunityPool` contract is a pooled staking vault for a single bond token.
 Users deposit tokens and receive internal ownership units, while the contract
 stakes principal through staking precompiles and handles rewards and async withdrawals.
 
-For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
-`reconcileStakedBuckets` behavior, see
+For **poolrebalancer module** configuration, ABCI ordering, and
+`reconcileTotalStaked` behavior, see
 [`docs/poolrebalancer/community_pool_runbook.md`](../../../docs/poolrebalancer/community_pool_runbook.md).
 
 ## Goals
 
 - Keep pool ownership simple (`unitsOf[user] / totalUnits`).
-- Separate principal accounting (liquid, bonded, module rebalance unbond-in-flight, withdraw reserves) from reward accounting.
+- Separate principal accounting (liquid, bonded, withdraw reserves) from reward accounting.
 - Support async withdrawals for staked principal (request now, claim at maturity).
 - Keep heavy validator selection logic in precompiles.
 
@@ -20,12 +20,11 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 - **Bond token**: `bondToken` (ERC20 representation of chain bond denom).
 - **Ownership units**: `unitsOf`, `totalUnits`.
 - **Principal accounting**:
-  - `stakeablePrincipalLedger`: liquid principal available for `stake` (and increased by `creditStakeableFromRebalance`).
-  - `totalStaked`: accounting view of **bonded** delegated principal (excludes module rebalance unbond-in-flight).
-  - `pendingRebalanceUnbondReserve`: principal that **left bonded** via **module-tracked** rebalance undelegations and is still unbonding on-chain until maturity credit; drives `principalAssets()` together with ledger + bonded.
-  - `pendingWithdrawReserve` / `maturedWithdrawReserve`: async **user** withdraw pipeline.
+    - `stakeablePrincipalLedger`: liquid principal available for `stake`.
+    - `totalStaked`: accounting view of **bonded** delegated principal.
+    - `pendingWithdrawReserve` / `maturedWithdrawReserve`: async **user** withdraw pipeline.
 - **Rewards accounting**:
-  - `rewardReserve`, `accRewardPerUnit`, `rewardDebt[user]`: index-based reward accrual.
+    - `rewardReserve`, `accRewardPerUnit`, `rewardDebt[user]`: index-based reward accrual.
 
 ## Lifecycle
 
@@ -34,12 +33,12 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 `deposit(amount)`:
 
 - Reverts on `amount == 0`.
-- Claims caller pending rewards first (fair index accounting).
+- Claims caller pending rewards against the current reward index.
 - Mints units:
-  - first deposit: `mintedUnits = amount`
-  - otherwise: `mintedUnits = floor(amount * totalUnits / principalAssets())`
+    - first deposit: `mintedUnits = amount`
+    - otherwise: `mintedUnits = floor(amount * totalUnits / principalAssets())`
 - Rejects deposit when `totalUnits == 0` but `principalAssets() > 0` (`ZeroUnitsWithPrincipalAssets`), preventing orphan-accounted principal from being captured by a new first depositor.
-- `principalAssets()` = `stakeablePrincipalLedger + totalStaked + pendingRebalanceUnbondReserve`.
+- `principalAssets()` = `stakeablePrincipalLedger + totalStaked`.
 - Reverts with `ZeroMintedUnits()` if floor rounding gives `0`.
 - Transfers tokens in and increases `stakeablePrincipalLedger`.
 
@@ -51,7 +50,7 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 - No-op when `stakeablePrincipalLedger < minStakeAmount`.
 - Calls staking precompile `delegateToBondedValidators(address(this), liquid, maxValidators)`.
 - Validator choice and remainder ordering come from the staking precompile's bonded-validator query order; the poolrebalancer separately targets bonded-by-power order and corrects drift after staking.
-- Moves delegated amount from `stakeablePrincipalLedger` to `totalStaked` (does **not** change `pendingRebalanceUnbondReserve`).
+- Moves delegated amount from `stakeablePrincipalLedger` to `totalStaked`.
 
 ### 3) Harvest and claim rewards
 
@@ -70,58 +69,47 @@ For **poolrebalancer module** configuration, ABCI ordering, maturity credit, and
 
 `withdraw(userUnits)`:
 
-- Claims caller pending rewards first.
-- `amountOut = userUnits * totalStaked / totalUnits` (**bonded** principal only; **not** `pendingRebalanceUnbondReserve`).
-- Full-exit safety guard: burning all units is rejected when non-staked principal remains
-  in `stakeablePrincipalLedger` or `pendingRebalanceUnbondReserve`
-  (`FullExitLeavesNonStakedPrincipal(uint256,uint256)`), preventing orphaned value.
+- Claims caller pending rewards against the current reward index before unit burn.
+- `amountOut = userUnits * totalStaked / totalUnits` (**bonded principal only**).
+- Conservative pre-audit guard: withdraw is allowed only when all withdraw-relevant principal is bonded.
+    - Full exit rejects with `FullExitLeavesNonStakedPrincipal(uint256)` when non-staked principal remains.
+    - Partial withdraw rejects with `WithdrawRequiresAllPrincipalBonded(uint256)` when non-staked principal remains.
 - Calls `undelegateFromBondedValidators`; burns units; decreases `totalStaked`; increases `pendingWithdrawReserve`.
 
 `claimWithdraw(requestId)`:
 
 - Moves reserve to matured, then pays out after maturity.
 
-### 5) Module maturity credit
+### 5) Total reconcile (automation only)
 
-`creditStakeableFromRebalance(amount)`:
-
-- Callable only by `owner` or `automationCaller`.
-- After rebalance unbonds mature and tokens are liquid on the pool, moves `amount` from `pendingRebalanceUnbondReserve` into `stakeablePrincipalLedger`.
-- Requires `amount <= pendingRebalanceUnbondReserve`; keeps `principalAssets()` unchanged.
-- Used by **poolrebalancer** `EndBlock` with `automationCaller =` module EVM address (see runbook).
-
-### 6) Bucket reconciliation (automation only)
-
-`reconcileStakedBuckets(newTotalStaked, newPendingRebalanceUnbondReserve)`:
+`reconcileTotalStaked(newTotalStaked)`:
 
 - Callable only by **`automationCaller`** (not `owner`).
-- Atomically sets bonded and module pending buckets to match off-chain / keeper-computed staking truth.
-- Does **not** run `_assertReserveInvariant()` (does not move tokens); incorrect values can break `creditStakeableFromRebalance` and **halt** the chain if maturity credit exceeds pending.
-- Owner may use `syncTotalStaked` for **bonded-only** adjustments, or temporarily `setAutomationCaller` for a full two-bucket repair.
+- Sets bonded accounting to match keeper-computed staking truth.
+- Owner may use `syncTotalStaked` for owner-driven bonded-only adjustments.
 
 ## Key view methods
 
 - `liquidBalance()`: ERC20 balance of the contract.
 - `principalLiquid()`: `stakeablePrincipalLedger`.
-- `principalAssets()`: `stakeablePrincipalLedger + totalStaked + pendingRebalanceUnbondReserve`.
+- `principalAssets()`: `stakeablePrincipalLedger + totalStaked`.
 - `pricePerUnit()`: `principalAssets * 1e18 / totalUnits` (or `1e18` if `totalUnits == 0`).
 - `totalWithdrawCommitments()`: `pendingWithdrawReserve + maturedWithdrawReserve`.
-- `pendingRebalanceUnbondReserve()`: module rebalance unbond-in-flight (principal accounting).
 
 ## Invariants enforced on state changes
 
-`_assertReserveInvariant()` (on deposit, stake, credit, withdraw paths, etc.):
+`_assertReserveInvariant()` (on deposit, stake, reward-claim, withdraw paths, etc.):
 
 - `rewardReserve <= liquidBalance`
 - `rewardReserve + maturedWithdrawReserve <= liquidBalance`
 - `stakeablePrincipalLedger + rewardReserve + maturedWithdrawReserve <= liquidBalance`
 
-`pendingWithdrawReserve` is excluded from liquid checks (principal requested for unbonding, not yet claim-ready). `reconcileStakedBuckets` does **not** invoke this invariant (no balance movement).
+`pendingWithdrawReserve` is excluded from liquid checks (principal requested for unbonding, not yet claim-ready). `reconcileTotalStaked` does **not** invoke this invariant (no balance movement).
 
 ## Admin operations
 
 - `setConfig(...)`, `setAutomationCaller(...)`, `syncTotalStaked(...)`, `transferOwnership(...)`: **`onlyOwner`**.
-- `setAutomationCaller`: configures the address that may call `reconcileStakedBuckets` and (with owner) `stake` / `harvest` / `creditStakeableFromRebalance`. In production this should be the **poolrebalancer module EVM address** (see runbook).
+- `setAutomationCaller`: configures the address that may call `reconcileTotalStaked` and (with owner) `stake` / `harvest`. In production this should be the **poolrebalancer module EVM address** (see runbook).
 
 ## Poolrebalancer EndBlock automation
 
@@ -136,28 +124,25 @@ The module calls the pool contract with **`msg.sender =` module EVM address** (s
 
 After **staking** has finished matured unbonding payouts for the block:
 
-1. **Strict**: complete pending redelegations and **complete pending undelegations** (may call `creditStakeableFromRebalance`, then remove module queue entries).
-2. **Best-effort**: **`reconcileStakedBuckets`** (if dirty or sweep block), then **`harvest`**, then **`stake`**, then rebalance processing (and optional second reconcile in test builds).
+1. **Strict**: complete pending redelegations.
+2. **Best-effort**: **`reconcileTotalStaked`**, then **`harvest`**, then **`stake`**, then rebalance processing, then a post-rebalance **`reconcileTotalStaked`** pass on successful rebalance.
 
-See the runbook for halting vs best-effort behavior and **liveness** requirements on `pendingRebalanceUnbondReserve`.
+See the runbook for halting vs best-effort behavior.
 
 ### ACL summary
 
-| Function | Who may call |
-|----------|----------------|
-| `reconcileStakedBuckets` | **`automationCaller` only** |
-| `stake`, `harvest`, `creditStakeableFromRebalance` | `owner` or `automationCaller` |
-| `syncTotalStaked` | `owner` |
+- `reconcileTotalStaked`: **`automationCaller` only**.
+- `stake`, `harvest`: `owner` or `automationCaller`.
+- `syncTotalStaked`: `owner`.
 
 ### Failure symptoms
 
-- `Unauthorized()` on `stake` / `harvest` / `creditStakeableFromRebalance`: `automationCaller` mismatch or wrong sender.
-- `Unauthorized()` on `reconcileStakedBuckets`: **owner** or any address other than `automationCaller` (unless automation was retargeted).
+- `Unauthorized()` on `stake` / `harvest`: `automationCaller` mismatch or wrong sender.
+- `Unauthorized()` on `reconcileTotalStaked`: **owner** or any address other than `automationCaller` (unless automation was retargeted).
 
 ## Events (indexers)
 
-- `CreditStakeableFromRebalance(amount, stakeablePrincipalLedgerAfter, pendingRebalanceUnbondReserveAfter)` — third field added for pending tracking; update decoders if you consumed the old two-field layout.
-- `StakedBucketsReconciled(previousTotalStaked, newTotalStaked, previousPending, newPending)`.
+- `TotalStakedReconciled(previousTotalStaked, newTotalStaked)`.
 
 ## Error model (selected)
 
@@ -168,6 +153,8 @@ See the runbook for halting vs best-effort behavior and **liveness** requirement
 
 ## Test coverage
 
-- **Foundry** (pool-focused): `contracts/test/pool/CommunityPoolCredit.t.sol`, `CommunityPoolWithdrawStake.t.sol` — run from `contracts/` with Forge (see `foundry.toml` and file headers).
+- **Foundry** (pool-focused): `contracts/test/pool/CommunityPoolWithdrawStake.t.sol` — run from `contracts/` with Forge (see `foundry.toml` and file headers).
 - **Go** artifact smoke: `contracts/community_pool_test.go`.
 - **Integration** (Ginkgo): `tests/integration/precompiles/communitypool/` — `test_integration.go`, `test_utils.go`, `TEST_ASSUMPTIONS.md`.
+    - Integration validates request/maturity/claim outputs and invariants.
+    - Exact ERC20 balance-delta equality for `claimWithdraw` is asserted in Forge (deterministic local mocks).

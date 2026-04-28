@@ -41,6 +41,8 @@ contract MockDistributionHarvest {
 contract CommunityPoolHarvestTest is Test {
     MockBondHarvest internal bond;
     CommunityPool internal pool;
+    address internal alice = address(0xA11CE);
+    address internal bob = address(0xB0B);
 
     function setUp() public {
         bond = new MockBondHarvest();
@@ -96,4 +98,5 @@ contract CommunityPoolHarvestTest is Test {
         assertEq(pool.rewardReserve(), 0);
         assertEq(pool.accRewardPerUnit(), indexBefore);
     }
+
 }
