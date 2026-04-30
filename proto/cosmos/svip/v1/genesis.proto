@@ -1,0 +1,37 @@
+
+syntax = "proto3";
+package cosmos.svip.v1;
+
+import "amino/amino.proto";
+import "cosmos/svip/v1/svip.proto";
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/cosmos/evm/x/svip/types";
+
+// GenesisState defines the svip module's genesis state.
+message GenesisState {
+  // params defines all the parameters of the svip module.
+  Params params = 1
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+  // total_distributed is tokens sent to FeeCollector since the last (re)activation.
+  string total_distributed = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // activation_time is when SVIP was activated. Zero if not yet activated.
+  google.protobuf.Timestamp activation_time = 3 [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+  // pool_balance_at_activation is the pool snapshot used to derive R₀.
+  string pool_balance_at_activation = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // last_block_time is the timestamp of the last processed block.
+  google.protobuf.Timestamp last_block_time = 5 [ (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+  // total_paused_seconds is the cumulative seconds spent in paused state.
+  int64 total_paused_seconds = 6;
+  // activated indicates whether SVIP reward distribution is active.
+  bool activated = 7;
+  // paused is an emergency pause flag.
+  bool paused = 8;
+}
