@@ -15,7 +15,7 @@
 - **SolidML Framework** - Solidity framework for building AI-enabled on-chain applications
 - **Model Hub** - Decentralized repository for uploading, browsing, and using AI models
 - **Heterogeneous Compute** - Network architecture with Full Nodes, Inference Nodes, Storage Nodes, and Data Nodes
-- **Multi-layer Verification** - Security through ZKML (zero-knowledge machine learning), TEE (trusted execution environments), and cryptoeconomic guarantees
+- **Multi-layer Verification** - Security through [ZKML](https://github.com/OpenGradient/zkml-go/) (zero-knowledge machine learning), TEE (trusted execution environments), and cryptoeconomic guarantees
 
 For more information, visit the [OpenGradient documentation](https://docs.opengradient.ai/).
 

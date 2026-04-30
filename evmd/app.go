@@ -121,6 +121,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/mint"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
+	paramskeeper "github.com/cosmos/cosmos-sdk/x/params/keeper"
+	paramstypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	"github.com/cosmos/cosmos-sdk/x/slashing"
 	slashingkeeper "github.com/cosmos/cosmos-sdk/x/slashing/keeper"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
@@ -130,6 +132,9 @@ import (
 	"github.com/cosmos/evm/x/svip"
 	svipkeeper "github.com/cosmos/evm/x/svip/keeper"
 	sviptypes "github.com/cosmos/evm/x/svip/types"
+	"github.com/xrplevm/node/v10/x/poa"
+	poakeeper "github.com/xrplevm/node/v10/x/poa/keeper"
+	poatypes "github.com/xrplevm/node/v10/x/poa/types"
 )
 
 func init() {
@@ -163,6 +168,7 @@ type EVMD struct {
 
 	// keys to access the substores
 	keys  map[string]*storetypes.KVStoreKey
+	tkeys map[string]*storetypes.TransientStoreKey
 	oKeys map[string]*storetypes.ObjectStoreKey
 
 	// keepers
@@ -178,7 +184,9 @@ type EVMD struct {
 	EvidenceKeeper        evidencekeeper.Keeper
 	FeeGrantKeeper        feegrantkeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
+	ParamsKeeper          paramskeeper.Keeper
 	SvipKeeper            svipkeeper.Keeper
+	PoaKeeper             poakeeper.Keeper
 
 	// IBC keepers
 	IBCKeeper      *ibckeeper.Keeper // IBC Keeper must be a pointer in the app, so we can SetRouter on it correctly
@@ -237,6 +245,7 @@ func NewExampleApp(
 		authtypes.StoreKey, banktypes.StoreKey, stakingtypes.StoreKey,
 		minttypes.StoreKey, distrtypes.StoreKey, slashingtypes.StoreKey,
 		govtypes.StoreKey, consensusparamtypes.StoreKey,
+		paramstypes.StoreKey,
 		upgradetypes.StoreKey, feegrant.StoreKey, evidencetypes.StoreKey, authzkeeper.StoreKey,
 		// ibc keys
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
@@ -244,6 +253,7 @@ func NewExampleApp(
 		evmtypes.StoreKey, feemarkettypes.StoreKey, erc20types.StoreKey, precisebanktypes.StoreKey,
 		sviptypes.StoreKey,
 	)
+	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
 	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
 
 	var nonTransientKeys []storetypes.StoreKey
@@ -272,10 +282,20 @@ func NewExampleApp(
 		txConfig:          txConfig,
 		interfaceRegistry: interfaceRegistry,
 		keys:              keys,
+		tkeys:             tkeys,
 		oKeys:             oKeys,
 	}
 
-	// removed x/params: no ParamsKeeper initialization
+	// params keeper is used by the PoA module
+	// it is deprecated in the SDK but still required for the xrplevm/node PoA keeper
+	app.ParamsKeeper = paramskeeper.NewKeeper(
+		appCodec,
+		legacyAmino,
+		keys[paramstypes.StoreKey],
+		tkeys[paramstypes.TStoreKey],
+	)
+	// Register subspace for PoA so GetSubspace(poatypes.ModuleName) returns a valid subspace.
+	app.ParamsKeeper.Subspace(poatypes.ModuleName).WithKeyTable(poatypes.ParamKeyTable())
 
 	// get authority address
 	authAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
@@ -561,6 +581,14 @@ func NewExampleApp(
 		authtypes.NewModuleAddress(govtypes.ModuleName),
 		app.PreciseBankKeeper,
 		app.AccountKeeper,
+
+	app.PoaKeeper = *poakeeper.NewKeeper(
+		appCodec,
+		app.GetSubspace(poatypes.ModuleName),
+		app.MsgServiceRouter(),
+		app.BankKeeper,
+		app.StakingKeeper,
+		authAddr,
 	)
 
 	// Override the ICS20 app module
@@ -584,6 +612,7 @@ func NewExampleApp(
 		distr.NewAppModule(appCodec, app.DistrKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, nil),
 		staking.NewAppModule(appCodec, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, nil),
 		svip.NewAppModule(app.SvipKeeper),
+		poa.NewAppModule(appCodec, app.PoaKeeper, app.BankKeeper, app.StakingKeeper, app.AccountKeeper, app.interfaceRegistry),
 		upgrade.NewAppModule(app.UpgradeKeeper, app.AccountKeeper.AddressCodec()),
 		evidence.NewAppModule(app.EvidenceKeeper),
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
@@ -656,6 +685,7 @@ func NewExampleApp(
 		banktypes.ModuleName,
 		govtypes.ModuleName,
 		stakingtypes.ModuleName,
+		poatypes.ModuleName,
 		authtypes.ModuleName,
 
 		// Cosmos EVM EndBlockers
@@ -679,6 +709,7 @@ func NewExampleApp(
 		authtypes.ModuleName, banktypes.ModuleName,
 		sviptypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
+		poatypes.ModuleName,
 		minttypes.ModuleName,
 		ibcexported.ModuleName,
 
@@ -735,6 +766,7 @@ func NewExampleApp(
 	// initialize stores
 	app.MountKVStores(keys)
 	app.MountObjectStores(oKeys)
+	app.MountTransientStores(tkeys)
 
 	maxGasWanted := cast.ToUint64(appOpts.Get(srvflags.EVMMaxTxGasWanted))
 
@@ -933,6 +965,15 @@ func (app *EVMD) DefaultGenesis() map[string]json.RawMessage {
 // NOTE: This is solely to be used for testing purposes.
 func (app *EVMD) GetKey(storeKey string) *storetypes.KVStoreKey {
 	return app.keys[storeKey]
+}
+
+// GetSubspace returns a params subspace for a given module name.
+func (app *EVMD) GetSubspace(moduleName string) paramstypes.Subspace {
+	subspace, ok := app.ParamsKeeper.GetSubspace(moduleName)
+	if !ok {
+		panic(fmt.Sprintf("subspace for module %s not registered", moduleName))
+	}
+	return subspace
 }
 
 // SimulationManager implements the SimulationApp interface

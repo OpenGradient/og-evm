@@ -4,6 +4,8 @@ services:
   evmdnode0:
     container_name: evmdnode0
     image: "cosmos/evmd"
+    entrypoint: ["/usr/bin/wrapper.sh"]
+    command: ["start", "--chain-id", "local-4221", "--json-rpc.api", "eth,txpool,personal,net,debug,web3"]
     environment:
       - DEBUG=0
       - ID=0
@@ -28,6 +30,8 @@ services:
   evmdnode1:
     container_name: evmdnode1
     image: "cosmos/evmd"
+    entrypoint: ["/usr/bin/wrapper.sh"]
+    command: ["start", "--chain-id", "local-4221", "--json-rpc.api", "eth,txpool,personal,net,debug,web3"]
     environment:
       - DEBUG=0
       - ID=1
@@ -52,6 +56,8 @@ services:
   evmdnode2:
     container_name: evmdnode2
     image: "cosmos/evmd"
+    entrypoint: ["/usr/bin/wrapper.sh"]
+    command: ["start", "--chain-id", "local-4221", "--json-rpc.api", "eth,txpool,personal,net,debug,web3"]
     environment:
       - DEBUG=0
       - ID=2
@@ -76,6 +82,8 @@ services:
   evmdnode3:
     container_name: evmdnode3
     image: "cosmos/evmd"
+    entrypoint: ["/usr/bin/wrapper.sh"]
+    command: ["start", "--chain-id", "local-4221", "--json-rpc.api", "eth,txpool,personal,net,debug,web3"]
     environment:
       - DEBUG=0
       - ID=3
