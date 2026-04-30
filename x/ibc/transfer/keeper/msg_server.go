@@ -5,16 +5,28 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/hashicorp/go-metrics"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
+	evmtrace "github.com/cosmos/evm/trace"
 	erc20types "github.com/cosmos/evm/x/erc20/types"
 	"github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
 
 	storetypes "cosmossdk.io/store/types"
 
-	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
+
+var (
+	ibcTransferMeter   = otel.Meter("evm/x/ibc/transfer/keeper")
+	ibcTransferCounter metric.Int64Counter
+)
+
+func init() {
+	ibcTransferCounter = evmtrace.MustInt64Counter(ibcTransferMeter, "evm.erc20.ibc.transfer",
+		metric.WithDescription("Total ERC20 IBC transfers"))
+}
 
 var _ types.MsgServer = Keeper{}
 
@@ -75,12 +87,8 @@ func (k Keeper) Transfer(goCtx context.Context, msg *types.MsgTransfer) (*types.
 	if balance.Amount.GTE(msg.Token.Amount) {
 
 		defer func() {
-			telemetry.IncrCounterWithLabels( //nolint:staticcheck // TODO: fix
-				[]string{"erc20", "ibc", "transfer", "total"},
-				1,
-				[]metrics.Label{
-					telemetry.NewLabel("denom", pair.Denom), //nolint:staticcheck // TODO: fix
-				},
+			ibcTransferCounter.Add(goCtx, 1,
+				metric.WithAttributes(attribute.String("denom", pair.Denom)),
 			)
 		}()
 
@@ -104,12 +112,8 @@ func (k Keeper) Transfer(goCtx context.Context, msg *types.MsgTransfer) (*types.
 	}
 
 	defer func() {
-		telemetry.IncrCounterWithLabels( //nolint:staticcheck // TODO: fix
-			[]string{"erc20", "ibc", "transfer", "total"},
-			1,
-			[]metrics.Label{
-				telemetry.NewLabel("denom", pair.Denom), //nolint:staticcheck // TODO: fix
-			},
+		ibcTransferCounter.Add(goCtx, 1,
+			metric.WithAttributes(attribute.String("denom", pair.Denom)),
 		)
 	}()
 

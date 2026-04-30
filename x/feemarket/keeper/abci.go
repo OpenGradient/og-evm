@@ -5,16 +5,40 @@ import (
 	"fmt"
 	gomath "math"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
+	evmtrace "github.com/cosmos/evm/trace"
 	"github.com/cosmos/evm/x/feemarket/types"
 
 	"cosmossdk.io/math"
 
-	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+var (
+	feemarketTracer   = otel.Tracer("evm/x/feemarket/keeper")
+	feemarketMeter    = otel.Meter("evm/x/feemarket/keeper")
+	baseFeeGauge      metric.Float64Gauge
+	blockGasGauge     metric.Float64Gauge
+)
+
+func init() {
+	baseFeeGauge = evmtrace.MustFloat64Gauge(feemarketMeter, "evm.feemarket.base_fee",
+		metric.WithDescription("Current base fee"))
+	blockGasGauge = evmtrace.MustFloat64Gauge(feemarketMeter, "evm.feemarket.block_gas",
+		metric.WithDescription("Block gas wanted"))
+}
+
 // BeginBlock updates base fee
 func (k *Keeper) BeginBlock(ctx sdk.Context) error {
+	_, span := feemarketTracer.Start(ctx.Context(), "feemarket.BeginBlock",
+		trace.WithAttributes(attribute.Int64("block_height", ctx.BlockHeight())),
+	)
+	defer span.End()
+
 	baseFee := k.CalculateBaseFee(ctx)
 
 	// return immediately if base fee is nil
@@ -30,8 +54,7 @@ func (k *Keeper) BeginBlock(ctx sdk.Context) error {
 			ctx.Logger().Error("error converting base fee to float64", "error", err.Error())
 			return
 		}
-		// there'll be no panic if fails to convert to float32. Will only loose precision
-		telemetry.SetGauge(float32(floatBaseFee), "feemarket", "base_fee") //nolint:staticcheck // TODO: fix
+		baseFeeGauge.Record(ctx, floatBaseFee)
 	}()
 
 	// Store current base fee in event
@@ -79,9 +102,7 @@ func (k *Keeper) EndBlock(ctx sdk.Context) error {
 	updatedGasWanted := math.LegacyMaxDec(limitedGasWanted, math.LegacyNewDec(int64(gasUsed))).TruncateInt().Uint64()
 	k.SetBlockGasWanted(ctx, updatedGasWanted)
 
-	defer func() {
-		telemetry.SetGauge(float32(updatedGasWanted), "feemarket", "block_gas") //nolint:staticcheck // TODO: fix
-	}()
+	defer blockGasGauge.Record(ctx, float64(updatedGasWanted))
 
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		"block_gas",

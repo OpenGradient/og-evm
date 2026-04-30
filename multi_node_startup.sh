@@ -11,6 +11,7 @@ BASEDIR="${BASEDIR:-"$HOME/.og-evm-devnet"}"
 NODE_NUMBER="${NODE_NUMBER:-}"
 START_VALIDATOR="${START_VALIDATOR:-false}"
 GENERATE_GENESIS="${GENERATE_GENESIS:-false}"
+OTEL_ENABLE="${OTEL_ENABLE:-false}"
 
 VAL0_MNEMONIC=""
 VAL1_MNEMONIC=""
@@ -42,6 +43,8 @@ usage() {
   echo "  GENERATE_GENESIS=true    Generate genesis for all 3 validators"
   echo "  START_VALIDATOR=true     Start a validator"
   echo "  NODE_NUMBER=0|1|2        Which validator to start"
+  echo "  OTEL_ENABLE=true         Enable OpenTelemetry tracing"
+  echo "  OTEL_ENDPOINT=host:port  OTel collector endpoint (default: localhost:4317)"
   echo "  BASEDIR=path             Base directory (default: ~/.og-evm-devnet)"
   echo ""
   echo "Options:"
@@ -222,9 +225,13 @@ generate_genesis() {
     evmd config set client chain-id "$CHAINID" --home "$HOME_DIR"
     evmd config set client keyring-backend "$KEYRING" --home "$HOME_DIR"
 
-    echo "$MNEMONIC" | evmd keys add "$VALKEY" --recover --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$HOME_DIR"
-
-    echo "$MNEMONIC" | evmd init "${MONIKER}-val${i}" -o --chain-id "$CHAINID" --home "$HOME_DIR" --recover
+    if [[ -n "$MNEMONIC" ]]; then
+      echo "$MNEMONIC" | evmd keys add "$VALKEY" --recover --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$HOME_DIR"
+      echo "$MNEMONIC" | evmd init "${MONIKER}-val${i}" -o --chain-id "$CHAINID" --home "$HOME_DIR" --recover
+    else
+      evmd keys add "$VALKEY" --keyring-backend "$KEYRING" --algo "$KEYALGO" --home "$HOME_DIR"
+      evmd init "${MONIKER}-val${i}" -o --chain-id "$CHAINID" --home "$HOME_DIR"
+    fi
 
     NODE_ID=$(evmd comet show-node-id --home "$HOME_DIR")
     NODE_IDS+=("$NODE_ID")
@@ -371,7 +378,16 @@ start_validator() {
     --home "$HOME_DIR"
     --json-rpc.api eth,txpool,personal,net,debug,web3
     --chain-id "$CHAINID"
+    --metrics
   )
+
+  if [[ "$OTEL_ENABLE" == "true" ]]; then
+    START_ARGS+=(
+      --otel.enable
+      --otel.endpoint "${OTEL_ENDPOINT:-localhost:4317}"
+      --otel.insecure
+    )
+  fi
 
   exec evmd start "${START_ARGS[@]}"
 }

@@ -42,6 +42,7 @@ func InitAppConfig(denom string, evmChainID uint64) (string, interface{}) {
 		EVM:     *evmCfg,
 		JSONRPC: *cosmosevmserverconfig.DefaultJSONRPCConfig(),
 		TLS:     *cosmosevmserverconfig.DefaultTLSConfig(),
+		OTel:    *cosmosevmserverconfig.DefaultOTelConfig(),
 	}
 
 	return EVMAppTemplate, customAppConfig
@@ -53,6 +54,7 @@ type EVMAppConfig struct {
 	EVM     cosmosevmserverconfig.EVMConfig
 	JSONRPC cosmosevmserverconfig.JSONRPCConfig
 	TLS     cosmosevmserverconfig.TLSConfig
+	OTel    cosmosevmserverconfig.OTelConfig
 }
 
 const EVMAppTemplate = serverconfig.DefaultConfigTemplate + cosmosevmserverconfig.DefaultEVMConfigTemplate
