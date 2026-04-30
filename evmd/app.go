@@ -581,6 +581,7 @@ func NewExampleApp(
 		authtypes.NewModuleAddress(govtypes.ModuleName),
 		app.PreciseBankKeeper,
 		app.AccountKeeper,
+	)
 
 	app.PoaKeeper = *poakeeper.NewKeeper(
 		appCodec,
