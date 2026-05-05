@@ -1,0 +1,59 @@
+# OG-EVM Mainnet Genesis Validators
+#
+# Four validators at launch. The coordinator collects one entry per node.
+#
+# Per-entry fields:
+#   moniker          human-readable name shown in block explorers
+#   operator_addr    bech32 og1... address from the operator's eth_secp256k1 key
+#   consensus_pubkey tendermint/PubKeyEd25519 base64 string from priv_validator_key.json
+#   node_id          libp2p node ID (hex) from node_key.json
+#   p2p_endpoint     <host>:26656 reachable from the other genesis nodes
+#   self_stake_opg   amount in OPG; genesis.sh converts to ogwei
+#
+# How fields are used:
+#   genesis.sh consumes:    moniker, operator_addr, self_stake_opg
+#   peer-list generation:   node_id, p2p_endpoint
+#   record-keeping only:    consensus_pubkey
+#
+# About self_stake_opg = 10 (symbolic):
+#   In PoA, voting power comes from /poa.MsgAddValidator. The gentx amount is just a
+#   bookkeeping placeholder. genesis.sh sets --min-self-delegation = self_stake_opg in
+#   the gentx so SDK validation passes. Operators can raise their self-delegation
+#   post-launch via MsgDelegate / MsgEditValidator.
+#
+# How to collect:
+#   operator_addr     evmd keys show <key-name> -a --keyring-backend file --home <node-home>
+#   consensus_pubkey  evmd comet show-validator --home <node-home>   (the "key" field)
+#   node_id           evmd comet show-node-id   --home <node-home>
+#
+# Do NOT collect or transmit priv_validator_key.json, node_key.json, or operator
+# mnemonics. Each stays on the node that generated it.
+
+validators:
+  - moniker: "REPLACE-validator-1"
+    operator_addr: "og1REPLACE0000000000000000000000000000000"
+    consensus_pubkey: "REPLACE_BASE64_ED25519_PUBKEY"
+    node_id: "REPLACE_HEX_NODE_ID"
+    p2p_endpoint: "REPLACE-host-1:26656"
+    self_stake_opg: 10
+
+  - moniker: "REPLACE-validator-2"
+    operator_addr: "og1REPLACE0000000000000000000000000000001"
+    consensus_pubkey: "REPLACE_BASE64_ED25519_PUBKEY"
+    node_id: "REPLACE_HEX_NODE_ID"
+    p2p_endpoint: "REPLACE-host-2:26656"
+    self_stake_opg: 10
+
+  - moniker: "REPLACE-validator-3"
+    operator_addr: "og1REPLACE0000000000000000000000000000002"
+    consensus_pubkey: "REPLACE_BASE64_ED25519_PUBKEY"
+    node_id: "REPLACE_HEX_NODE_ID"
+    p2p_endpoint: "REPLACE-host-3:26656"
+    self_stake_opg: 10
+
+  - moniker: "REPLACE-validator-4"
+    operator_addr: "og1REPLACE0000000000000000000000000000003"
+    consensus_pubkey: "REPLACE_BASE64_ED25519_PUBKEY"
+    node_id: "REPLACE_HEX_NODE_ID"
+    p2p_endpoint: "REPLACE-host-4:26656"
+    self_stake_opg: 10

@@ -1,0 +1,27 @@
+# OG-EVM Mainnet Foundation Allocation
+#
+# The Foundation multisig is the genesis custodian for the bridged ERC-20 supply on L1.
+# It holds: 1,000,000,000 OPG  −  100,000,000 OPG (SVIP)  −  Σ(validator self-stakes)
+#
+# IMPORTANT
+# - address MUST be a Cosmos multisig generated off-chain BEFORE genesis. Procedure:
+#       evmd keys add foundation-multisig \
+#         --multisig <pubkey1>,<pubkey2>,...,<pubkeyN> \
+#         --multisig-threshold M \
+#         --keyring-backend file
+#   This produces a deterministic og1... address derived from the threshold + member pubkeys.
+#   Record threshold/members below for runbook traceability.
+# - allocation_opg is the auto-computed residual unless explicitly overridden.
+#   Leave as null to let genesis.sh compute it from total_supply − svip − Σ(validator self-stakes).
+#   Set an explicit number only if you want to hold tokens back (e.g. for a separate treasury).
+
+foundation:
+  address: "og1REPLACE_FOUNDATION_MULTISIG_ADDRESS_HERE"
+  multisig_threshold: 0     # e.g. 3
+  multisig_members:         # bech32 og1... member addresses, recorded here for traceability
+    - "og1REPLACE_member_1"
+    - "og1REPLACE_member_2"
+    - "og1REPLACE_member_3"
+    - "og1REPLACE_member_4"
+    - "og1REPLACE_member_5"
+  allocation_opg: null      # null = compute residual; integer = explicit amount in OPG
