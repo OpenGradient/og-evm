@@ -69,7 +69,7 @@ apply_genesis_customizations() {
   jq '.app_state["evm"]["params"]["evm_denom"]="ogwei"' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
   jq '.app_state["mint"]["params"]["mint_denom"]="ogwei"' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
-  jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for evmd.","denom_units":[{"denom":"ogwei","exponent":0,"aliases":[]},{"denom":"OGETH","exponent":18,"aliases":[]}],"base":"ogwei","display":"OGETH","name":"ETH Token","symbol":"OGETH","uri":"","uri_hash":""}]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
+  jq '.app_state["bank"]["denom_metadata"]=[{"description":"The native staking token for evmd.","denom_units":[{"denom":"ogwei","exponent":0,"aliases":[]},{"denom":"OPG","exponent":18,"aliases":[]}],"base":"ogwei","display":"OPG","name":"OpenGradient","symbol":"OPG","uri":"","uri_hash":""}]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
   jq '.app_state["evm"]["params"]["active_static_precompiles"]=["0x0000000000000000000000000000000000000100","0x0000000000000000000000000000000000000400","0x0000000000000000000000000000000000000800","0x0000000000000000000000000000000000000801","0x0000000000000000000000000000000000000802","0x0000000000000000000000000000000000000803","0x0000000000000000000000000000000000000804","0x0000000000000000000000000000000000000805","0x0000000000000000000000000000000000000806","0x0000000000000000000000000000000000000807"]' "$GENESIS" >"$TMP_GENESIS" && mv "$TMP_GENESIS" "$GENESIS"
 
@@ -155,7 +155,7 @@ generate_dev_accounts() {
 
   mkdir -p "$BASEDIR"
   echo "# Dev Accounts - Generated $(date)" > "$OUTPUT_FILE"
-  echo "# Each account funded with 1000000000000000000000000ogwei (1M OGETH)" >> "$OUTPUT_FILE"
+  echo "# Each account funded with 1000000000000000000000000ogwei (1M OPG)" >> "$OUTPUT_FILE"
   echo "#" >> "$OUTPUT_FILE"
 
   local DEV_HOME="$BASEDIR/.dev_keys_tmp"
