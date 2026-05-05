@@ -16,6 +16,12 @@ Outputs:
 - a final `genesis.json` with all 4 gentxs collected
 - 4 nodes producing block 1 at `genesis_time`
 
+L1 supply at genesis is intentionally minimal: 4 × 10 OPG validator self-stakes
+(40 OPG total), Foundation 0, `x/svip` module 0. The canonical 1B OPG lives as
+ERC-20 on Base and bridges to L1 on demand. Foundation must bridge in OPG before
+submitting any L1 transaction (including governance proposals); the SVIP pool is
+funded the same way before activation. See [section 17](#17-post-launch-bridge-dependencies).
+
 For chain settings (denoms, decimals, commission rules, supply, etc.) see
 [section 16](#16-chain-settings-reference).
 
@@ -37,6 +43,7 @@ For chain settings (denoms, decimals, commission rules, supply, etc.) see
 14. [Security checklist](#14-security-checklist)
 15. [Troubleshooting](#15-troubleshooting)
 16. [Chain settings reference](#16-chain-settings-reference)
+17. [Post-launch bridge dependencies](#17-post-launch-bridge-dependencies)
 
 
 ## 1. Prereqs
@@ -243,12 +250,14 @@ What the script does:
 2. Patches every genesis parameter (chain id, denoms, staking, mint set to 0,
    distribution set to 0, governance, slashing-disabled, EVM, feemarket,
    ERC-20, SVIP dormant, crisis, IBC, consensus block-max-gas).
-3. Adds genesis accounts: the foundation residual plus each validator's
-   symbolic 10 OPG.
-4. Pre-funds the `x/svip` module account with 100 million OPG.
+3. Adds genesis accounts: each validator's symbolic 10 OPG. (Foundation gets
+   0 at genesis by default; the `x/svip` module account is NOT pre-funded.
+   Both are bridged in post-launch, see section 17.)
+4. Sets `bank.supply` equal to the L1 sum (~40 OPG), enforcing the SDK
+   invariant `supply == Σ balances`.
 5. Runs sanity checks: inflation is 0, community tax is 0, max gas isn't
    `-1`, SVIP is not activated, denoms match, total balances equal
-   `bank.supply`.
+   `bank.supply`, and L1 supply is ≤ 1% of canonical (catches yaml mistakes).
 6. Runs `evmd genesis validate`.
 
 To rehearse the script without real keys:
@@ -286,7 +295,10 @@ jq -r '.app_state.staking.params.bond_denom' ~/.evmd-mainnet/config/genesis.json
 # should print: ogwei
 
 jq '.app_state.bank.balances | length' ~/.evmd-mainnet/config/genesis.json
-# should print: 6  (4 validators + foundation + svip module)
+# should print: 4  (validators only; foundation and svip module are unfunded at genesis)
+
+jq -r '.app_state.bank.supply[0].amount' ~/.evmd-mainnet/config/genesis.json
+# should print: 40000000000000000000  (40 OPG = 4 × 10 OPG validator self-stakes)
 ```
 
 
@@ -557,7 +569,8 @@ The EVM chain ID is `1486` decimal, `0x5ce` hex. Anything else means the wrong
 | Bech32 prefix | `og` (validators: `ogvaloper`) |
 | Base denom | `ogwei` (18 decimals) |
 | Display denom and symbol | `OPG` |
-| Total supply | 1,000,000,000 OPG (bridged ERC-20 from Base) |
+| Canonical supply (Base ERC-20) | 1,000,000,000 OPG. The fully-bridgeable supply lives here. |
+| L1 `bank.supply` at genesis | 40 OPG (4 × 10 OPG validator self-stakes). Everything else stays on Base and bridges in on demand. |
 | L1 inflation | 0 |
 | Community tax | 0 |
 | Block time | about 2 seconds |
@@ -573,7 +586,57 @@ The EVM chain ID is `1486` decimal, `0x5ce` hex. Anything else means the wrong
 | Governance min deposit | 5,000 OPG |
 | Voting period | 5 days |
 | Quorum / threshold / veto | 33.4% / 50% / 33.4% |
-| SVIP allocation | 10% of supply (100 million OPG), dormant at launch |
+| SVIP allocation | 10% of canonical supply (100 million OPG). Bridged from Base into the `x/svip` module account by Foundation BEFORE governance activates SVIP. Not present in genesis. |
+
+
+## 17. Post-launch bridge dependencies
+
+The chain has 40 OPG at block 1. Every other on-chain action depends on Foundation
+bridging OPG from Base to L1 first.
+
+**Foundation operational liquidity (immediate post-launch).**
+The Foundation multisig holds 0 OPG at genesis. To submit any L1 transaction
+(including the first governance proposal), the Foundation must bridge OPG from
+Base into its multisig address. The minimum that makes sense is:
+
+- 1× governance proposal min deposit (5,000 OPG)
+- ~1 OPG for gas runway
+
+So a first bridge of ~10,000 OPG to the Foundation multisig unblocks day-1
+governance.
+
+**SVIP pool funding (before activation).**
+The 100 million OPG SVIP pool is bridged from Base into the `x/svip` module
+account on L1 BEFORE governance activates SVIP. The module account address is
+deterministic:
+
+```
+og157j8m5l05q0theh7fep9ejqkqkejtwxdxtwzqh
+```
+
+It is derived as `bech32(og, sha256("svip")[:20])`, which equals the Cosmos SDK's
+`authtypes.NewModuleAddress("svip").String()` with the chain's `og` bech32 prefix.
+Confirm the address pre-bridge with:
+
+```bash
+evmd debug addr "$(printf 'svip' | shasum -a 256 | awk '{print substr($1,1,40)}')"
+# Bech32 Acc og157j8m5l05q0theh7fep9ejqkqkejtwxdxtwzqh
+```
+
+Activation flow:
+
+1. Foundation locks 100M OPG on the Base ERC-20 contract via the bridge.
+2. Bridge mints 100M OPG into the L1 svip module address.
+   Verify with `evmd q bank balance og157j8m5l05q0theh7fep9ejqkqkejtwxdxtwzqh`.
+3. Governance proposal sets `svip.params.half_life_seconds` and flips
+   `svip.activated = true`. The keeper snapshots `pool_balance_at_activation`
+   from the module's bank balance at activation block.
+
+**Why not just put 100M in the genesis?**
+Tokens seated in genesis without a corresponding lock on Base are unbacked: if
+all L1 OPG holders try to bridge to Base for trading, the Base contract runs out
+of unlocked supply for that 10%. Bridging the pool from Base post-launch keeps
+the canonical-on-Base invariant intact and avoids that depeg/run risk.
 
 
 If anything in this guide is wrong or unclear, flag it on the coordination

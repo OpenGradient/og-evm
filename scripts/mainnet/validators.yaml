@@ -2,6 +2,9 @@
 #
 # Four validators at launch. The coordinator collects one entry per node.
 #
+# These 40 OPG (4 × 10) are the ENTIRE L1 supply at genesis. The canonical 1B OPG
+# lives as ERC-20 on Base; the Foundation bridges to L1 on demand post-launch.
+#
 # Per-entry fields:
 #   moniker          human-readable name shown in block explorers
 #   operator_addr    bech32 og1... address from the operator's eth_secp256k1 key
@@ -13,13 +16,16 @@
 # How fields are used:
 #   genesis.sh consumes:    moniker, operator_addr, self_stake_opg
 #   peer-list generation:   node_id, p2p_endpoint
-#   record-keeping only:    consensus_pubkey
+#   record-keeping only:    consensus_pubkey (each validator's gentx pulls it from
+#                           priv_validator_key.json directly)
 #
 # About self_stake_opg = 10 (symbolic):
-#   In PoA, voting power comes from /poa.MsgAddValidator. The gentx amount is just a
-#   bookkeeping placeholder. genesis.sh sets --min-self-delegation = self_stake_opg in
-#   the gentx so SDK validation passes. Operators can raise their self-delegation
-#   post-launch via MsgDelegate / MsgEditValidator.
+#   In PoA, voting power comes from /poa.MsgAddValidator. The gentx amount is a
+#   bookkeeping placeholder. genesis.sh sets --min-self-delegation = self_stake_opg
+#   so MsgCreateValidator passes SDK validation. While PoA is active, MsgDelegate is
+#   blocked at the ante (see xrplevm/node/v10/x/poa/ante/poa.go), so validators
+#   cannot top up their self-delegation until governance transitions the chain to
+#   permissionless. min_self_delegation can be raised via MsgEditValidator any time.
 #
 # How to collect:
 #   operator_addr     evmd keys show <key-name> -a --keyring-backend file --home <node-home>

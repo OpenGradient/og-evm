@@ -30,8 +30,10 @@ BASE_DENOM="ogwei"
 DISPLAY_DENOM="OPG"
 KEY_ALGO="eth_secp256k1"
 KEYRING="test"          # ceremony validators use --keyring-backend=file; --dry-run uses test
-TOTAL_SUPPLY_OPG=1000000000
-SVIP_ALLOC_OPG=100000000
+# Canonical OPG supply lives as ERC-20 on Base. The L1 `bank.supply` at genesis is the
+# sum of L1 balances seated in this script (validator self-stakes + foundation alloc),
+# typically ~40 OPG. Foundation and the x/svip pool are funded post-launch via bridge.
+CANONICAL_SUPPLY_OPG_BASE=1000000000   # reference only; not used in genesis math
 VALIDATOR_COUNT_EXPECTED=4
 # Symbolic genesis self-stake. Voting power in PoA comes from /poa.MsgAddValidator,
 # not from the gentx amount, so this is intentionally tiny (10 OPG). Validators can
@@ -97,14 +99,6 @@ opg_to_ogwei() {
 jqp() {
   jq "$@" "$GENESIS" > "$TMP"
   mv "$TMP" "$GENESIS"
-}
-
-# Cosmos SDK module account address: bech32(og, sha256(name)[:20]).
-# Equivalent to Go: authtypes.NewModuleAddress(name).String() with the og bech32 prefix.
-module_address() {
-  local hex
-  hex=$(printf '%s' "$1" | shasum -a 256 | awk '{print substr($1,1,40)}')
-  evmd debug addr "$hex" 2>/dev/null | awk '/^Bech32 Acc / {print $NF}'
 }
 
 # ---------- CLI parsing ----------
@@ -408,38 +402,36 @@ for i in $(seq 1 $VALIDATOR_COUNT_EXPECTED); do
 done
 
 if [[ "$FOUND_ALLOC_OPG" == "null" || -z "$FOUND_ALLOC_OPG" ]]; then
-  FOUND_ALLOC_OPG=$((TOTAL_SUPPLY_OPG - SVIP_ALLOC_OPG - TOTAL_VAL_STAKE_OPG))
-  echo "==> foundation allocation auto-computed: $FOUND_ALLOC_OPG OPG"
+  FOUND_ALLOC_OPG=0
 fi
 
-SUM=$((FOUND_ALLOC_OPG + SVIP_ALLOC_OPG + TOTAL_VAL_STAKE_OPG))
-[[ "$SUM" == "$TOTAL_SUPPLY_OPG" ]] || die "allocation sum is $SUM OPG, expected $TOTAL_SUPPLY_OPG"
+# L1 genesis supply is intentionally minimal. Foundation bridges in post-launch.
+TOTAL_L1_SUPPLY_OPG=$((FOUND_ALLOC_OPG + TOTAL_VAL_STAKE_OPG))
+echo "==> L1 genesis supply: $TOTAL_L1_SUPPLY_OPG OPG  (validators: $TOTAL_VAL_STAKE_OPG, foundation: $FOUND_ALLOC_OPG; svip: 0 — funded via bridge before activation)"
+
+# Sanity: if the L1 supply somehow exceeds 1% of canonical, refuse — it's almost
+# certainly a yaml input mistake and would create an unbacked-tokens drift on Base.
+ONE_PERCENT=$((CANONICAL_SUPPLY_OPG_BASE / 100))
+[[ "$TOTAL_L1_SUPPLY_OPG" -le "$ONE_PERCENT" ]] \
+  || die "L1 supply $TOTAL_L1_SUPPLY_OPG OPG exceeds 1% of canonical ($ONE_PERCENT OPG); check yaml inputs"
 
 # ---------- 17. Add genesis accounts ----------
 echo "==> add genesis accounts"
-evmd genesis add-genesis-account "$FOUND_ADDR" "$(opg_to_ogwei "$FOUND_ALLOC_OPG")${BASE_DENOM}" --home "$CHAINDIR" >/dev/null
+if [[ "$FOUND_ALLOC_OPG" -gt 0 ]]; then
+  evmd genesis add-genesis-account "$FOUND_ADDR" "$(opg_to_ogwei "$FOUND_ALLOC_OPG")${BASE_DENOM}" --home "$CHAINDIR" >/dev/null
+fi
 for i in $(seq 1 $VALIDATOR_COUNT_EXPECTED); do
   evmd genesis add-genesis-account "${VAL_ADDRS[i]}" "$(opg_to_ogwei "${VAL_SELF_STAKES[i]}")${BASE_DENOM}" --home "$CHAINDIR" >/dev/null
 done
 
-# ---------- 18. Pre-fund x/svip module account ----------
-SVIP_ADDR=$(module_address "svip")
-[[ "$SVIP_ADDR" =~ ^og1 ]] || die "failed to derive svip module address"
-echo "==> svip module account: $SVIP_ADDR ($SVIP_ALLOC_OPG OPG)"
-SVIP_WEI=$(opg_to_ogwei "$SVIP_ALLOC_OPG")
-# add-genesis-account would create a BaseAccount. The svip module account is materialised
-# by auth's InitGenesis (via maccperms) — we just seed the bank balance here.
-jqp \
-  --arg addr "$SVIP_ADDR" \
-  --arg denom "$BASE_DENOM" \
-  --arg amt "$SVIP_WEI" \
-  '.app_state.bank.balances += [{address: $addr, coins: [{denom: $denom, amount: $amt}]}]'
-
-# ---------- 19. Update bank.supply ----------
-TOTAL_SUPPLY_WEI=$(opg_to_ogwei "$TOTAL_SUPPLY_OPG")
+# ---------- 18. Update bank.supply ----------
+# L1 `bank.supply` MUST equal the sum of L1 balances (Cosmos SDK invariant). The svip
+# module account is intentionally NOT pre-funded here — Foundation locks 100M OPG on
+# Base and bridges into address `module_address("svip")` before activating SVIP.
+TOTAL_L1_SUPPLY_WEI=$(opg_to_ogwei "$TOTAL_L1_SUPPLY_OPG")
 jqp \
   --arg denom "$BASE_DENOM" \
-  --arg amt "$TOTAL_SUPPLY_WEI" \
+  --arg amt "$TOTAL_L1_SUPPLY_WEI" \
   '.app_state.bank.supply = [{denom: $denom, amount: $amt}]'
 
 # ---------- 20. Gentxs ----------
@@ -512,7 +504,7 @@ balances_sum=$(jq -r '.app_state.bank.balances[].coins[] | select(.denom=="ogwei
   | paste -sd+ - | bc)
 supply=$(jq -r '.app_state.bank.supply[0].amount' "$GENESIS")
 guard "Σ balances vs supply"     "$balances_sum" "$supply"
-guard "supply"                   "$supply"   "$TOTAL_SUPPLY_WEI"
+guard "L1 bank.supply"           "$supply"   "$TOTAL_L1_SUPPLY_WEI"
 
 # ---------- 22. evmd genesis validate ----------
 echo ""
