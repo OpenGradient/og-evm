@@ -1,0 +1,23 @@
+groups:
+  - name: og-evm-recording-rules
+    interval: 30s
+    rules:
+      - record: ogevm:block_rate:per_minute
+        expr: rate(cometbft_consensus_height[5m]) * 60
+
+      - record: ogevm:block_interval:avg_5m
+        expr: |
+          rate(cometbft_consensus_block_interval_seconds_sum[5m])
+          / rate(cometbft_consensus_block_interval_seconds_count[5m])
+
+      - record: ogevm:evm_tx_rate:per_second
+        expr: rate(evm_tx_ethereum_tx_total[5m])
+
+      - record: ogevm:evm_gas_rate:per_second
+        expr: rate(evm_tx_ethereum_tx_gas_used_total[5m])
+
+      - record: ogevm:ibc_recv_rate:per_minute
+        expr: rate(evm_erc20_ibc_on_recv_total[5m]) * 60
+
+      - record: ogevm:ibc_error_rate:per_minute
+        expr: rate(evm_erc20_ibc_error_total[5m]) * 60

@@ -338,6 +338,11 @@ jq '.app_state["evm"]["params"]["active_static_precompiles"]=["0x000000000000000
 fi
 
 # Start the node
+OTEL_ARGS=""
+if [[ "${OTEL_ENABLE:-false}" == "true" ]]; then
+  OTEL_ARGS="--otel.enable --otel.endpoint ${OTEL_ENDPOINT:-localhost:4317} --otel.insecure"
+fi
+
 evmd start "$TRACE" \
 	--pruning nothing \
 	--log_level $LOGLEVEL \
@@ -345,4 +350,5 @@ evmd start "$TRACE" \
 	--evm.min-tip=0 \
 	--home "$CHAINDIR" \
 	--json-rpc.api eth,txpool,personal,net,debug,web3 \
-	--chain-id "$CHAINID"
+	--chain-id "$CHAINID" \
+	$OTEL_ARGS

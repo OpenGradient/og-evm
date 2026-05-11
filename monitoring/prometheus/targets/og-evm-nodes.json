@@ -1,0 +1,18 @@
+[
+  {
+    "targets": ["host.docker.internal:26660"],
+    "labels": { "chain_id": "local-4221", "instance": "validator-0" }
+  },
+  {
+    "targets": ["host.docker.internal:26661"],
+    "labels": { "chain_id": "local-4221", "instance": "validator-1" }
+  },
+  {
+    "targets": ["host.docker.internal:26662"],
+    "labels": { "chain_id": "local-4221", "instance": "validator-2" }
+  },
+  {
+    "targets": ["host.docker.internal:26663"],
+    "labels": { "chain_id": "local-4221", "instance": "validator-3" }
+  }
+]

@@ -133,6 +133,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	"github.com/cosmos/evm/x/svip"
+	svipkeeper "github.com/cosmos/evm/x/svip/keeper"
+	sviptypes "github.com/cosmos/evm/x/svip/types"
 	"github.com/xrplevm/node/v10/x/poa"
 	poakeeper "github.com/xrplevm/node/v10/x/poa/keeper"
 	poatypes "github.com/xrplevm/node/v10/x/poa/types"
@@ -186,6 +189,7 @@ type EVMD struct {
 	FeeGrantKeeper        feegrantkeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 	ParamsKeeper          paramskeeper.Keeper
+	SvipKeeper            svipkeeper.Keeper
 	PoaKeeper             poakeeper.Keeper
 
 	// IBC keepers
@@ -257,6 +261,7 @@ func NewExampleApp(
 	tkeys := storetypes.NewTransientStoreKeys(
 		paramstypes.TStoreKey,
 		poolrebalancertypes.TransientStoreKey,
+		sviptypes.StoreKey,
 	)
 	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
 
@@ -597,6 +602,14 @@ func NewExampleApp(
 	tmLightClientModule := ibctm.NewLightClientModule(appCodec, storeProvider)
 	clientKeeper.AddRoute(ibctm.ModuleName, &tmLightClientModule)
 
+	app.SvipKeeper = svipkeeper.NewKeeper(
+		appCodec,
+		keys[sviptypes.StoreKey],
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+		app.PreciseBankKeeper,
+		app.AccountKeeper,
+	)
+
 	app.PoaKeeper = *poakeeper.NewKeeper(
 		appCodec,
 		app.GetSubspace(poatypes.ModuleName),
@@ -627,6 +640,7 @@ func NewExampleApp(
 		distr.NewAppModule(appCodec, app.DistrKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, nil),
 		staking.NewAppModule(appCodec, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, nil),
 		poolrebalancer.NewAppModule(app.PoolRebalancerKeeper),
+		svip.NewAppModule(app.SvipKeeper),
 		poa.NewAppModule(appCodec, app.PoaKeeper, app.BankKeeper, app.StakingKeeper, app.AccountKeeper, app.interfaceRegistry),
 		upgrade.NewAppModule(app.UpgradeKeeper, app.AccountKeeper.AddressCodec()),
 		evidence.NewAppModule(app.EvidenceKeeper),
@@ -675,6 +689,7 @@ func NewExampleApp(
 	// NOTE: capability module's beginblocker must come before any modules using capabilities (e.g. IBC)
 	app.ModuleManager.SetOrderBeginBlockers(
 		minttypes.ModuleName,
+		sviptypes.ModuleName,
 
 		// IBC modules
 		ibcexported.ModuleName, ibctransfertypes.ModuleName,
@@ -720,6 +735,7 @@ func NewExampleApp(
 		feegrant.ModuleName, upgradetypes.ModuleName, consensusparamtypes.ModuleName,
 		precisebanktypes.ModuleName,
 		vestingtypes.ModuleName,
+		sviptypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -727,6 +743,7 @@ func NewExampleApp(
 	// NOTE: The genutils module must also occur after auth so that it can access the params from auth.
 	genesisModuleOrder := []string{
 		authtypes.ModuleName, banktypes.ModuleName,
+		sviptypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		poatypes.ModuleName,
 		minttypes.ModuleName,
@@ -1185,11 +1202,22 @@ func (app *EVMD) AutoCliOpts() autocli.AppOptions {
 		}
 	}
 
-	return autocli.AppOptions{
+	opts := autocli.AppOptions{
 		Modules:               modules,
 		ModuleOptions:         runtimeservices.ExtractAutoCLIOptions(app.ModuleManager.Modules),
 		AddressCodec:          evmaddress.NewEvmCodec(sdk.GetConfig().GetBech32AccountAddrPrefix()),
 		ValidatorAddressCodec: evmaddress.NewEvmCodec(sdk.GetConfig().GetBech32ValidatorAddrPrefix()),
 		ConsensusAddressCodec: evmaddress.NewEvmCodec(sdk.GetConfig().GetBech32ConsensusAddrPrefix()),
 	}
+
+	// Skip autocli for FundPool — it panics with repeated Coin fields.
+	// The manual CLI in x/svip/client/cli/tx.go handles it instead.
+	if svipOpts, ok := opts.ModuleOptions[sviptypes.ModuleName]; ok && svipOpts != nil && svipOpts.Tx != nil {
+		svipOpts.Tx.EnhanceCustomCommand = true
+		svipOpts.Tx.RpcCommandOptions = append(svipOpts.Tx.RpcCommandOptions,
+			&autocliv1.RpcCommandOptions{RpcMethod: "FundPool", Skip: true},
+		)
+	}
+
+	return opts
 }

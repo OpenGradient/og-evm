@@ -1,0 +1,464 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: og-evm-critical
+    folder: og-evm
+    interval: 1m
+    rules:
+      - uid: chain-halted
+        title: Chain Halted
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: increase(cometbft_consensus_height[5m])
+              instant: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+              refId: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Chain has not produced blocks in 5+ minutes"
+
+      - uid: no-peers
+        title: No Peers Connected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: cometbft_p2p_peers
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+              refId: C
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node has zero peers - isolated from network"
+
+      - uid: byzantine-validator
+        title: Byzantine Validator Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: cometbft_consensus_byzantine_validators
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+              refId: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Byzantine validator detected in consensus"
+
+  - orgId: 1
+    name: og-evm-warning
+    folder: og-evm
+    interval: 1m
+    rules:
+      - uid: low-peer-count
+        title: Low Peer Count
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: cometbft_p2p_peers
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [3]
+              refId: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node has fewer than 3 peers"
+
+      - uid: high-consensus-rounds
+        title: High Consensus Rounds
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: cometbft_consensus_rounds
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [2]
+              refId: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consensus requiring more than 2 rounds"
+
+      - uid: slow-block-time
+        title: Slow Block Time
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: ogevm:block_interval:avg_5m
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [10]
+              refId: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Average block time exceeds 10 seconds"
+
+      - uid: missing-validators
+        title: Missing Validators
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: cometbft_consensus_missing_validators
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+              refId: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Validators missing from consensus"
+
+      - uid: mempool-congestion
+        title: Mempool Congestion
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: cometbft_mempool_size
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [500]
+              refId: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mempool has more than 500 pending transactions"
+
+      - uid: ibc-errors-spike
+        title: IBC Error Rate High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(evm_erc20_ibc_error_total[5m])
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.1]
+              refId: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IBC ERC20 conversion errors exceeding threshold"
+
+      - uid: disk-usage-high
+        title: Disk Usage High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: (1 - node_filesystem_avail_bytes{mountpoint=~"/|/host_mnt/Users"} / node_filesystem_size_bytes{mountpoint=~"/|/host_mnt/Users"}) * 100
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+              refId: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage exceeds 85%"
+
+      - uid: cpu-usage-high
+        title: CPU Usage High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+              refId: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU usage exceeds 90%"
+
+      - uid: memory-usage-high
+        title: Memory Usage High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+              refId: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory usage exceeds 90%"
