@@ -257,12 +257,14 @@ func NewExampleApp(
 		// Cosmos EVM store keys
 		evmtypes.StoreKey, feemarkettypes.StoreKey, erc20types.StoreKey, precisebanktypes.StoreKey,
 		poolrebalancertypes.StoreKey,
+		sviptypes.StoreKey,
 	)
+
 	tkeys := storetypes.NewTransientStoreKeys(
 		paramstypes.TStoreKey,
 		poolrebalancertypes.TransientStoreKey,
-		sviptypes.StoreKey,
 	)
+
 	oKeys := storetypes.NewObjectStoreKeys(banktypes.ObjectStoreKey, evmtypes.ObjectKey)
 
 	var nonTransientKeys []storetypes.StoreKey
