@@ -32,39 +32,40 @@ var (
 
 // Method selectors
 var (
-	selGrantRole        = crypto.Keccak256([]byte("grantRole(bytes32,address)"))[:4]
-	selRevokeRole       = crypto.Keccak256([]byte("revokeRole(bytes32,address)"))[:4]
-	selHasRole          = crypto.Keccak256([]byte("hasRole(bytes32,address)"))[:4]
-	selAddTEEType       = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
-	selIsValidType      = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
-	selApprovePCR       = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
-	selRevokePCR        = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
-	selIsPCRApproved    = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
-	selComputePCRHash   = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
-	selGetApprovedPCRs  = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
-	selSetAWSRootCert   = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
-	selRegisterTEE      = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
-	selDisableTEE       = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
-	selEnableTEE        = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
-	selGetEnabledTEEs   = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
-	selGetTEE           = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
-	selIsTEEActive          = crypto.Keccak256([]byte("isTEEActive(bytes32)"))[:4]
-	selSetHeartbeatMaxAge   = crypto.Keccak256([]byte("setHeartbeatMaxAge(uint256)"))[:4]
-	selHeartbeatMaxAge      = crypto.Keccak256([]byte("heartbeatMaxAge()"))[:4]
+	selGrantRole          = crypto.Keccak256([]byte("grantRole(bytes32,address)"))[:4]
+	selRevokeRole         = crypto.Keccak256([]byte("revokeRole(bytes32,address)"))[:4]
+	selHasRole            = crypto.Keccak256([]byte("hasRole(bytes32,address)"))[:4]
+	selAddTEEType         = crypto.Keccak256([]byte("addTEEType(uint8,string)"))[:4]
+	selIsValidType        = crypto.Keccak256([]byte("isValidTEEType(uint8)"))[:4]
+	selApprovePCR         = crypto.Keccak256([]byte("approvePCR((bytes,bytes,bytes),string,uint8)"))[:4]
+	selRevokePCR          = crypto.Keccak256([]byte("revokePCR(bytes32,uint8)"))[:4]
+	selIsPCRApproved      = crypto.Keccak256([]byte("isPCRApproved(uint8,bytes32)"))[:4]
+	selComputePCRHash     = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
+	selGetApprovedPCRs    = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
+	selSetAWSRootCert     = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
+	selRegisterTEE        = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
+	selRegisterTEEOHTTP   = crypto.Keccak256([]byte("registerTEEWithAttestationAndOHTTPConfig(bytes,bytes,bytes,address,string,uint8,uint8,uint16,uint16,uint16,bytes,bytes,bytes)"))[:4]
+	selDisableTEE         = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
+	selEnableTEE          = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
+	selGetEnabledTEEs     = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
+	selGetTEE             = crypto.Keccak256([]byte("getTEE(bytes32)"))[:4]
+	selIsTEEActive        = crypto.Keccak256([]byte("isTEEActive(bytes32)"))[:4]
+	selSetHeartbeatMaxAge = crypto.Keccak256([]byte("setHeartbeatMaxAge(uint256)"))[:4]
+	selHeartbeatMaxAge    = crypto.Keccak256([]byte("heartbeatMaxAge()"))[:4]
 )
 
 // Structs
 
 type TEEInfo struct {
-	Owner          common.Address
-	PaymentAddress common.Address
-	Endpoint       string
-	PublicKey      []byte
-	TLSCertificate []byte
-	PCRHash        [32]byte
-	TEEType        uint8
-	IsEnabled      bool
-	RegisteredAt   time.Time
+	Owner           common.Address
+	PaymentAddress  common.Address
+	Endpoint        string
+	PublicKey       []byte
+	TLSCertificate  []byte
+	PCRHash         [32]byte
+	TEEType         uint8
+	IsEnabled       bool
+	RegisteredAt    time.Time
 	LastHeartbeatAt time.Time
 }
 
@@ -89,6 +90,26 @@ type MeasurementsFile struct {
 		PCR1 string `json:"PCR1"`
 		PCR2 string `json:"PCR2"`
 	} `json:"Measurements"`
+}
+
+type OHTTPConfig struct {
+	KeyID     uint8  `json:"key_id"`
+	KEMID     uint16 `json:"kem_id"`
+	KDFID     uint16 `json:"kdf_id"`
+	AEADID    uint16 `json:"aead_id"`
+	PublicKey []byte
+	KeyConfig []byte
+	Signature []byte
+}
+
+type rawOHTTPConfig struct {
+	KeyID     uint8  `json:"key_id"`
+	KEMID     uint16 `json:"kem_id"`
+	KDFID     uint16 `json:"kdf_id"`
+	AEADID    uint16 `json:"aead_id"`
+	PublicKey string `json:"public_key"`
+	KeyConfig string `json:"key_config"`
+	Signature string `json:"signature"`
 }
 
 // Client
@@ -178,28 +199,28 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 
 	// The result is a struct (anonymous) containing the tuple fields
 	s := values[0].(struct {
-		Owner          common.Address `json:"owner"`
-		PaymentAddress common.Address `json:"paymentAddress"`
-		Endpoint       string         `json:"endpoint"`
-		PublicKey      []byte         `json:"publicKey"`
-		TlsCertificate []byte         `json:"tlsCertificate"`
-		PcrHash        [32]byte       `json:"pcrHash"`
-		TeeType        uint8          `json:"teeType"`
-		Enabled        bool           `json:"enabled"`
-		RegisteredAt   *big.Int       `json:"registeredAt"`
-		LastHeartbeatAt *big.Int      `json:"lastHeartbeatAt"`
+		Owner           common.Address `json:"owner"`
+		PaymentAddress  common.Address `json:"paymentAddress"`
+		Endpoint        string         `json:"endpoint"`
+		PublicKey       []byte         `json:"publicKey"`
+		TlsCertificate  []byte         `json:"tlsCertificate"`
+		PcrHash         [32]byte       `json:"pcrHash"`
+		TeeType         uint8          `json:"teeType"`
+		Enabled         bool           `json:"enabled"`
+		RegisteredAt    *big.Int       `json:"registeredAt"`
+		LastHeartbeatAt *big.Int       `json:"lastHeartbeatAt"`
 	})
 
 	return &TEEInfo{
-		Owner:          s.Owner,
-		PaymentAddress: s.PaymentAddress,
-		Endpoint:       s.Endpoint,
-		PublicKey:      s.PublicKey,
-		TLSCertificate: s.TlsCertificate,
-		PCRHash:        s.PcrHash,
-		TEEType:        s.TeeType,
-		IsEnabled:      s.Enabled,
-		RegisteredAt:   time.Unix(s.RegisteredAt.Int64(), 0),
+		Owner:           s.Owner,
+		PaymentAddress:  s.PaymentAddress,
+		Endpoint:        s.Endpoint,
+		PublicKey:       s.PublicKey,
+		TLSCertificate:  s.TlsCertificate,
+		PCRHash:         s.PcrHash,
+		TEEType:         s.TeeType,
+		IsEnabled:       s.Enabled,
+		RegisteredAt:    time.Unix(s.RegisteredAt.Int64(), 0),
 		LastHeartbeatAt: time.Unix(s.LastHeartbeatAt.Int64(), 0),
 	}, nil
 }
@@ -215,6 +236,52 @@ func (c *Client) RegisterTEE(from string, attestation, signingKey, tlsCert []byt
 	return c.sendTx(from, append(selRegisterTEE, encoded...))
 }
 
+func (c *Client) RegisterTEEWithOHTTPConfig(
+	from string,
+	attestation, signingKey, tlsCert []byte,
+	paymentAddr, endpoint string,
+	teeType uint8,
+	ohttp OHTTPConfig,
+) (string, error) {
+	bytesT, _ := abi.NewType("bytes", "", nil)
+	addrT, _ := abi.NewType("address", "", nil)
+	strT, _ := abi.NewType("string", "", nil)
+	u8T, _ := abi.NewType("uint8", "", nil)
+	u16T, _ := abi.NewType("uint16", "", nil)
+
+	args := abi.Arguments{
+		{Type: bytesT},
+		{Type: bytesT},
+		{Type: bytesT},
+		{Type: addrT},
+		{Type: strT},
+		{Type: u8T},
+		{Type: u8T},
+		{Type: u16T},
+		{Type: u16T},
+		{Type: u16T},
+		{Type: bytesT},
+		{Type: bytesT},
+		{Type: bytesT},
+	}
+	encoded, _ := args.Pack(
+		attestation,
+		signingKey,
+		tlsCert,
+		common.HexToAddress(paymentAddr),
+		endpoint,
+		teeType,
+		ohttp.KeyID,
+		ohttp.KEMID,
+		ohttp.KDFID,
+		ohttp.AEADID,
+		ohttp.PublicKey,
+		ohttp.KeyConfig,
+		ohttp.Signature,
+	)
+	return c.sendTx(from, append(selRegisterTEEOHTTP, encoded...))
+}
+
 func (c *Client) DisableTEE(from string, teeId [32]byte) (string, error) {
 	return c.sendTx(from, encodeBytes32(selDisableTEE, teeId))
 }
@@ -222,7 +289,6 @@ func (c *Client) DisableTEE(from string, teeId [32]byte) (string, error) {
 func (c *Client) EnableTEE(from string, teeId [32]byte) (string, error) {
 	return c.sendTx(from, encodeBytes32(selEnableTEE, teeId))
 }
-
 
 func (c *Client) IsTEEActive(teeId [32]byte) (bool, error) {
 	result, err := c.ethCall(encodeBytes32(selIsTEEActive, teeId))
@@ -663,6 +729,52 @@ func FetchSigningPublicKey(host string) ([]byte, error) {
 		return decoded, nil
 	}
 	return nil, fmt.Errorf("invalid key format")
+}
+
+func FetchOHTTPConfig(host string) (*OHTTPConfig, error) {
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, Timeout: 30 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("https://%s/v1/ohttp/config", host))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ohttp config request failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var raw rawOHTTPConfig
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("failed to decode ohttp config: %w", err)
+	}
+
+	publicKey, err := hex.DecodeString(strings.TrimPrefix(raw.PublicKey, "0x"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid ohttp public key hex: %w", err)
+	}
+	keyConfig, err := base64.StdEncoding.DecodeString(raw.KeyConfig)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ohttp key_config base64: %w", err)
+	}
+	signature, err := base64.StdEncoding.DecodeString(raw.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ohttp signature base64: %w", err)
+	}
+	if len(publicKey) == 0 || len(keyConfig) == 0 || len(signature) == 0 {
+		return nil, fmt.Errorf("ohttp config is missing public_key, key_config, or signature")
+	}
+
+	return &OHTTPConfig{
+		KeyID:     raw.KeyID,
+		KEMID:     raw.KEMID,
+		KDFID:     raw.KDFID,
+		AEADID:    raw.AEADID,
+		PublicKey: publicKey,
+		KeyConfig: keyConfig,
+		Signature: signature,
+	}, nil
 }
 
 func FetchTLSCertificate(host, port string) ([]byte, error) {
