@@ -342,7 +342,7 @@ contract TEERegistry is AccessControl {
         address paymentAddress,
         string calldata endpoint,
         uint8 teeType
-    ) external onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
+    ) public virtual onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
         // Validate TEE type
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
