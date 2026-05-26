@@ -8,6 +8,31 @@ contract('TEERegistry', function (accounts) {
     let owner, teeOperator, user1, user2
     let registry, helper
 
+    function makeOHTTPConfig(overrides = {}) {
+        return {
+            keyId: 1,
+            kemId: 32,
+            kdfId: 1,
+            aeadId: 3,
+            publicKey: '0x' + Buffer.alloc(32, 0xA0).toString('hex'),
+            keyConfig: '0x' + Buffer.from('test-ohttp-key-config', 'utf8').toString('hex'),
+            signature: '0x' + Buffer.alloc(256, 0x5A).toString('hex'),
+            ...overrides
+        }
+    }
+
+    function ohttpArgs(config = makeOHTTPConfig()) {
+        return [
+            config.keyId,
+            config.kemId,
+            config.kdfId,
+            config.aeadId,
+            config.publicKey,
+            config.keyConfig,
+            config.signature
+        ]
+    }
+
     before(async () => {
         [owner, teeOperator, user1, user2] = accounts
 
@@ -283,6 +308,7 @@ contract('TEERegistry', function (accounts) {
                     user1,
                     'https://tee.example.com',
                     1,
+                    ...ohttpArgs(),
                     { from: user1 }
                 )
             )
@@ -302,6 +328,7 @@ contract('TEERegistry', function (accounts) {
                     teeOperator,
                     'https://tee.example.com',
                     99, // Invalid type
+                    ...ohttpArgs(),
                     { from: teeOperator }
                 )
             )
@@ -321,11 +348,82 @@ contract('TEERegistry', function (accounts) {
                     teeOperator,
                     'https://tee.example.com',
                     1,
+                    ...ohttpArgs(),
                     { from: teeOperator }
                 )
             )
 
             console.log('✓ Invalid attestation rejected during registration')
+        })
+    })
+
+    describe('OHTTP Config', function () {
+        it('should expose OHTTP constants', async function () {
+            const domain = await registry.OHTTP_CONFIG_DOMAIN_SEPARATOR()
+            const expectedDomain = web3.utils.keccak256('OPENGRADIENT_TEE_OHTTP_CONFIG_V1')
+
+            expect(domain).to.equal(expectedDomain)
+            expect((await registry.KEM_ID_X25519_HKDF_SHA256()).toNumber()).to.equal(32)
+            expect((await registry.X25519_PUBLIC_KEY_SIZE()).toNumber()).to.equal(32)
+
+            console.log('✓ OHTTP constants exposed correctly')
+        })
+
+        it('should compute OHTTP config hash correctly', async function () {
+            const teeId = web3.utils.keccak256('0x1234')
+            const config = makeOHTTPConfig()
+            const domain = await registry.OHTTP_CONFIG_DOMAIN_SEPARATOR()
+            const publicKeyHash = web3.utils.keccak256(config.publicKey)
+            const keyConfigHash = web3.utils.keccak256(config.keyConfig)
+
+            const expectedHash = web3.utils.keccak256(
+                web3.eth.abi.encodeParameters(
+                    ['bytes32', 'bytes32', 'uint8', 'uint16', 'uint16', 'uint16', 'bytes32', 'bytes32'],
+                    [
+                        domain,
+                        teeId,
+                        config.keyId,
+                        config.kemId,
+                        config.kdfId,
+                        config.aeadId,
+                        publicKeyHash,
+                        keyConfigHash
+                    ]
+                )
+            )
+
+            const computedHash = await registry.computeOHTTPConfigHash(
+                teeId,
+                config.keyId,
+                config.kemId,
+                config.kdfId,
+                config.aeadId,
+                config.publicKey,
+                config.keyConfig
+            )
+
+            expect(computedHash).to.equal(expectedHash)
+
+            console.log('✓ OHTTP config hash computation correct')
+        })
+
+        it('should report missing OHTTP config for unknown TEE', async function () {
+            const nonExistentId = web3.utils.keccak256('0xBEEF')
+
+            expect(await registry.hasOHTTPConfig(nonExistentId)).to.be.false
+
+            await truffleAssert.reverts(
+                registry.getOHTTPConfig(nonExistentId)
+            )
+
+            console.log('✓ Missing OHTTP config handled correctly')
+        })
+
+        it('should return empty active OHTTP records for unused type', async function () {
+            const records = await registry.getActiveTEERecordsWithOHTTPConfig(50)
+            expect(records.length).to.equal(0)
+
+            console.log('✓ Empty OHTTP active records returned for unused type')
         })
     })
 
