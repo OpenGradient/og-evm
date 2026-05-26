@@ -96,7 +96,7 @@ Verify PCR is approved:
 3. ✅ Fetches signing public key from `https://enclave_host/signing-key`
 4. ✅ Fetches TLS certificate via TLS handshake to `enclave_host:443`
 5. ✅ Computes expected TEE ID: `keccak256(signing_public_key)`
-6. ✅ Submits transaction: `registerTEEWithAttestation(attestation, signingKey, tlsCert, paymentAddr, endpoint, teeType)`
+6. ✅ Submits transaction: `registerTEEWithAttestation(attestation, signingKey, tlsCert, paymentAddr, endpoint, teeType, ohttpConfig...)`
 7. ✅ Contract verifies attestation via precompile (checks AWS signature, PCR approval)
 8. ✅ TEE is registered and **enabled** by default
 

@@ -132,7 +132,28 @@ contract TEERegistry is AccessControl {
         uint256 lastHeartbeatAt;
     }
 
+    struct OHTTPConfig {
+        uint8 keyId;
+        uint16 kemId;
+        uint16 kdfId;
+        uint16 aeadId;
+        bytes publicKey;
+        bytes keyConfig;
+        uint256 registeredAt;
+    }
+
+    struct TEEOHTTPRecord {
+        bytes32 teeId;
+        TEEInfo tee;
+        OHTTPConfig ohttpConfig;
+    }
+
     // ============ Storage ============
+
+    bytes32 public constant OHTTP_CONFIG_DOMAIN_SEPARATOR =
+        keccak256("OPENGRADIENT_TEE_OHTTP_CONFIG_V1");
+    uint16 public constant KEM_ID_X25519_HKDF_SHA256 = 32;
+    uint256 public constant X25519_PUBLIC_KEY_SIZE = 32;
 
     // AWS Root Certificate
     bytes public awsRootCertificate;
@@ -166,6 +187,9 @@ contract TEERegistry is AccessControl {
     // TEEs by owner
     mapping(address => bytes32[]) internal _teesByOwner;
 
+    // OHTTP config by TEE id. Set once during TEE registration.
+    mapping(bytes32 => OHTTPConfig) private _ohttpConfigs;
+
     // ============ Events ============
 
     event TEETypeAdded(uint8 indexed typeId, string name);
@@ -176,6 +200,15 @@ contract TEERegistry is AccessControl {
     event TEEEnabled(bytes32 indexed teeId);
     event AWSCertificateUpdated(bytes32 indexed certHash);
     event HeartbeatReceived(bytes32 indexed teeId, uint256 timestamp);
+    event OHTTPConfigRegistered(
+        bytes32 indexed teeId,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes32 publicKeyHash,
+        bytes32 keyConfigHash
+    );
 
     // ============ Errors ============
 
@@ -193,6 +226,9 @@ contract TEERegistry is AccessControl {
     error HeartbeatSignatureInvalid();
     error HeartbeatTimestampTooOld();
     error HeartbeatTimestampInFuture();
+    error OHTTPConfigNotFound();
+    error OHTTPConfigInvalid();
+    error OHTTPConfigSignatureInvalid();
 
     // ============ Modifiers ============
 
@@ -341,8 +377,44 @@ contract TEERegistry is AccessControl {
         bytes calldata tlsCertificate,
         address paymentAddress,
         string calldata endpoint,
+        uint8 teeType,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes calldata ohttpPublicKey,
+        bytes calldata ohttpKeyConfig,
+        bytes calldata ohttpConfigSignature
+    ) external onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
+        teeId = _registerTEEWithAttestation(
+            attestationDocument,
+            signingPublicKey,
+            tlsCertificate,
+            paymentAddress,
+            endpoint,
+            teeType
+        );
+
+        _setOHTTPConfig(
+            teeId,
+            keyId,
+            kemId,
+            kdfId,
+            aeadId,
+            ohttpPublicKey,
+            ohttpKeyConfig,
+            ohttpConfigSignature
+        );
+    }
+
+    function _registerTEEWithAttestation(
+        bytes calldata attestationDocument,
+        bytes calldata signingPublicKey,
+        bytes calldata tlsCertificate,
+        address paymentAddress,
+        string calldata endpoint,
         uint8 teeType
-    ) public virtual onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
+    ) private returns (bytes32 teeId) {
         // Validate TEE type
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
@@ -383,6 +455,61 @@ contract TEERegistry is AccessControl {
         _teesByOwner[msg.sender].push(teeId);
 
         emit TEERegistered(teeId, msg.sender, teeType);
+    }
+
+    function _setOHTTPConfig(
+        bytes32 teeId,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes calldata ohttpPublicKey,
+        bytes calldata ohttpKeyConfig,
+        bytes calldata ohttpConfigSignature
+    ) private {
+        TEEInfo storage tee = tees[teeId];
+        if (tee.registeredAt == 0) revert TEENotFound();
+        if (ohttpPublicKey.length == 0 || ohttpKeyConfig.length == 0) {
+            revert OHTTPConfigInvalid();
+        }
+        if (
+            kemId == KEM_ID_X25519_HKDF_SHA256 &&
+            ohttpPublicKey.length != X25519_PUBLIC_KEY_SIZE
+        ) {
+            revert OHTTPConfigInvalid();
+        }
+
+        bytes32 configHash = computeOHTTPConfigHash(
+            teeId,
+            keyId,
+            kemId,
+            kdfId,
+            aeadId,
+            ohttpPublicKey,
+            ohttpKeyConfig
+        );
+        bool valid = VERIFIER.verifyRSAPSS(tee.publicKey, configHash, ohttpConfigSignature);
+        if (!valid) revert OHTTPConfigSignatureInvalid();
+
+        _ohttpConfigs[teeId] = OHTTPConfig({
+            keyId: keyId,
+            kemId: kemId,
+            kdfId: kdfId,
+            aeadId: aeadId,
+            publicKey: ohttpPublicKey,
+            keyConfig: ohttpKeyConfig,
+            registeredAt: block.timestamp
+        });
+
+        emit OHTTPConfigRegistered(
+            teeId,
+            keyId,
+            kemId,
+            kdfId,
+            aeadId,
+            keccak256(ohttpPublicKey),
+            keccak256(ohttpKeyConfig)
+        );
     }
 
     /// @notice Disable a TEE, removing it from the enabled list
@@ -488,6 +615,26 @@ contract TEERegistry is AccessControl {
         return tees[teeId];
     }
 
+    function getOHTTPConfig(bytes32 teeId) external view returns (OHTTPConfig memory) {
+        OHTTPConfig memory config = _ohttpConfigs[teeId];
+        if (config.registeredAt == 0) revert OHTTPConfigNotFound();
+        return config;
+    }
+
+    function hasOHTTPConfig(bytes32 teeId) external view returns (bool) {
+        return _ohttpConfigs[teeId].registeredAt != 0;
+    }
+
+    function getTEEWithOHTTPConfig(
+        bytes32 teeId
+    ) external view returns (TEEInfo memory tee, OHTTPConfig memory ohttpConfig) {
+        tee = tees[teeId];
+        if (tee.registeredAt == 0) revert TEENotFound();
+
+        ohttpConfig = _ohttpConfigs[teeId];
+        if (ohttpConfig.registeredAt == 0) revert OHTTPConfigNotFound();
+    }
+
     /// @notice Get TEE IDs that are currently enabled for a given type
     /// @dev Does NOT filter by heartbeat freshness. 
     ///      Use getActiveTEEs() for fully verified results.
@@ -514,6 +661,31 @@ contract TEERegistry is AccessControl {
         for (uint256 i = 0; i < list.length; i++) {
             if (_isTEEActive(tees[list[i]])) {
                 result[j++] = tees[list[i]];
+            }
+        }
+        return result;
+    }
+
+    function getActiveTEERecordsWithOHTTPConfig(
+        uint8 teeType
+    ) external view returns (TEEOHTTPRecord[] memory) {
+        bytes32[] storage list = _enabledTEEList[teeType];
+        uint256 count = 0;
+        for (uint256 i = 0; i < list.length; i++) {
+            bytes32 teeId = list[i];
+            if (_isTEEActive(tees[teeId]) && _ohttpConfigs[teeId].registeredAt != 0) count++;
+        }
+
+        TEEOHTTPRecord[] memory result = new TEEOHTTPRecord[](count);
+        uint256 j = 0;
+        for (uint256 i = 0; i < list.length; i++) {
+            bytes32 teeId = list[i];
+            if (_isTEEActive(tees[teeId]) && _ohttpConfigs[teeId].registeredAt != 0) {
+                result[j++] = TEEOHTTPRecord({
+                    teeId: teeId,
+                    tee: tees[teeId],
+                    ohttpConfig: _ohttpConfigs[teeId]
+                });
             }
         }
         return result;
@@ -560,5 +732,28 @@ contract TEERegistry is AccessControl {
     /// @return The TEE identifier (keccak256 hash)
     function computeTEEId(bytes calldata publicKey) external pure returns (bytes32) {
         return keccak256(publicKey);
+    }
+
+    function computeOHTTPConfigHash(
+        bytes32 teeId,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes calldata ohttpPublicKey,
+        bytes calldata ohttpKeyConfig
+    ) public pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                OHTTP_CONFIG_DOMAIN_SEPARATOR,
+                teeId,
+                keyId,
+                kemId,
+                kdfId,
+                aeadId,
+                keccak256(ohttpPublicKey),
+                keccak256(ohttpKeyConfig)
+            )
+        );
     }
 }

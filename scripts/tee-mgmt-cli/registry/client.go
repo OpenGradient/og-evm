@@ -43,8 +43,7 @@ var (
 	selComputePCRHash     = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	selGetApprovedPCRs    = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
 	selSetAWSRootCert     = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
-	selRegisterTEE        = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
-	selRegisterTEEOHTTP   = crypto.Keccak256([]byte("registerTEEWithAttestationAndOHTTPConfig(bytes,bytes,bytes,address,string,uint8,uint8,uint16,uint16,uint16,bytes,bytes,bytes)"))[:4]
+	selRegisterTEE        = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8,uint8,uint16,uint16,uint16,bytes,bytes,bytes)"))[:4]
 	selDisableTEE         = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
 	selEnableTEE          = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
 	selGetEnabledTEEs     = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
@@ -225,18 +224,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 	}, nil
 }
 
-func (c *Client) RegisterTEE(from string, attestation, signingKey, tlsCert []byte, paymentAddr, endpoint string, teeType uint8) (string, error) {
-	bytesT, _ := abi.NewType("bytes", "", nil)
-	addrT, _ := abi.NewType("address", "", nil)
-	strT, _ := abi.NewType("string", "", nil)
-	u8T, _ := abi.NewType("uint8", "", nil)
-
-	args := abi.Arguments{{Type: bytesT}, {Type: bytesT}, {Type: bytesT}, {Type: addrT}, {Type: strT}, {Type: u8T}}
-	encoded, _ := args.Pack(attestation, signingKey, tlsCert, common.HexToAddress(paymentAddr), endpoint, teeType)
-	return c.sendTx(from, append(selRegisterTEE, encoded...))
-}
-
-func (c *Client) RegisterTEEWithOHTTPConfig(
+func (c *Client) RegisterTEE(
 	from string,
 	attestation, signingKey, tlsCert []byte,
 	paymentAddr, endpoint string,
@@ -279,7 +267,7 @@ func (c *Client) RegisterTEEWithOHTTPConfig(
 		ohttp.KeyConfig,
 		ohttp.Signature,
 	)
-	return c.sendTx(from, append(selRegisterTEEOHTTP, encoded...))
+	return c.sendTx(from, append(selRegisterTEE, encoded...))
 }
 
 func (c *Client) DisableTEE(from string, teeId [32]byte) (string, error) {

@@ -109,7 +109,6 @@ var teeRegisterCmd = &cobra.Command{
 			endpoint = fmt.Sprintf("https://%s", enclaveHost)
 		}
 		teeType, _ := cmd.Flags().GetUint8("tee-type")
-		skipOHTTPConfig, _ := cmd.Flags().GetBool("skip-ohttp-config")
 
 		fmt.Println("=== Registering TEE ===")
 		fmt.Printf("  Enclave: %s:%s\n", enclaveHost, enclavePort)
@@ -133,24 +132,21 @@ var teeRegisterCmd = &cobra.Command{
 		}
 		fmt.Printf("  Signing Key: %d bytes\n", len(signingKey))
 
-		var ohttpConfig *registry.OHTTPConfig
-		if !skipOHTTPConfig {
-			registry.Log("Fetching signed OHTTP config...")
-			ohttpConfig, err = registry.FetchOHTTPConfig(enclaveHost)
-			if err != nil {
-				return fmt.Errorf("failed to fetch signed OHTTP config: %w", err)
-			}
-			fmt.Printf(
-				"  OHTTP Config: key_id=%d kem=%d kdf=%d aead=%d public_key=%d bytes key_config=%d bytes signature=%d bytes\n",
-				ohttpConfig.KeyID,
-				ohttpConfig.KEMID,
-				ohttpConfig.KDFID,
-				ohttpConfig.AEADID,
-				len(ohttpConfig.PublicKey),
-				len(ohttpConfig.KeyConfig),
-				len(ohttpConfig.Signature),
-			)
+		registry.Log("Fetching signed OHTTP config...")
+		ohttpConfig, err := registry.FetchOHTTPConfig(enclaveHost)
+		if err != nil {
+			return fmt.Errorf("failed to fetch signed OHTTP config: %w", err)
 		}
+		fmt.Printf(
+			"  OHTTP Config: key_id=%d kem=%d kdf=%d aead=%d public_key=%d bytes key_config=%d bytes signature=%d bytes\n",
+			ohttpConfig.KeyID,
+			ohttpConfig.KEMID,
+			ohttpConfig.KDFID,
+			ohttpConfig.AEADID,
+			len(ohttpConfig.PublicKey),
+			len(ohttpConfig.KeyConfig),
+			len(ohttpConfig.Signature),
+		)
 
 		registry.Log("Fetching TLS certificate...")
 		tlsCert, err := registry.FetchTLSCertificate(enclaveHost, enclavePort)
@@ -166,29 +162,16 @@ var teeRegisterCmd = &cobra.Command{
 		}
 
 		registry.Log("Sending registration transaction...")
-		var txHash string
-		if ohttpConfig != nil {
-			txHash, err = client.RegisterTEEWithOHTTPConfig(
-				account,
-				attestBytes,
-				signingKey,
-				tlsCert,
-				paymentAddr,
-				endpoint,
-				teeType,
-				*ohttpConfig,
-			)
-		} else {
-			txHash, err = client.RegisterTEE(
-				account,
-				attestBytes,
-				signingKey,
-				tlsCert,
-				paymentAddr,
-				endpoint,
-				teeType,
-			)
-		}
+		txHash, err := client.RegisterTEE(
+			account,
+			attestBytes,
+			signingKey,
+			tlsCert,
+			paymentAddr,
+			endpoint,
+			teeType,
+			*ohttpConfig,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to register: %w", err)
 		}
@@ -310,7 +293,6 @@ func init() {
 	teeRegisterCmd.Flags().String("payment-address", "", "Payment address for the TEE (defaults to sender)")
 	teeRegisterCmd.Flags().String("endpoint", "", "Public endpoint URL for the TEE (defaults to https://<enclave-host>)")
 	teeRegisterCmd.Flags().Uint8("tee-type", 0, "TEE type ID (e.g. 0=LLMProxy, 1=Validator)")
-	teeRegisterCmd.Flags().Bool("skip-ohttp-config", false, "Use the legacy registration method without signed OHTTP config")
 	teeRegisterCmd.MarkFlagRequired("enclave-host")
 
 	teeActiveCmd.Flags().Uint8("tee-type", 0, "TEE type ID to list")
