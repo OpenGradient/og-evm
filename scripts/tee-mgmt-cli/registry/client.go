@@ -43,7 +43,7 @@ var (
 	selComputePCRHash     = crypto.Keccak256([]byte("computePCRHash((bytes,bytes,bytes))"))[:4]
 	selGetApprovedPCRs    = crypto.Keccak256([]byte("getApprovedPCRs()"))[:4]
 	selSetAWSRootCert     = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
-	selRegisterTEE        = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8,uint8,uint16,uint16,uint16,bytes,bytes,bytes)"))[:4]
+	selRegisterTEE        = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8,(uint8,uint16,uint16,uint16,bytes,bytes,bytes))"))[:4]
 	selDisableTEE         = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4]
 	selEnableTEE          = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]
 	selGetEnabledTEEs     = crypto.Keccak256([]byte("getEnabledTEEs(uint8)"))[:4]
@@ -181,11 +181,6 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "registeredAt", Type: "uint256"},
 	}
 
-	_, err = abi.NewType("tuple", "", ohttpComponents)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OHTTP ABI type: %v", err)
-	}
-
 	tupleType, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "owner", Type: "address"},
 		{Name: "paymentAddress", Type: "address"},
@@ -271,7 +266,20 @@ func (c *Client) RegisterTEE(
 	addrT, _ := abi.NewType("address", "", nil)
 	strT, _ := abi.NewType("string", "", nil)
 	u8T, _ := abi.NewType("uint8", "", nil)
-	u16T, _ := abi.NewType("uint16", "", nil)
+
+	// OHTTP config is passed as a single struct (tuple) argument on-chain.
+	ohttpT, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
+		{Name: "keyId", Type: "uint8"},
+		{Name: "kemId", Type: "uint16"},
+		{Name: "kdfId", Type: "uint16"},
+		{Name: "aeadId", Type: "uint16"},
+		{Name: "publicKey", Type: "bytes"},
+		{Name: "keyConfig", Type: "bytes"},
+		{Name: "signature", Type: "bytes"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create OHTTP ABI type: %w", err)
+	}
 
 	args := abi.Arguments{
 		{Type: bytesT},
@@ -280,29 +288,36 @@ func (c *Client) RegisterTEE(
 		{Type: addrT},
 		{Type: strT},
 		{Type: u8T},
-		{Type: u8T},
-		{Type: u16T},
-		{Type: u16T},
-		{Type: u16T},
-		{Type: bytesT},
-		{Type: bytesT},
-		{Type: bytesT},
+		{Type: ohttpT},
 	}
-	encoded, _ := args.Pack(
+	encoded, err := args.Pack(
 		attestation,
 		signingKey,
 		tlsCert,
 		common.HexToAddress(paymentAddr),
 		endpoint,
 		teeType,
-		ohttp.KeyID,
-		ohttp.KEMID,
-		ohttp.KDFID,
-		ohttp.AEADID,
-		ohttp.PublicKey,
-		ohttp.KeyConfig,
-		ohttp.Signature,
+		struct {
+			KeyId     uint8
+			KemId     uint16
+			KdfId     uint16
+			AeadId    uint16
+			PublicKey []byte
+			KeyConfig []byte
+			Signature []byte
+		}{
+			KeyId:     ohttp.KeyID,
+			KemId:     ohttp.KEMID,
+			KdfId:     ohttp.KDFID,
+			AeadId:    ohttp.AEADID,
+			PublicKey: ohttp.PublicKey,
+			KeyConfig: ohttp.KeyConfig,
+			Signature: ohttp.Signature,
+		},
 	)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode registerTEE args: %w", err)
+	}
 	return c.sendTx(from, append(selRegisterTEE, encoded...))
 }
 

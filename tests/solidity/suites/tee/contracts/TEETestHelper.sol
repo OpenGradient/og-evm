@@ -85,13 +85,7 @@ contract TEETestHelper {
         address paymentAddress,
         string calldata endpoint,
         uint8 teeType,
-        uint8 keyId,
-        uint16 kemId,
-        uint16 kdfId,
-        uint16 aeadId,
-        bytes calldata ohttpPublicKey,
-        bytes calldata ohttpKeyConfig,
-        bytes calldata ohttpConfigSignature
+        TEERegistry.OHTTPConfigInput calldata ohttp
     ) external returns (bytes32 teeId) {
         return registry.registerTEEWithAttestation(
             attestationDocument,
@@ -100,13 +94,7 @@ contract TEETestHelper {
             paymentAddress,
             endpoint,
             teeType,
-            keyId,
-            kemId,
-            kdfId,
-            aeadId,
-            ohttpPublicKey,
-            ohttpKeyConfig,
-            ohttpConfigSignature
+            ohttp
         );
     }
 

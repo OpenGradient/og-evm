@@ -130,6 +130,20 @@ contract TEERegistry is AccessControl {
         uint256 registeredAt;
     }
 
+    /// @notice Calldata-only payload for an enclave's signed OHTTP/HPKE config.
+    /// @dev Grouped into a struct so callers (and the on-chain register fn) pass
+    ///      a single argument instead of seven, which keeps the register
+    ///      function readable and eases stack pressure.
+    struct OHTTPConfigInput {
+        uint8 keyId;
+        uint16 kemId;
+        uint16 kdfId;
+        uint16 aeadId;
+        bytes publicKey;
+        bytes keyConfig;
+        bytes signature;
+    }
+
     struct TEEInfo {
         address owner;
         address paymentAddress;
@@ -370,13 +384,7 @@ contract TEERegistry is AccessControl {
         address paymentAddress,
         string calldata endpoint,
         uint8 teeType,
-        uint8 keyId,
-        uint16 kemId,
-        uint16 kdfId,
-        uint16 aeadId,
-        bytes calldata ohttpPublicKey,
-        bytes calldata ohttpKeyConfig,
-        bytes calldata ohttpConfigSignature
+        OHTTPConfigInput calldata ohttp
     ) external onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
         // Validate TEE type
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
@@ -397,41 +405,9 @@ contract TEERegistry is AccessControl {
         // Verify PCR is approved and matches the TEE type
         _requirePCRValidForTEE(pcrHash, teeType);
 
-        if (ohttpPublicKey.length == 0 || ohttpKeyConfig.length == 0) {
-            revert OHTTPConfigInvalid();
-        }
-        if (
-            kemId == KEM_ID_X25519_HKDF_SHA256 &&
-            ohttpPublicKey.length != X25519_PUBLIC_KEY_SIZE
-        ) {
-            revert OHTTPConfigInvalid();
-        }
-
-        bytes32 configHash = computeOHTTPConfigHash(
-            teeId,
-            keyId,
-            kemId,
-            kdfId,
-            aeadId,
-            ohttpPublicKey,
-            ohttpKeyConfig
-        );
-        bool validConfig = VERIFIER.verifyRSAPSS(
-            signingPublicKey,
-            configHash,
-            ohttpConfigSignature
-        );
-        if (!validConfig) revert OHTTPConfigSignatureInvalid();
-
-        OHTTPConfig memory ohttpConfig = OHTTPConfig({
-            keyId: keyId,
-            kemId: kemId,
-            kdfId: kdfId,
-            aeadId: aeadId,
-            publicKey: ohttpPublicKey,
-            keyConfig: ohttpKeyConfig,
-            registeredAt: block.timestamp
-        });
+        // Validate and verify the signed OHTTP config (kept in a helper to bound
+        // the stack usage of this function).
+        OHTTPConfig memory ohttpConfig = _buildOHTTPConfig(teeId, signingPublicKey, ohttp);
 
         // Store TEE
         tees[teeId] = TEEInfo({
@@ -457,13 +433,56 @@ contract TEERegistry is AccessControl {
         emit TEERegistered(teeId, msg.sender, teeType);
         emit OHTTPConfigRegistered(
             teeId,
-            keyId,
-            kemId,
-            kdfId,
-            aeadId,
-            keccak256(ohttpPublicKey),
-            keccak256(ohttpKeyConfig)
+            ohttp.keyId,
+            ohttp.kemId,
+            ohttp.kdfId,
+            ohttp.aeadId,
+            keccak256(ohttp.publicKey),
+            keccak256(ohttp.keyConfig)
         );
+    }
+
+    /// @notice Validate an OHTTP config payload and verify it is signed by the
+    ///         enclave's attested signing key, returning the stored representation.
+    /// @dev Reverts with OHTTPConfigInvalid for malformed payloads and
+    ///      OHTTPConfigSignatureInvalid when the RSA-PSS signature does not match.
+    function _buildOHTTPConfig(
+        bytes32 teeId,
+        bytes calldata signingPublicKey,
+        OHTTPConfigInput calldata ohttp
+    ) internal view returns (OHTTPConfig memory) {
+        if (ohttp.publicKey.length == 0 || ohttp.keyConfig.length == 0) {
+            revert OHTTPConfigInvalid();
+        }
+        if (
+            ohttp.kemId == KEM_ID_X25519_HKDF_SHA256 &&
+            ohttp.publicKey.length != X25519_PUBLIC_KEY_SIZE
+        ) {
+            revert OHTTPConfigInvalid();
+        }
+
+        bytes32 configHash = computeOHTTPConfigHash(
+            teeId,
+            ohttp.keyId,
+            ohttp.kemId,
+            ohttp.kdfId,
+            ohttp.aeadId,
+            ohttp.publicKey,
+            ohttp.keyConfig
+        );
+        if (!VERIFIER.verifyRSAPSS(signingPublicKey, configHash, ohttp.signature)) {
+            revert OHTTPConfigSignatureInvalid();
+        }
+
+        return OHTTPConfig({
+            keyId: ohttp.keyId,
+            kemId: ohttp.kemId,
+            kdfId: ohttp.kdfId,
+            aeadId: ohttp.aeadId,
+            publicKey: ohttp.publicKey,
+            keyConfig: ohttp.keyConfig,
+            registeredAt: block.timestamp
+        });
     }
 
     /// @notice Disable a TEE, removing it from the enabled list

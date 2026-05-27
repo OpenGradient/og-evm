@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const truffleAssert = require('truffle-assertions')
 const TEERegistry = artifacts.require('TEERegistry')
 const TEETestHelper = artifacts.require('TEETestHelper')
+const MockTEERegistry = artifacts.require('MockTEERegistry')
 
 contract('TEERegistry', function (accounts) {
     let owner, teeOperator, user1, user2
@@ -308,7 +309,7 @@ contract('TEERegistry', function (accounts) {
                     user1,
                     'https://tee.example.com',
                     1,
-                    ...ohttpArgs(),
+                    ohttpArgs(),
                     { from: user1 }
                 )
             )
@@ -328,7 +329,7 @@ contract('TEERegistry', function (accounts) {
                     teeOperator,
                     'https://tee.example.com',
                     99, // Invalid type
-                    ...ohttpArgs(),
+                    ohttpArgs(),
                     { from: teeOperator }
                 )
             )
@@ -348,7 +349,7 @@ contract('TEERegistry', function (accounts) {
                     teeOperator,
                     'https://tee.example.com',
                     1,
-                    ...ohttpArgs(),
+                    ohttpArgs(),
                     { from: teeOperator }
                 )
             )
@@ -415,6 +416,104 @@ contract('TEERegistry', function (accounts) {
             )
 
             console.log('✓ Unknown TEE OHTTP config lookup reverts correctly')
+        })
+
+        // Validation and storage of OHTTP config happen after the attestation
+        // precompile call, so they cannot be reached through the real
+        // registerTEEWithAttestation on a precompile-less network. MockTEERegistry
+        // exposes the validation helper and a config setter so this logic is covered.
+        describe('Validation & storage (mock-backed)', function () {
+            const TEE_TYPE = 1
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0x11).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0x22).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0x33).toString('hex')
+            }
+            let mock, mockKey, mockTeeId
+
+            before(async function () {
+                mock = await MockTEERegistry.new()
+                const TEE_OPERATOR_ROLE = await mock.TEE_OPERATOR()
+                await mock.grantRole(TEE_OPERATOR_ROLE, teeOperator)
+                await mock.addTEEType(TEE_TYPE, 'AWS Nitro')
+                await mock.approvePCR(pcrs, 'v1.0.0', TEE_TYPE)
+
+                const keyPair = crypto.generateKeyPairSync('rsa', {
+                    modulusLength: 2048,
+                    publicKeyEncoding: { type: 'spki', format: 'der' }
+                })
+                mockKey = '0x' + keyPair.publicKey.toString('hex')
+                mockTeeId = await mock.computeTEEId(mockKey)
+            })
+
+            it('should reject an empty OHTTP public key', async function () {
+                // Reverts with the custom error OHTTPConfigInvalid; truffle-assertions
+                // can only see the bare revert, so we assert on that.
+                await truffleAssert.reverts(
+                    mock.validateOHTTPConfigForTesting(
+                        mockTeeId,
+                        mockKey,
+                        ohttpArgs(makeOHTTPConfig({ publicKey: '0x' }))
+                    )
+                )
+
+                console.log('✓ Empty OHTTP public key rejected')
+            })
+
+            it('should reject an empty OHTTP key config', async function () {
+                await truffleAssert.reverts(
+                    mock.validateOHTTPConfigForTesting(
+                        mockTeeId,
+                        mockKey,
+                        ohttpArgs(makeOHTTPConfig({ keyConfig: '0x' }))
+                    )
+                )
+
+                console.log('✓ Empty OHTTP key config rejected')
+            })
+
+            it('should reject an X25519 public key of the wrong size', async function () {
+                // kemId 32 == X25519_HKDF_SHA256 requires a 32-byte public key.
+                await truffleAssert.reverts(
+                    mock.validateOHTTPConfigForTesting(
+                        mockTeeId,
+                        mockKey,
+                        ohttpArgs(makeOHTTPConfig({
+                            kemId: 32,
+                            publicKey: '0x' + Buffer.alloc(31, 0xA0).toString('hex')
+                        }))
+                    )
+                )
+
+                console.log('✓ Mismatched X25519 public key size rejected')
+            })
+
+            it('should store and return the OHTTP config for a registered TEE', async function () {
+                const pcrHash = await mock.computePCRHash(pcrs)
+                await mock.registerTEEForTesting(
+                    mockKey,
+                    '0x' + Buffer.alloc(64, 0xCC).toString('hex'),
+                    user1,
+                    'https://tee.example.com',
+                    TEE_TYPE,
+                    pcrHash,
+                    { from: teeOperator }
+                )
+
+                const config = makeOHTTPConfig()
+                await mock.setOHTTPConfigForTesting(mockTeeId, ohttpArgs(config), { from: teeOperator })
+
+                const stored = await mock.getOHTTPConfig(mockTeeId)
+                expect(Number(stored.keyId)).to.equal(config.keyId)
+                expect(Number(stored.kemId)).to.equal(config.kemId)
+                expect(Number(stored.kdfId)).to.equal(config.kdfId)
+                expect(Number(stored.aeadId)).to.equal(config.aeadId)
+                expect(stored.publicKey).to.equal(config.publicKey)
+                expect(stored.keyConfig).to.equal(config.keyConfig)
+                expect(Number(stored.registeredAt)).to.be.greaterThan(0)
+
+                console.log('✓ Stored OHTTP config retrieved correctly')
+            })
         })
     })
 
