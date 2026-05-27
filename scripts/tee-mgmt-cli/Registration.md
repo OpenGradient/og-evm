@@ -99,8 +99,8 @@ Verify PCR is approved:
    - Includes `key_id`, `kem_id`, `kdf_id`, `aead_id`, `public_key`, `key_config`, and `signature`
 6. ✅ Fetches TLS certificate via TLS handshake to `enclave_host:443`
 7. ✅ Submits transaction: `registerTEEWithAttestation(attestation, signingKey, tlsCert, paymentAddr, endpoint, teeType, ohttpConfig...)`
-8. ✅ Contract verifies the OHTTP config signature against the registered TEE signing key
-9. ✅ Contract verifies attestation via precompile (checks AWS signature, PCR approval)
+8. ✅ Contract verifies attestation via precompile (checks AWS signature, PCR approval)
+9. ✅ Contract verifies the OHTTP config signature against the registered TEE signing key
 10. ✅ TEE is registered and **enabled** by default
 
 ### Step 4: Verify Registration
