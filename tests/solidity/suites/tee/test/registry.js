@@ -34,15 +34,55 @@ contract('TEERegistry', function (accounts) {
         ]
     }
 
-    function makeSigningPublicKey() {
-        const { publicKey } = crypto.generateKeyPairSync('rsa', {
+    function makeSigningKeyPair() {
+        const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
             modulusLength: 2048,
             publicKeyEncoding: {
                 type: 'spki',
                 format: 'der'
+            },
+            privateKeyEncoding: {
+                type: 'pkcs8',
+                format: 'pem'
             }
         })
-        return '0x' + publicKey.toString('hex')
+        return {
+            publicKey: '0x' + publicKey.toString('hex'),
+            privateKey
+        }
+    }
+
+    function makeSigningPublicKey() {
+        return makeSigningKeyPair().publicKey
+    }
+
+    function signHash(privateKey, hash) {
+        const signer = crypto.createSign('SHA256')
+        signer.update(Buffer.from(hash.slice(2), 'hex'))
+        signer.end()
+
+        return '0x' + signer.sign({
+            key: privateKey,
+            padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+            saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
+        }).toString('hex')
+    }
+
+    async function signOHTTPConfig(signingPublicKey, privateKey, config) {
+        const teeId = await registry.computeTEEId(signingPublicKey)
+        const configHash = await registry.computeOHTTPConfigHash(
+            teeId,
+            config.keyId,
+            config.kemId,
+            config.kdfId,
+            config.aeadId,
+            config.publicKey,
+            config.keyConfig
+        )
+        return {
+            ...config,
+            signature: signHash(privateKey, configHash)
+        }
     }
 
     before(async () => {
@@ -429,6 +469,30 @@ contract('TEERegistry', function (accounts) {
             )
 
             console.log('✓ Unknown TEE OHTTP config lookup reverts correctly')
+        })
+
+        it('should accept a signed OHTTP config', async function () {
+            const { publicKey: signingPublicKey, privateKey } = makeSigningKeyPair()
+            const config = await signOHTTPConfig(
+                signingPublicKey,
+                privateKey,
+                makeOHTTPConfig()
+            )
+
+            const result = await mockRegistry.validateOHTTPConfigForTesting(
+                signingPublicKey,
+                ...ohttpArgs(config)
+            )
+
+            expect(result.keyId.toNumber()).to.equal(config.keyId)
+            expect(result.kemId.toNumber()).to.equal(config.kemId)
+            expect(result.kdfId.toNumber()).to.equal(config.kdfId)
+            expect(result.aeadId.toNumber()).to.equal(config.aeadId)
+            expect(result.publicKey).to.equal(config.publicKey)
+            expect(result.keyConfig).to.equal(config.keyConfig)
+            expect(result.registeredAt.toNumber()).to.be.greaterThan(0)
+
+            console.log('✓ Signed OHTTP config accepted')
         })
 
         it('should reject empty OHTTP public key or key config', async function () {
