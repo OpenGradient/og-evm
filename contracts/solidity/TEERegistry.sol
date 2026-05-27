@@ -127,6 +127,7 @@ contract TEERegistry is AccessControl {
         uint16 aeadId;
         bytes publicKey;
         bytes keyConfig;
+        bytes signature;
         uint256 registeredAt;
     }
 
@@ -454,10 +455,12 @@ contract TEERegistry is AccessControl {
         if (ohttp.publicKey.length == 0 || ohttp.keyConfig.length == 0) {
             revert OHTTPConfigInvalid();
         }
-        if (
-            ohttp.kemId == KEM_ID_X25519_HKDF_SHA256 &&
-            ohttp.publicKey.length != X25519_PUBLIC_KEY_SIZE
-        ) {
+        // Only X25519-HKDF-SHA256 is supported; reject any other KEM and enforce
+        // its fixed public key size.
+        if (ohttp.kemId != KEM_ID_X25519_HKDF_SHA256) {
+            revert OHTTPConfigInvalid();
+        }
+        if (ohttp.publicKey.length != X25519_PUBLIC_KEY_SIZE) {
             revert OHTTPConfigInvalid();
         }
 
@@ -481,6 +484,7 @@ contract TEERegistry is AccessControl {
             aeadId: ohttp.aeadId,
             publicKey: ohttp.publicKey,
             keyConfig: ohttp.keyConfig,
+            signature: ohttp.signature,
             registeredAt: block.timestamp
         });
     }

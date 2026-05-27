@@ -87,7 +87,7 @@ var (
 	SEL_SET_AWS_ROOT_CERT = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 
 	// TEE Registration & Lifecycle - FIXED
-	SEL_REGISTER_TEE = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8,uint8,uint16,uint16,uint16,bytes,bytes,bytes)"))[:4]
+	SEL_REGISTER_TEE = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8,(uint8,uint16,uint16,uint16,bytes,bytes,bytes))"))[:4]
 	SEL_DISABLE_TEE  = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4] // FIXED: disable not deactivate
 	SEL_ENABLE_TEE   = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]  // FIXED: enable not activate
 
@@ -1291,13 +1291,25 @@ func callRegisterTEE(attestation, signingKey, tlsCert []byte, paymentAddr, endpo
 	addrType, _ := abi.NewType("address", "", nil)
 	stringType, _ := abi.NewType("string", "", nil)
 	uint8Type, _ := abi.NewType("uint8", "", nil)
-	uint16Type, _ := abi.NewType("uint16", "", nil)
+
+	// OHTTP config is passed as a single struct (tuple) argument on-chain.
+	ohttpType, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
+		{Name: "keyId", Type: "uint8"},
+		{Name: "kemId", Type: "uint16"},
+		{Name: "kdfId", Type: "uint16"},
+		{Name: "aeadId", Type: "uint16"},
+		{Name: "publicKey", Type: "bytes"},
+		{Name: "keyConfig", Type: "bytes"},
+		{Name: "signature", Type: "bytes"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create OHTTP ABI type: %v", err)
+	}
 
 	args := abi.Arguments{
 		{Type: bytesType}, {Type: bytesType}, {Type: bytesType},
 		{Type: addrType}, {Type: stringType}, {Type: uint8Type},
-		{Type: uint8Type}, {Type: uint16Type}, {Type: uint16Type}, {Type: uint16Type},
-		{Type: bytesType}, {Type: bytesType}, {Type: bytesType},
+		{Type: ohttpType},
 	}
 	encoded, err := args.Pack(
 		attestation,
@@ -1306,13 +1318,23 @@ func callRegisterTEE(attestation, signingKey, tlsCert []byte, paymentAddr, endpo
 		common.HexToAddress(paymentAddr),
 		endpoint,
 		teeType,
-		ohttp.KeyID,
-		ohttp.KEMID,
-		ohttp.KDFID,
-		ohttp.AEADID,
-		ohttp.PublicKey,
-		ohttp.KeyConfig,
-		ohttp.Signature,
+		struct {
+			KeyId     uint8
+			KemId     uint16
+			KdfId     uint16
+			AeadId    uint16
+			PublicKey []byte
+			KeyConfig []byte
+			Signature []byte
+		}{
+			KeyId:     ohttp.KeyID,
+			KemId:     ohttp.KEMID,
+			KdfId:     ohttp.KDFID,
+			AeadId:    ohttp.AEADID,
+			PublicKey: ohttp.PublicKey,
+			KeyConfig: ohttp.KeyConfig,
+			Signature: ohttp.Signature,
+		},
 	)
 	if err != nil {
 		return "", fmt.Errorf("abi pack failed: %v", err)

@@ -44,6 +44,7 @@ contract MockTEERegistry is TEERegistry {
                 aeadId: 0,
                 publicKey: "",
                 keyConfig: "",
+                signature: "",
                 registeredAt: 0
             })
         });
@@ -78,6 +79,7 @@ contract MockTEERegistry is TEERegistry {
             aeadId: ohttp.aeadId,
             publicKey: ohttp.publicKey,
             keyConfig: ohttp.keyConfig,
+            signature: ohttp.signature,
             registeredAt: block.timestamp
         });
     }

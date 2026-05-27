@@ -178,6 +178,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "aeadId", Type: "uint16"},
 		{Name: "publicKey", Type: "bytes"},
 		{Name: "keyConfig", Type: "bytes"},
+		{Name: "signature", Type: "bytes"},
 		{Name: "registeredAt", Type: "uint256"},
 	}
 
@@ -228,6 +229,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 			AeadId       uint16   `json:"aeadId"`
 			PublicKey    []byte   `json:"publicKey"`
 			KeyConfig    []byte   `json:"keyConfig"`
+			Signature    []byte   `json:"signature"`
 			RegisteredAt *big.Int `json:"registeredAt"`
 		} `json:"ohttpConfig"`
 	})
@@ -250,6 +252,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 			AEADID:       s.OhttpConfig.AeadId,
 			PublicKey:    s.OhttpConfig.PublicKey,
 			KeyConfig:    s.OhttpConfig.KeyConfig,
+			Signature:    s.OhttpConfig.Signature,
 			RegisteredAt: time.Unix(s.OhttpConfig.RegisteredAt.Int64(), 0),
 		},
 	}, nil

@@ -510,6 +510,7 @@ contract('TEERegistry', function (accounts) {
                 expect(Number(stored.aeadId)).to.equal(config.aeadId)
                 expect(stored.publicKey).to.equal(config.publicKey)
                 expect(stored.keyConfig).to.equal(config.keyConfig)
+                expect(stored.signature).to.equal(config.signature)
                 expect(Number(stored.registeredAt)).to.be.greaterThan(0)
 
                 console.log('✓ Stored OHTTP config retrieved correctly')
