@@ -407,23 +407,14 @@ contract('TEERegistry', function (accounts) {
             console.log('✓ OHTTP config hash computation correct')
         })
 
-        it('should report missing OHTTP config for unknown TEE', async function () {
+        it('should revert OHTTP config lookup for unknown TEE', async function () {
             const nonExistentId = web3.utils.keccak256('0xBEEF')
-
-            expect(await registry.hasOHTTPConfig(nonExistentId)).to.be.false
 
             await truffleAssert.reverts(
                 registry.getOHTTPConfig(nonExistentId)
             )
 
-            console.log('✓ Missing OHTTP config handled correctly')
-        })
-
-        it('should return empty active OHTTP records for unused type', async function () {
-            const records = await registry.getActiveTEERecordsWithOHTTPConfig(50)
-            expect(records.length).to.equal(0)
-
-            console.log('✓ Empty OHTTP active records returned for unused type')
+            console.log('✓ Unknown TEE OHTTP config lookup reverts correctly')
         })
     })
 

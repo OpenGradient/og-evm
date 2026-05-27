@@ -66,6 +66,7 @@ type TEEInfo struct {
 	IsEnabled       bool
 	RegisteredAt    time.Time
 	LastHeartbeatAt time.Time
+	OHTTPConfig     OHTTPConfig
 }
 
 type AttestationResponse struct {
@@ -92,13 +93,14 @@ type MeasurementsFile struct {
 }
 
 type OHTTPConfig struct {
-	KeyID     uint8  `json:"key_id"`
-	KEMID     uint16 `json:"kem_id"`
-	KDFID     uint16 `json:"kdf_id"`
-	AEADID    uint16 `json:"aead_id"`
-	PublicKey []byte
-	KeyConfig []byte
-	Signature []byte
+	KeyID        uint8  `json:"key_id"`
+	KEMID        uint16 `json:"kem_id"`
+	KDFID        uint16 `json:"kdf_id"`
+	AEADID       uint16 `json:"aead_id"`
+	PublicKey    []byte
+	KeyConfig    []byte
+	Signature    []byte
+	RegisteredAt time.Time
 }
 
 type rawOHTTPConfig struct {
@@ -169,6 +171,21 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		return nil, err
 	}
 
+	ohttpComponents := []abi.ArgumentMarshaling{
+		{Name: "keyId", Type: "uint8"},
+		{Name: "kemId", Type: "uint16"},
+		{Name: "kdfId", Type: "uint16"},
+		{Name: "aeadId", Type: "uint16"},
+		{Name: "publicKey", Type: "bytes"},
+		{Name: "keyConfig", Type: "bytes"},
+		{Name: "registeredAt", Type: "uint256"},
+	}
+
+	_, err = abi.NewType("tuple", "", ohttpComponents)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OHTTP ABI type: %v", err)
+	}
+
 	tupleType, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
 		{Name: "owner", Type: "address"},
 		{Name: "paymentAddress", Type: "address"},
@@ -180,6 +197,7 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		{Name: "enabled", Type: "bool"},
 		{Name: "registeredAt", Type: "uint256"},
 		{Name: "lastHeartbeatAt", Type: "uint256"},
+		{Name: "ohttpConfig", Type: "tuple", Components: ohttpComponents},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ABI type: %v", err)
@@ -208,6 +226,15 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		Enabled         bool           `json:"enabled"`
 		RegisteredAt    *big.Int       `json:"registeredAt"`
 		LastHeartbeatAt *big.Int       `json:"lastHeartbeatAt"`
+		OhttpConfig     struct {
+			KeyId        uint8    `json:"keyId"`
+			KemId        uint16   `json:"kemId"`
+			KdfId        uint16   `json:"kdfId"`
+			AeadId       uint16   `json:"aeadId"`
+			PublicKey    []byte   `json:"publicKey"`
+			KeyConfig    []byte   `json:"keyConfig"`
+			RegisteredAt *big.Int `json:"registeredAt"`
+		} `json:"ohttpConfig"`
 	})
 
 	return &TEEInfo{
@@ -221,6 +248,15 @@ func (c *Client) GetTEE(teeId [32]byte) (*TEEInfo, error) {
 		IsEnabled:       s.Enabled,
 		RegisteredAt:    time.Unix(s.RegisteredAt.Int64(), 0),
 		LastHeartbeatAt: time.Unix(s.LastHeartbeatAt.Int64(), 0),
+		OHTTPConfig: OHTTPConfig{
+			KeyID:        s.OhttpConfig.KeyId,
+			KEMID:        s.OhttpConfig.KemId,
+			KDFID:        s.OhttpConfig.KdfId,
+			AEADID:       s.OhttpConfig.AeadId,
+			PublicKey:    s.OhttpConfig.PublicKey,
+			KeyConfig:    s.OhttpConfig.KeyConfig,
+			RegisteredAt: time.Unix(s.OhttpConfig.RegisteredAt.Int64(), 0),
+		},
 	}, nil
 }
 

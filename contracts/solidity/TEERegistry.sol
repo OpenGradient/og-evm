@@ -37,7 +37,8 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///          precompile (`ITEEVerifier`).
 ///       b. Extracts PCR measurements and checks they match an admin-approved set.
 ///       c. Binds the TEE's signing key and TLS certificate to the verified enclave identity.
-///       d. Stores the TEE as **enabled** and indexes it by type and owner.
+///       d. Stores the TEE's OHTTP/HPKE config as part of the canonical TEE record.
+///       e. Stores the TEE as **enabled** and indexes it by type and owner.
 ///
 ///  3. **Heartbeat** — Each TEE periodically proves liveness by submitting a signed
 ///     timestamp via `heartbeat`. The RSA-PSS signature is verified on-chain against the
@@ -119,6 +120,16 @@ contract TEERegistry is AccessControl {
         uint256 addedAt;
     }
 
+    struct OHTTPConfig {
+        uint8 keyId;
+        uint16 kemId;
+        uint16 kdfId;
+        uint16 aeadId;
+        bytes publicKey;
+        bytes keyConfig;
+        uint256 registeredAt;
+    }
+
     struct TEEInfo {
         address owner;
         address paymentAddress;
@@ -130,21 +141,6 @@ contract TEERegistry is AccessControl {
         bool enabled;
         uint256 registeredAt;
         uint256 lastHeartbeatAt;
-    }
-
-    struct OHTTPConfig {
-        uint8 keyId;
-        uint16 kemId;
-        uint16 kdfId;
-        uint16 aeadId;
-        bytes publicKey;
-        bytes keyConfig;
-        uint256 registeredAt;
-    }
-
-    struct TEEOHTTPRecord {
-        bytes32 teeId;
-        TEEInfo tee;
         OHTTPConfig ohttpConfig;
     }
 
@@ -187,9 +183,6 @@ contract TEERegistry is AccessControl {
     // TEEs by owner
     mapping(address => bytes32[]) internal _teesByOwner;
 
-    // OHTTP config by TEE id. Set once during TEE registration.
-    mapping(bytes32 => OHTTPConfig) private _ohttpConfigs;
-
     // ============ Events ============
 
     event TEETypeAdded(uint8 indexed typeId, string name);
@@ -226,7 +219,6 @@ contract TEERegistry is AccessControl {
     error HeartbeatSignatureInvalid();
     error HeartbeatTimestampTooOld();
     error HeartbeatTimestampInFuture();
-    error OHTTPConfigNotFound();
     error OHTTPConfigInvalid();
     error OHTTPConfigSignatureInvalid();
 
@@ -386,35 +378,6 @@ contract TEERegistry is AccessControl {
         bytes calldata ohttpKeyConfig,
         bytes calldata ohttpConfigSignature
     ) external onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
-        teeId = _registerTEEWithAttestation(
-            attestationDocument,
-            signingPublicKey,
-            tlsCertificate,
-            paymentAddress,
-            endpoint,
-            teeType
-        );
-
-        _setOHTTPConfig(
-            teeId,
-            keyId,
-            kemId,
-            kdfId,
-            aeadId,
-            ohttpPublicKey,
-            ohttpKeyConfig,
-            ohttpConfigSignature
-        );
-    }
-
-    function _registerTEEWithAttestation(
-        bytes calldata attestationDocument,
-        bytes calldata signingPublicKey,
-        bytes calldata tlsCertificate,
-        address paymentAddress,
-        string calldata endpoint,
-        uint8 teeType
-    ) private returns (bytes32 teeId) {
         // Validate TEE type
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
 
@@ -434,41 +397,6 @@ contract TEERegistry is AccessControl {
         // Verify PCR is approved and matches the TEE type
         _requirePCRValidForTEE(pcrHash, teeType);
 
-        // Store TEE
-        tees[teeId] = TEEInfo({
-            owner: msg.sender,
-            paymentAddress: paymentAddress,
-            endpoint: endpoint,
-            publicKey: signingPublicKey,
-            tlsCertificate: tlsCertificate,
-            pcrHash: pcrHash,
-            teeType: teeType,
-            enabled: true,
-            registeredAt: block.timestamp,
-            lastHeartbeatAt: block.timestamp
-        });
-
-        // Add to indexes
-        _enabledTEEIndex[teeType][teeId] = _enabledTEEList[teeType].length;
-        _enabledTEEList[teeType].push(teeId);
-        _teesByType[teeType].push(teeId);
-        _teesByOwner[msg.sender].push(teeId);
-
-        emit TEERegistered(teeId, msg.sender, teeType);
-    }
-
-    function _setOHTTPConfig(
-        bytes32 teeId,
-        uint8 keyId,
-        uint16 kemId,
-        uint16 kdfId,
-        uint16 aeadId,
-        bytes calldata ohttpPublicKey,
-        bytes calldata ohttpKeyConfig,
-        bytes calldata ohttpConfigSignature
-    ) private {
-        TEEInfo storage tee = tees[teeId];
-        if (tee.registeredAt == 0) revert TEENotFound();
         if (ohttpPublicKey.length == 0 || ohttpKeyConfig.length == 0) {
             revert OHTTPConfigInvalid();
         }
@@ -488,10 +416,14 @@ contract TEERegistry is AccessControl {
             ohttpPublicKey,
             ohttpKeyConfig
         );
-        bool valid = VERIFIER.verifyRSAPSS(tee.publicKey, configHash, ohttpConfigSignature);
-        if (!valid) revert OHTTPConfigSignatureInvalid();
+        bool validConfig = VERIFIER.verifyRSAPSS(
+            signingPublicKey,
+            configHash,
+            ohttpConfigSignature
+        );
+        if (!validConfig) revert OHTTPConfigSignatureInvalid();
 
-        _ohttpConfigs[teeId] = OHTTPConfig({
+        OHTTPConfig memory ohttpConfig = OHTTPConfig({
             keyId: keyId,
             kemId: kemId,
             kdfId: kdfId,
@@ -501,6 +433,28 @@ contract TEERegistry is AccessControl {
             registeredAt: block.timestamp
         });
 
+        // Store TEE
+        tees[teeId] = TEEInfo({
+            owner: msg.sender,
+            paymentAddress: paymentAddress,
+            endpoint: endpoint,
+            publicKey: signingPublicKey,
+            tlsCertificate: tlsCertificate,
+            pcrHash: pcrHash,
+            teeType: teeType,
+            enabled: true,
+            registeredAt: block.timestamp,
+            lastHeartbeatAt: block.timestamp,
+            ohttpConfig: ohttpConfig
+        });
+
+        // Add to indexes
+        _enabledTEEIndex[teeType][teeId] = _enabledTEEList[teeType].length;
+        _enabledTEEList[teeType].push(teeId);
+        _teesByType[teeType].push(teeId);
+        _teesByOwner[msg.sender].push(teeId);
+
+        emit TEERegistered(teeId, msg.sender, teeType);
         emit OHTTPConfigRegistered(
             teeId,
             keyId,
@@ -616,23 +570,8 @@ contract TEERegistry is AccessControl {
     }
 
     function getOHTTPConfig(bytes32 teeId) external view returns (OHTTPConfig memory) {
-        OHTTPConfig memory config = _ohttpConfigs[teeId];
-        if (config.registeredAt == 0) revert OHTTPConfigNotFound();
-        return config;
-    }
-
-    function hasOHTTPConfig(bytes32 teeId) external view returns (bool) {
-        return _ohttpConfigs[teeId].registeredAt != 0;
-    }
-
-    function getTEEWithOHTTPConfig(
-        bytes32 teeId
-    ) external view returns (TEEInfo memory tee, OHTTPConfig memory ohttpConfig) {
-        tee = tees[teeId];
-        if (tee.registeredAt == 0) revert TEENotFound();
-
-        ohttpConfig = _ohttpConfigs[teeId];
-        if (ohttpConfig.registeredAt == 0) revert OHTTPConfigNotFound();
+        if (tees[teeId].registeredAt == 0) revert TEENotFound();
+        return tees[teeId].ohttpConfig;
     }
 
     /// @notice Get TEE IDs that are currently enabled for a given type
@@ -661,31 +600,6 @@ contract TEERegistry is AccessControl {
         for (uint256 i = 0; i < list.length; i++) {
             if (_isTEEActive(tees[list[i]])) {
                 result[j++] = tees[list[i]];
-            }
-        }
-        return result;
-    }
-
-    function getActiveTEERecordsWithOHTTPConfig(
-        uint8 teeType
-    ) external view returns (TEEOHTTPRecord[] memory) {
-        bytes32[] storage list = _enabledTEEList[teeType];
-        uint256 count = 0;
-        for (uint256 i = 0; i < list.length; i++) {
-            bytes32 teeId = list[i];
-            if (_isTEEActive(tees[teeId]) && _ohttpConfigs[teeId].registeredAt != 0) count++;
-        }
-
-        TEEOHTTPRecord[] memory result = new TEEOHTTPRecord[](count);
-        uint256 j = 0;
-        for (uint256 i = 0; i < list.length; i++) {
-            bytes32 teeId = list[i];
-            if (_isTEEActive(tees[teeId]) && _ohttpConfigs[teeId].registeredAt != 0) {
-                result[j++] = TEEOHTTPRecord({
-                    teeId: teeId,
-                    tee: tees[teeId],
-                    ohttpConfig: _ohttpConfigs[teeId]
-                });
             }
         }
         return result;

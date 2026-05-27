@@ -36,7 +36,16 @@ contract MockTEERegistry is TEERegistry {
             teeType: teeType,
             enabled: false,
             registeredAt: block.timestamp,
-            lastHeartbeatAt: block.timestamp
+            lastHeartbeatAt: block.timestamp,
+            ohttpConfig: OHTTPConfig({
+                keyId: 0,
+                kemId: 0,
+                kdfId: 0,
+                aeadId: 0,
+                publicKey: "",
+                keyConfig: "",
+                registeredAt: 0
+            })
         });
 
         // Add to indexes (matching registerTEE behavior)
