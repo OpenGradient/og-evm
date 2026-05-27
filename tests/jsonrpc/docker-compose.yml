@@ -55,7 +55,6 @@ services:
       --ws.port 8546
       --ws.api eth,net,web3,personal,admin,debug,miner,txpool
       --ws.origins "*"
-      --allow-insecure-unlock
       --rpc.allow-unprotected-txs
       --nodiscover
     healthcheck:

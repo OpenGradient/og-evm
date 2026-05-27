@@ -37,7 +37,8 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 ///          precompile (`ITEEVerifier`).
 ///       b. Extracts PCR measurements and checks they match an admin-approved set.
 ///       c. Binds the TEE's signing key and TLS certificate to the verified enclave identity.
-///       d. Stores the TEE as **enabled** and indexes it by type and owner.
+///       d. Stores the TEE's OHTTP/HPKE config as part of the canonical TEE record.
+///       e. Stores the TEE as **enabled** and indexes it by type and owner.
 ///
 ///  3. **Heartbeat** — Each TEE periodically proves liveness by submitting a signed
 ///     timestamp via `heartbeat`. The RSA-PSS signature is verified on-chain against the
@@ -119,6 +120,31 @@ contract TEERegistry is AccessControl {
         uint256 addedAt;
     }
 
+    struct OHTTPConfig {
+        uint8 keyId;
+        uint16 kemId;
+        uint16 kdfId;
+        uint16 aeadId;
+        bytes publicKey;
+        bytes keyConfig;
+        bytes signature;
+        uint256 registeredAt;
+    }
+
+    /// @notice Calldata-only payload for an enclave's signed OHTTP/HPKE config.
+    /// @dev Grouped into a struct so callers (and the on-chain register fn) pass
+    ///      a single argument instead of seven, which keeps the register
+    ///      function readable and eases stack pressure.
+    struct OHTTPConfigInput {
+        uint8 keyId;
+        uint16 kemId;
+        uint16 kdfId;
+        uint16 aeadId;
+        bytes publicKey;
+        bytes keyConfig;
+        bytes signature;
+    }
+
     struct TEEInfo {
         address owner;
         address paymentAddress;
@@ -130,9 +156,15 @@ contract TEERegistry is AccessControl {
         bool enabled;
         uint256 registeredAt;
         uint256 lastHeartbeatAt;
+        OHTTPConfig ohttpConfig;
     }
 
     // ============ Storage ============
+
+    bytes32 public constant OHTTP_CONFIG_DOMAIN_SEPARATOR =
+        keccak256("OPENGRADIENT_TEE_OHTTP_CONFIG_V1");
+    uint16 public constant KEM_ID_X25519_HKDF_SHA256 = 32;
+    uint256 public constant X25519_PUBLIC_KEY_SIZE = 32;
 
     // AWS Root Certificate
     bytes public awsRootCertificate;
@@ -176,6 +208,15 @@ contract TEERegistry is AccessControl {
     event TEEEnabled(bytes32 indexed teeId);
     event AWSCertificateUpdated(bytes32 indexed certHash);
     event HeartbeatReceived(bytes32 indexed teeId, uint256 timestamp);
+    event OHTTPConfigRegistered(
+        bytes32 indexed teeId,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes32 publicKeyHash,
+        bytes32 keyConfigHash
+    );
 
     // ============ Errors ============
 
@@ -193,6 +234,8 @@ contract TEERegistry is AccessControl {
     error HeartbeatSignatureInvalid();
     error HeartbeatTimestampTooOld();
     error HeartbeatTimestampInFuture();
+    error OHTTPConfigInvalid();
+    error OHTTPConfigSignatureInvalid();
 
     // ============ Modifiers ============
 
@@ -341,7 +384,8 @@ contract TEERegistry is AccessControl {
         bytes calldata tlsCertificate,
         address paymentAddress,
         string calldata endpoint,
-        uint8 teeType
+        uint8 teeType,
+        OHTTPConfigInput calldata ohttp
     ) external onlyRole(TEE_OPERATOR) returns (bytes32 teeId) {
         // Validate TEE type
         if (!isValidTEEType(teeType)) revert InvalidTEEType();
@@ -362,6 +406,10 @@ contract TEERegistry is AccessControl {
         // Verify PCR is approved and matches the TEE type
         _requirePCRValidForTEE(pcrHash, teeType);
 
+        // Validate and verify the signed OHTTP config (kept in a helper to bound
+        // the stack usage of this function).
+        OHTTPConfig memory ohttpConfig = _buildOHTTPConfig(teeId, signingPublicKey, ohttp);
+
         // Store TEE
         tees[teeId] = TEEInfo({
             owner: msg.sender,
@@ -373,7 +421,8 @@ contract TEERegistry is AccessControl {
             teeType: teeType,
             enabled: true,
             registeredAt: block.timestamp,
-            lastHeartbeatAt: block.timestamp
+            lastHeartbeatAt: block.timestamp,
+            ohttpConfig: ohttpConfig
         });
 
         // Add to indexes
@@ -383,6 +432,61 @@ contract TEERegistry is AccessControl {
         _teesByOwner[msg.sender].push(teeId);
 
         emit TEERegistered(teeId, msg.sender, teeType);
+        emit OHTTPConfigRegistered(
+            teeId,
+            ohttp.keyId,
+            ohttp.kemId,
+            ohttp.kdfId,
+            ohttp.aeadId,
+            keccak256(ohttp.publicKey),
+            keccak256(ohttp.keyConfig)
+        );
+    }
+
+    /// @notice Validate an OHTTP config payload and verify it is signed by the
+    ///         enclave's attested signing key, returning the stored representation.
+    /// @dev Reverts with OHTTPConfigInvalid for malformed payloads and
+    ///      OHTTPConfigSignatureInvalid when the RSA-PSS signature does not match.
+    function _buildOHTTPConfig(
+        bytes32 teeId,
+        bytes calldata signingPublicKey,
+        OHTTPConfigInput calldata ohttp
+    ) internal view returns (OHTTPConfig memory) {
+        if (ohttp.publicKey.length == 0 || ohttp.keyConfig.length == 0) {
+            revert OHTTPConfigInvalid();
+        }
+        // Only X25519-HKDF-SHA256 is supported; reject any other KEM and enforce
+        // its fixed public key size.
+        if (ohttp.kemId != KEM_ID_X25519_HKDF_SHA256) {
+            revert OHTTPConfigInvalid();
+        }
+        if (ohttp.publicKey.length != X25519_PUBLIC_KEY_SIZE) {
+            revert OHTTPConfigInvalid();
+        }
+
+        bytes32 configHash = computeOHTTPConfigHash(
+            teeId,
+            ohttp.keyId,
+            ohttp.kemId,
+            ohttp.kdfId,
+            ohttp.aeadId,
+            ohttp.publicKey,
+            ohttp.keyConfig
+        );
+        if (!VERIFIER.verifyRSAPSS(signingPublicKey, configHash, ohttp.signature)) {
+            revert OHTTPConfigSignatureInvalid();
+        }
+
+        return OHTTPConfig({
+            keyId: ohttp.keyId,
+            kemId: ohttp.kemId,
+            kdfId: ohttp.kdfId,
+            aeadId: ohttp.aeadId,
+            publicKey: ohttp.publicKey,
+            keyConfig: ohttp.keyConfig,
+            signature: ohttp.signature,
+            registeredAt: block.timestamp
+        });
     }
 
     /// @notice Disable a TEE, removing it from the enabled list
@@ -488,6 +592,11 @@ contract TEERegistry is AccessControl {
         return tees[teeId];
     }
 
+    function getOHTTPConfig(bytes32 teeId) external view returns (OHTTPConfig memory) {
+        if (tees[teeId].registeredAt == 0) revert TEENotFound();
+        return tees[teeId].ohttpConfig;
+    }
+
     /// @notice Get TEE IDs that are currently enabled for a given type
     /// @dev Does NOT filter by heartbeat freshness. 
     ///      Use getActiveTEEs() for fully verified results.
@@ -560,5 +669,28 @@ contract TEERegistry is AccessControl {
     /// @return The TEE identifier (keccak256 hash)
     function computeTEEId(bytes calldata publicKey) external pure returns (bytes32) {
         return keccak256(publicKey);
+    }
+
+    function computeOHTTPConfigHash(
+        bytes32 teeId,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes calldata ohttpPublicKey,
+        bytes calldata ohttpKeyConfig
+    ) public pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                OHTTP_CONFIG_DOMAIN_SEPARATOR,
+                teeId,
+                keyId,
+                kemId,
+                kdfId,
+                aeadId,
+                keccak256(ohttpPublicKey),
+                keccak256(ohttpKeyConfig)
+            )
+        );
     }
 }

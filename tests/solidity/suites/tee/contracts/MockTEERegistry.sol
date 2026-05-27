@@ -36,7 +36,17 @@ contract MockTEERegistry is TEERegistry {
             teeType: teeType,
             enabled: false,
             registeredAt: block.timestamp,
-            lastHeartbeatAt: block.timestamp
+            lastHeartbeatAt: block.timestamp,
+            ohttpConfig: OHTTPConfig({
+                keyId: 0,
+                kemId: 0,
+                kdfId: 0,
+                aeadId: 0,
+                publicKey: "",
+                keyConfig: "",
+                signature: "",
+                registeredAt: 0
+            })
         });
 
         // Add to indexes (matching registerTEE behavior)
@@ -44,5 +54,33 @@ contract MockTEERegistry is TEERegistry {
         _teesByOwner[msg.sender].push(teeId);
 
         emit TEERegistered(teeId, msg.sender, teeType);
+    }
+
+    /// @notice Exposes the internal OHTTP config validation for testing.
+    /// @dev Lets tests exercise the OHTTPConfigInvalid checks (which run before any
+    ///      precompile call) without the attestation flow. The RSA-PSS verification
+    ///      step still requires the TEE verifier precompile.
+    function validateOHTTPConfigForTesting(
+        bytes32 teeId,
+        bytes calldata signingPublicKey,
+        OHTTPConfigInput calldata ohttp
+    ) external view returns (OHTTPConfig memory) {
+        return _buildOHTTPConfig(teeId, signingPublicKey, ohttp);
+    }
+
+    /// @notice Stores an OHTTP config on an existing TEE so getOHTTPConfig() retrieval
+    ///         (and the ABI round-trip) can be tested without the precompile.
+    function setOHTTPConfigForTesting(bytes32 teeId, OHTTPConfigInput calldata ohttp) external {
+        if (tees[teeId].registeredAt == 0) revert TEENotFound();
+        tees[teeId].ohttpConfig = OHTTPConfig({
+            keyId: ohttp.keyId,
+            kemId: ohttp.kemId,
+            kdfId: ohttp.kdfId,
+            aeadId: ohttp.aeadId,
+            publicKey: ohttp.publicKey,
+            keyConfig: ohttp.keyConfig,
+            signature: ohttp.signature,
+            registeredAt: block.timestamp
+        });
     }
 }

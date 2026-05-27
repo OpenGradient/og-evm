@@ -3,10 +3,36 @@ const crypto = require('crypto')
 const truffleAssert = require('truffle-assertions')
 const TEERegistry = artifacts.require('TEERegistry')
 const TEETestHelper = artifacts.require('TEETestHelper')
+const MockTEERegistry = artifacts.require('MockTEERegistry')
 
 contract('TEERegistry', function (accounts) {
     let owner, teeOperator, user1, user2
     let registry, helper
+
+    function makeOHTTPConfig(overrides = {}) {
+        return {
+            keyId: 1,
+            kemId: 32,
+            kdfId: 1,
+            aeadId: 3,
+            publicKey: '0x' + Buffer.alloc(32, 0xA0).toString('hex'),
+            keyConfig: '0x' + Buffer.from('test-ohttp-key-config', 'utf8').toString('hex'),
+            signature: '0x' + Buffer.alloc(256, 0x5A).toString('hex'),
+            ...overrides
+        }
+    }
+
+    function ohttpArgs(config = makeOHTTPConfig()) {
+        return [
+            config.keyId,
+            config.kemId,
+            config.kdfId,
+            config.aeadId,
+            config.publicKey,
+            config.keyConfig,
+            config.signature
+        ]
+    }
 
     before(async () => {
         [owner, teeOperator, user1, user2] = accounts
@@ -283,6 +309,7 @@ contract('TEERegistry', function (accounts) {
                     user1,
                     'https://tee.example.com',
                     1,
+                    ohttpArgs(),
                     { from: user1 }
                 )
             )
@@ -302,6 +329,7 @@ contract('TEERegistry', function (accounts) {
                     teeOperator,
                     'https://tee.example.com',
                     99, // Invalid type
+                    ohttpArgs(),
                     { from: teeOperator }
                 )
             )
@@ -321,11 +349,172 @@ contract('TEERegistry', function (accounts) {
                     teeOperator,
                     'https://tee.example.com',
                     1,
+                    ohttpArgs(),
                     { from: teeOperator }
                 )
             )
 
             console.log('✓ Invalid attestation rejected during registration')
+        })
+    })
+
+    describe('OHTTP Config', function () {
+        it('should expose OHTTP constants', async function () {
+            const domain = await registry.OHTTP_CONFIG_DOMAIN_SEPARATOR()
+            const expectedDomain = web3.utils.keccak256('OPENGRADIENT_TEE_OHTTP_CONFIG_V1')
+
+            expect(domain).to.equal(expectedDomain)
+            expect((await registry.KEM_ID_X25519_HKDF_SHA256()).toNumber()).to.equal(32)
+            expect((await registry.X25519_PUBLIC_KEY_SIZE()).toNumber()).to.equal(32)
+
+            console.log('✓ OHTTP constants exposed correctly')
+        })
+
+        it('should compute OHTTP config hash correctly', async function () {
+            const teeId = web3.utils.keccak256('0x1234')
+            const config = makeOHTTPConfig()
+            const domain = await registry.OHTTP_CONFIG_DOMAIN_SEPARATOR()
+            const publicKeyHash = web3.utils.keccak256(config.publicKey)
+            const keyConfigHash = web3.utils.keccak256(config.keyConfig)
+
+            const expectedHash = web3.utils.keccak256(
+                web3.eth.abi.encodeParameters(
+                    ['bytes32', 'bytes32', 'uint8', 'uint16', 'uint16', 'uint16', 'bytes32', 'bytes32'],
+                    [
+                        domain,
+                        teeId,
+                        config.keyId,
+                        config.kemId,
+                        config.kdfId,
+                        config.aeadId,
+                        publicKeyHash,
+                        keyConfigHash
+                    ]
+                )
+            )
+
+            const computedHash = await registry.computeOHTTPConfigHash(
+                teeId,
+                config.keyId,
+                config.kemId,
+                config.kdfId,
+                config.aeadId,
+                config.publicKey,
+                config.keyConfig
+            )
+
+            expect(computedHash).to.equal(expectedHash)
+
+            console.log('✓ OHTTP config hash computation correct')
+        })
+
+        it('should revert OHTTP config lookup for unknown TEE', async function () {
+            const nonExistentId = web3.utils.keccak256('0xBEEF')
+
+            await truffleAssert.reverts(
+                registry.getOHTTPConfig(nonExistentId)
+            )
+
+            console.log('✓ Unknown TEE OHTTP config lookup reverts correctly')
+        })
+
+        // Validation and storage of OHTTP config happen after the attestation
+        // precompile call, so they cannot be reached through the real
+        // registerTEEWithAttestation on a precompile-less network. MockTEERegistry
+        // exposes the validation helper and a config setter so this logic is covered.
+        describe('Validation & storage (mock-backed)', function () {
+            const TEE_TYPE = 1
+            const pcrs = {
+                pcr0: '0x' + Buffer.alloc(48, 0x11).toString('hex'),
+                pcr1: '0x' + Buffer.alloc(48, 0x22).toString('hex'),
+                pcr2: '0x' + Buffer.alloc(48, 0x33).toString('hex')
+            }
+            let mock, mockKey, mockTeeId
+
+            before(async function () {
+                mock = await MockTEERegistry.new()
+                const TEE_OPERATOR_ROLE = await mock.TEE_OPERATOR()
+                await mock.grantRole(TEE_OPERATOR_ROLE, teeOperator)
+                await mock.addTEEType(TEE_TYPE, 'AWS Nitro')
+                await mock.approvePCR(pcrs, 'v1.0.0', TEE_TYPE)
+
+                const keyPair = crypto.generateKeyPairSync('rsa', {
+                    modulusLength: 2048,
+                    publicKeyEncoding: { type: 'spki', format: 'der' }
+                })
+                mockKey = '0x' + keyPair.publicKey.toString('hex')
+                mockTeeId = await mock.computeTEEId(mockKey)
+            })
+
+            it('should reject an empty OHTTP public key', async function () {
+                // Reverts with the custom error OHTTPConfigInvalid; truffle-assertions
+                // can only see the bare revert, so we assert on that.
+                await truffleAssert.reverts(
+                    mock.validateOHTTPConfigForTesting(
+                        mockTeeId,
+                        mockKey,
+                        ohttpArgs(makeOHTTPConfig({ publicKey: '0x' }))
+                    )
+                )
+
+                console.log('✓ Empty OHTTP public key rejected')
+            })
+
+            it('should reject an empty OHTTP key config', async function () {
+                await truffleAssert.reverts(
+                    mock.validateOHTTPConfigForTesting(
+                        mockTeeId,
+                        mockKey,
+                        ohttpArgs(makeOHTTPConfig({ keyConfig: '0x' }))
+                    )
+                )
+
+                console.log('✓ Empty OHTTP key config rejected')
+            })
+
+            it('should reject an X25519 public key of the wrong size', async function () {
+                // kemId 32 == X25519_HKDF_SHA256 requires a 32-byte public key.
+                await truffleAssert.reverts(
+                    mock.validateOHTTPConfigForTesting(
+                        mockTeeId,
+                        mockKey,
+                        ohttpArgs(makeOHTTPConfig({
+                            kemId: 32,
+                            publicKey: '0x' + Buffer.alloc(31, 0xA0).toString('hex')
+                        }))
+                    )
+                )
+
+                console.log('✓ Mismatched X25519 public key size rejected')
+            })
+
+            it('should store and return the OHTTP config for a registered TEE', async function () {
+                const pcrHash = await mock.computePCRHash(pcrs)
+                await mock.registerTEEForTesting(
+                    mockKey,
+                    '0x' + Buffer.alloc(64, 0xCC).toString('hex'),
+                    user1,
+                    'https://tee.example.com',
+                    TEE_TYPE,
+                    pcrHash,
+                    { from: teeOperator }
+                )
+
+                const config = makeOHTTPConfig()
+                await mock.setOHTTPConfigForTesting(mockTeeId, ohttpArgs(config), { from: teeOperator })
+
+                const stored = await mock.getOHTTPConfig(mockTeeId)
+                expect(Number(stored.keyId)).to.equal(config.keyId)
+                expect(Number(stored.kemId)).to.equal(config.kemId)
+                expect(Number(stored.kdfId)).to.equal(config.kdfId)
+                expect(Number(stored.aeadId)).to.equal(config.aeadId)
+                expect(stored.publicKey).to.equal(config.publicKey)
+                expect(stored.keyConfig).to.equal(config.keyConfig)
+                expect(stored.signature).to.equal(config.signature)
+                expect(Number(stored.registeredAt)).to.be.greaterThan(0)
+
+                console.log('✓ Stored OHTTP config retrieved correctly')
+            })
         })
     })
 
