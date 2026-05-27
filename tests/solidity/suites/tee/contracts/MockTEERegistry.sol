@@ -54,4 +54,27 @@ contract MockTEERegistry is TEERegistry {
 
         emit TEERegistered(teeId, msg.sender, teeType);
     }
+
+    function validateOHTTPConfigForTesting(
+        bytes calldata signingPublicKey,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes calldata ohttpPublicKey,
+        bytes calldata ohttpKeyConfig,
+        bytes calldata ohttpConfigSignature
+    ) external view returns (OHTTPConfig memory) {
+        return _validateOHTTPConfig(
+            keccak256(signingPublicKey),
+            signingPublicKey,
+            keyId,
+            kemId,
+            kdfId,
+            aeadId,
+            ohttpPublicKey,
+            ohttpKeyConfig,
+            ohttpConfigSignature
+        );
+    }
 }

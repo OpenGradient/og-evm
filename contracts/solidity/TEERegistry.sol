@@ -397,41 +397,17 @@ contract TEERegistry is AccessControl {
         // Verify PCR is approved and matches the TEE type
         _requirePCRValidForTEE(pcrHash, teeType);
 
-        if (ohttpPublicKey.length == 0 || ohttpKeyConfig.length == 0) {
-            revert OHTTPConfigInvalid();
-        }
-        if (
-            kemId == KEM_ID_X25519_HKDF_SHA256 &&
-            ohttpPublicKey.length != X25519_PUBLIC_KEY_SIZE
-        ) {
-            revert OHTTPConfigInvalid();
-        }
-
-        bytes32 configHash = computeOHTTPConfigHash(
+        OHTTPConfig memory ohttpConfig = _validateOHTTPConfig(
             teeId,
+            signingPublicKey,
             keyId,
             kemId,
             kdfId,
             aeadId,
             ohttpPublicKey,
-            ohttpKeyConfig
-        );
-        bool validConfig = VERIFIER.verifyRSAPSS(
-            signingPublicKey,
-            configHash,
+            ohttpKeyConfig,
             ohttpConfigSignature
         );
-        if (!validConfig) revert OHTTPConfigSignatureInvalid();
-
-        OHTTPConfig memory ohttpConfig = OHTTPConfig({
-            keyId: keyId,
-            kemId: kemId,
-            kdfId: kdfId,
-            aeadId: aeadId,
-            publicKey: ohttpPublicKey,
-            keyConfig: ohttpKeyConfig,
-            registeredAt: block.timestamp
-        });
 
         // Store TEE
         tees[teeId] = TEEInfo({
@@ -669,5 +645,53 @@ contract TEERegistry is AccessControl {
                 keccak256(ohttpKeyConfig)
             )
         );
+    }
+
+    function _validateOHTTPConfig(
+        bytes32 teeId,
+        bytes calldata signingPublicKey,
+        uint8 keyId,
+        uint16 kemId,
+        uint16 kdfId,
+        uint16 aeadId,
+        bytes calldata ohttpPublicKey,
+        bytes calldata ohttpKeyConfig,
+        bytes calldata ohttpConfigSignature
+    ) internal view returns (OHTTPConfig memory) {
+        if (ohttpPublicKey.length == 0 || ohttpKeyConfig.length == 0) {
+            revert OHTTPConfigInvalid();
+        }
+        if (
+            kemId == KEM_ID_X25519_HKDF_SHA256 &&
+            ohttpPublicKey.length != X25519_PUBLIC_KEY_SIZE
+        ) {
+            revert OHTTPConfigInvalid();
+        }
+
+        bytes32 configHash = computeOHTTPConfigHash(
+            teeId,
+            keyId,
+            kemId,
+            kdfId,
+            aeadId,
+            ohttpPublicKey,
+            ohttpKeyConfig
+        );
+        bool validConfig = VERIFIER.verifyRSAPSS(
+            signingPublicKey,
+            configHash,
+            ohttpConfigSignature
+        );
+        if (!validConfig) revert OHTTPConfigSignatureInvalid();
+
+        return OHTTPConfig({
+            keyId: keyId,
+            kemId: kemId,
+            kdfId: kdfId,
+            aeadId: aeadId,
+            publicKey: ohttpPublicKey,
+            keyConfig: ohttpKeyConfig,
+            registeredAt: block.timestamp
+        });
     }
 }

@@ -3,10 +3,11 @@ const crypto = require('crypto')
 const truffleAssert = require('truffle-assertions')
 const TEERegistry = artifacts.require('TEERegistry')
 const TEETestHelper = artifacts.require('TEETestHelper')
+const MockTEERegistry = artifacts.require('MockTEERegistry')
 
 contract('TEERegistry', function (accounts) {
     let owner, teeOperator, user1, user2
-    let registry, helper
+    let registry, helper, mockRegistry
 
     function makeOHTTPConfig(overrides = {}) {
         return {
@@ -33,16 +34,29 @@ contract('TEERegistry', function (accounts) {
         ]
     }
 
+    function makeSigningPublicKey() {
+        const { publicKey } = crypto.generateKeyPairSync('rsa', {
+            modulusLength: 2048,
+            publicKeyEncoding: {
+                type: 'spki',
+                format: 'der'
+            }
+        })
+        return '0x' + publicKey.toString('hex')
+    }
+
     before(async () => {
         [owner, teeOperator, user1, user2] = accounts
 
         // Deploy TEERegistry
         registry = await TEERegistry.new()
+        mockRegistry = await MockTEERegistry.new()
 
         // Deploy test helper
         helper = await TEETestHelper.new(registry.address)
 
         console.log('TEERegistry deployed at:', registry.address)
+        console.log('MockTEERegistry deployed at:', mockRegistry.address)
         console.log('TEETestHelper deployed at:', helper.address)
 
         // Grant TEE_OPERATOR role to teeOperator account
@@ -415,6 +429,54 @@ contract('TEERegistry', function (accounts) {
             )
 
             console.log('✓ Unknown TEE OHTTP config lookup reverts correctly')
+        })
+
+        it('should reject empty OHTTP public key or key config', async function () {
+            const signingPublicKey = makeSigningPublicKey()
+
+            await truffleAssert.reverts(
+                mockRegistry.validateOHTTPConfigForTesting(
+                    signingPublicKey,
+                    ...ohttpArgs(makeOHTTPConfig({ publicKey: '0x' }))
+                )
+            )
+
+            await truffleAssert.reverts(
+                mockRegistry.validateOHTTPConfigForTesting(
+                    signingPublicKey,
+                    ...ohttpArgs(makeOHTTPConfig({ keyConfig: '0x' }))
+                )
+            )
+
+            console.log('✓ Empty OHTTP fields rejected')
+        })
+
+        it('should reject wrong X25519 OHTTP public key length', async function () {
+            const signingPublicKey = makeSigningPublicKey()
+
+            await truffleAssert.reverts(
+                mockRegistry.validateOHTTPConfigForTesting(
+                    signingPublicKey,
+                    ...ohttpArgs(makeOHTTPConfig({
+                        publicKey: '0x' + Buffer.alloc(31, 0xA0).toString('hex')
+                    }))
+                )
+            )
+
+            console.log('✓ Wrong OHTTP X25519 public key length rejected')
+        })
+
+        it('should reject invalid OHTTP config signature', async function () {
+            const signingPublicKey = makeSigningPublicKey()
+
+            await truffleAssert.reverts(
+                mockRegistry.validateOHTTPConfigForTesting(
+                    signingPublicKey,
+                    ...ohttpArgs(makeOHTTPConfig())
+                )
+            )
+
+            console.log('✓ Invalid OHTTP config signature rejected')
         })
     })
 

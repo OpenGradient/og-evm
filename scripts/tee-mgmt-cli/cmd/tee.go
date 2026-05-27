@@ -116,6 +116,19 @@ var teeRegisterCmd = &cobra.Command{
 		fmt.Printf("  Payment: %s\n", paymentAddr)
 		fmt.Printf("  Type:    %d\n\n", teeType)
 
+		registry.Log("Fetching signing public key...")
+		signingKey, err := registry.FetchSigningPublicKey(enclaveHost)
+		if err != nil {
+			return fmt.Errorf("failed to fetch signing key: %w", err)
+		}
+		fmt.Printf("  Signing Key: %d bytes\n", len(signingKey))
+
+		expectedId := crypto.Keccak256Hash(signingKey)
+		if info, err := client.GetTEE(expectedId); err == nil && info != nil {
+			fmt.Printf("\nTEE already registered: 0x%s\n", hex.EncodeToString(expectedId[:]))
+			return nil
+		}
+
 		registry.Log("Fetching attestation document...")
 		nonce := registry.GenerateNonce()
 		attestDoc, err := registry.FetchAttestation(fmt.Sprintf("https://%s/enclave/attestation?nonce=%s", enclaveHost, nonce))
@@ -124,13 +137,6 @@ var teeRegisterCmd = &cobra.Command{
 		}
 		attestBytes, _ := registry.DecodeBase64(attestDoc)
 		fmt.Printf("  Attestation: %d bytes\n", len(attestBytes))
-
-		registry.Log("Fetching signing public key...")
-		signingKey, err := registry.FetchSigningPublicKey(enclaveHost)
-		if err != nil {
-			return fmt.Errorf("failed to fetch signing key: %w", err)
-		}
-		fmt.Printf("  Signing Key: %d bytes\n", len(signingKey))
 
 		registry.Log("Fetching signed OHTTP config...")
 		ohttpConfig, err := registry.FetchOHTTPConfig(enclaveHost)
@@ -154,12 +160,6 @@ var teeRegisterCmd = &cobra.Command{
 			return fmt.Errorf("failed to fetch TLS cert: %w", err)
 		}
 		fmt.Printf("  TLS Cert: %d bytes\n", len(tlsCert))
-
-		expectedId := crypto.Keccak256Hash(signingKey)
-		if info, err := client.GetTEE(expectedId); err == nil && info != nil {
-			fmt.Printf("\nTEE already registered: 0x%s\n", hex.EncodeToString(expectedId[:]))
-			return nil
-		}
 
 		registry.Log("Sending registration transaction...")
 		txHash, err := client.RegisterTEE(
