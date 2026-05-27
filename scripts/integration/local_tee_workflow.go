@@ -87,7 +87,7 @@ var (
 	SEL_SET_AWS_ROOT_CERT = crypto.Keccak256([]byte("setAWSRootCertificate(bytes)"))[:4]
 
 	// TEE Registration & Lifecycle - FIXED
-	SEL_REGISTER_TEE = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8)"))[:4]
+	SEL_REGISTER_TEE = crypto.Keccak256([]byte("registerTEEWithAttestation(bytes,bytes,bytes,address,string,uint8,uint8,uint16,uint16,uint16,bytes,bytes,bytes)"))[:4]
 	SEL_DISABLE_TEE  = crypto.Keccak256([]byte("disableTEE(bytes32)"))[:4] // FIXED: disable not deactivate
 	SEL_ENABLE_TEE   = crypto.Keccak256([]byte("enableTEE(bytes32)"))[:4]  // FIXED: enable not activate
 
@@ -125,6 +125,26 @@ type MeasurementsFile struct {
 
 type AttestationResponse struct {
 	PublicKey string `json:"public_key"`
+}
+
+type OHTTPConfig struct {
+	KeyID     uint8
+	KEMID     uint16
+	KDFID     uint16
+	AEADID    uint16
+	PublicKey []byte
+	KeyConfig []byte
+	Signature []byte
+}
+
+type rawOHTTPConfig struct {
+	KeyID     uint8  `json:"key_id"`
+	KEMID     uint16 `json:"kem_id"`
+	KDFID     uint16 `json:"kdf_id"`
+	AEADID    uint16 `json:"aead_id"`
+	PublicKey string `json:"public_key"`
+	KeyConfig string `json:"key_config"`
+	Signature string `json:"signature"`
 }
 
 // PCRKey mirrors the contract struct
@@ -423,36 +443,52 @@ func main() {
 					results.Add("TEE already registered", true, "")
 				} else {
 					endpoint := fmt.Sprintf("https://%s", ENCLAVE_HOST)
-
-					fmt.Println("  📦 Registration inputs:")
-					fmt.Printf("     attestation:  %d bytes\n", len(attestationBytes))
-					fmt.Printf("     signingKey:   %d bytes (SHA256=%x)\n", len(signingPubKeyDER), sha256.Sum256(signingPubKeyDER))
-					fmt.Printf("     tlsCert:      %d bytes (SHA256=%x)\n", len(tlsCertDER), sha256.Sum256(tlsCertDER))
-					fmt.Printf("     paymentAddr:  %s\n", account)
-					fmt.Printf("     endpoint:     %s\n", endpoint)
-					fmt.Printf("     teeType:      0\n")
-
-					txHash, err := callRegisterTEE(attestationBytes, signingPubKeyDER, tlsCertDER, account, endpoint, 0)
+					ohttpConfig, err := fetchOHTTPConfig(ENCLAVE_HOST)
 					if err != nil {
-						fmt.Printf("    ❌ Registration error: %v\n", err)
-						results.Add("Register TEE with attestation", false, err.Error())
+						fmt.Printf("    ❌ OHTTP config error: %v\n", err)
+						results.Add("Fetch signed OHTTP config", false, err.Error())
 					} else {
-						fmt.Printf("    📤 Tx hash: %s\n", txHash)
-						success := waitForTx(txHash)
-						results.Add("Register TEE with attestation", success, "")
-						if success {
-							registrationSuccess = true
-							registeredTEEId = expectedTeeId
+						results.Add("Fetch signed OHTTP config", true, fmt.Sprintf("%d bytes key_config", len(ohttpConfig.KeyConfig)))
 
-							fmt.Printf("  ✅ Registration succeeded — verifying on-chain state...\n")
-							postActive, _ := callIsActive(registeredTEEId)
-							fmt.Printf("     isActive(teeId)=%v\n", postActive)
+						fmt.Println("  📦 Registration inputs:")
+						fmt.Printf("     attestation:  %d bytes\n", len(attestationBytes))
+						fmt.Printf("     signingKey:   %d bytes (SHA256=%x)\n", len(signingPubKeyDER), sha256.Sum256(signingPubKeyDER))
+						fmt.Printf("     tlsCert:      %d bytes (SHA256=%x)\n", len(tlsCertDER), sha256.Sum256(tlsCertDER))
+						fmt.Printf("     paymentAddr:  %s\n", account)
+						fmt.Printf("     endpoint:     %s\n", endpoint)
+						fmt.Printf("     teeType:      0\n")
+						fmt.Printf("     ohttp:        key_id=%d kem=%d kdf=%d aead=%d public_key=%d bytes key_config=%d bytes signature=%d bytes\n",
+							ohttpConfig.KeyID,
+							ohttpConfig.KEMID,
+							ohttpConfig.KDFID,
+							ohttpConfig.AEADID,
+							len(ohttpConfig.PublicKey),
+							len(ohttpConfig.KeyConfig),
+							len(ohttpConfig.Signature),
+						)
+
+						txHash, err := callRegisterTEE(attestationBytes, signingPubKeyDER, tlsCertDER, account, endpoint, 0, *ohttpConfig)
+						if err != nil {
+							fmt.Printf("    ❌ Registration error: %v\n", err)
+							results.Add("Register TEE with attestation", false, err.Error())
 						} else {
-							fmt.Println("  ❌ Registration failed — dumping PCR state for diagnosis:")
-							failPCRs, _ := callGetActivePCRs()
-							fmt.Printf("     Active PCRs in contract (%d):\n", len(failPCRs))
-							for i, p := range failPCRs {
-								fmt.Printf("       [%d] hash=%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
+							fmt.Printf("    📤 Tx hash: %s\n", txHash)
+							success := waitForTx(txHash)
+							results.Add("Register TEE with attestation", success, "")
+							if success {
+								registrationSuccess = true
+								registeredTEEId = expectedTeeId
+
+								fmt.Printf("  ✅ Registration succeeded — verifying on-chain state...\n")
+								postActive, _ := callIsActive(registeredTEEId)
+								fmt.Printf("     isActive(teeId)=%v\n", postActive)
+							} else {
+								fmt.Println("  ❌ Registration failed — dumping PCR state for diagnosis:")
+								failPCRs, _ := callGetActivePCRs()
+								fmt.Printf("     Active PCRs in contract (%d):\n", len(failPCRs))
+								for i, p := range failPCRs {
+									fmt.Printf("       [%d] hash=%s teeType=%d\n", i, hex.EncodeToString(p.PCRHash[:]), p.TEEType)
+								}
 							}
 						}
 					}
@@ -918,6 +954,59 @@ func fetchSigningPublicKey(host string) ([]byte, error) {
 	return block.Bytes, nil
 }
 
+func fetchOHTTPConfig(host string) (*OHTTPConfig, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
+
+	url := fmt.Sprintf("https://%s/v1/ohttp/config", host)
+	fmt.Printf("    🔍 Fetching OHTTP config from: %s\n", url)
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var raw rawOHTTPConfig
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("json unmarshal failed: %v", err)
+	}
+
+	publicKey, err := hex.DecodeString(strings.TrimPrefix(raw.PublicKey, "0x"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid OHTTP public_key hex: %v", err)
+	}
+	keyConfig, err := base64.StdEncoding.DecodeString(raw.KeyConfig)
+	if err != nil {
+		return nil, fmt.Errorf("invalid OHTTP key_config base64: %v", err)
+	}
+	signature, err := base64.StdEncoding.DecodeString(raw.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("invalid OHTTP signature base64: %v", err)
+	}
+	if len(publicKey) == 0 || len(keyConfig) == 0 || len(signature) == 0 {
+		return nil, fmt.Errorf("OHTTP config missing public_key, key_config, or signature")
+	}
+
+	return &OHTTPConfig{
+		KeyID:     raw.KeyID,
+		KEMID:     raw.KEMID,
+		KDFID:     raw.KDFID,
+		AEADID:    raw.AEADID,
+		PublicKey: publicKey,
+		KeyConfig: keyConfig,
+		Signature: signature,
+	}, nil
+}
+
 func fetchTLSCertificate(host, port string) ([]byte, error) {
 	addr := host + ":" + port
 	fmt.Printf("    🔌 Connecting to %s via TLS...\n", addr)
@@ -1197,17 +1286,34 @@ func callSetAWSRootCert(certDER []byte) (string, error) {
 // CONTRACT CALLS - TEE Registration
 // ============================================================================
 
-func callRegisterTEE(attestation, signingKey, tlsCert []byte, paymentAddr, endpoint string, teeType uint8) (string, error) {
+func callRegisterTEE(attestation, signingKey, tlsCert []byte, paymentAddr, endpoint string, teeType uint8, ohttp OHTTPConfig) (string, error) {
 	bytesType, _ := abi.NewType("bytes", "", nil)
 	addrType, _ := abi.NewType("address", "", nil)
 	stringType, _ := abi.NewType("string", "", nil)
 	uint8Type, _ := abi.NewType("uint8", "", nil)
+	uint16Type, _ := abi.NewType("uint16", "", nil)
 
 	args := abi.Arguments{
 		{Type: bytesType}, {Type: bytesType}, {Type: bytesType},
 		{Type: addrType}, {Type: stringType}, {Type: uint8Type},
+		{Type: uint8Type}, {Type: uint16Type}, {Type: uint16Type}, {Type: uint16Type},
+		{Type: bytesType}, {Type: bytesType}, {Type: bytesType},
 	}
-	encoded, err := args.Pack(attestation, signingKey, tlsCert, common.HexToAddress(paymentAddr), endpoint, teeType)
+	encoded, err := args.Pack(
+		attestation,
+		signingKey,
+		tlsCert,
+		common.HexToAddress(paymentAddr),
+		endpoint,
+		teeType,
+		ohttp.KeyID,
+		ohttp.KEMID,
+		ohttp.KDFID,
+		ohttp.AEADID,
+		ohttp.PublicKey,
+		ohttp.KeyConfig,
+		ohttp.Signature,
+	)
 	if err != nil {
 		return "", fmt.Errorf("abi pack failed: %v", err)
 	}
