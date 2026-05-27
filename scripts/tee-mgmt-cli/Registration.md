@@ -91,17 +91,16 @@ Verify PCR is approved:
 
 **What happens during registration:**
 
-1. ✅ CLI generates a random 20-byte nonce
-2. ✅ Fetches attestation document from `https://enclave_host/enclave/attestation?nonce=<nonce>`
-3. ✅ Fetches signing public key from `https://enclave_host/signing-key`
-4. ✅ Computes expected TEE ID: `keccak256(signing_public_key)`
-5. ✅ Fetches signed OHTTP config from `https://enclave_host/v1/ohttp/config`
+1. ✅ Fetches signing public key from `https://enclave_host/signing-key`
+2. ✅ Computes expected TEE ID: `keccak256(signing_public_key)` and checks it is not already registered
+3. ✅ Generates a random 20-byte nonce and fetches the attestation document from `https://enclave_host/enclave/attestation?nonce=<nonce>`
+4. ✅ Fetches signed OHTTP config from `https://enclave_host/v1/ohttp/config`
    - Includes `key_id`, `kem_id`, `kdf_id`, `aead_id`, `public_key`, `key_config`, and `signature`
-6. ✅ Fetches TLS certificate via TLS handshake to `enclave_host:443`
-7. ✅ Submits transaction: `registerTEEWithAttestation(attestation, signingKey, tlsCert, paymentAddr, endpoint, teeType, ohttpConfig...)`
-8. ✅ Contract verifies attestation via precompile (checks AWS signature, PCR approval)
-9. ✅ Contract verifies the OHTTP config signature against the registered TEE signing key
-10. ✅ TEE is registered and **enabled** by default
+5. ✅ Fetches TLS certificate via TLS handshake to `enclave_host:443`
+6. ✅ Submits transaction: `registerTEEWithAttestation(attestation, signingKey, tlsCert, paymentAddr, endpoint, teeType, ohttpConfig...)`
+7. ✅ Contract verifies attestation via precompile (checks AWS signature, PCR approval)
+8. ✅ Contract verifies the OHTTP config signature against the registered TEE signing key
+9. ✅ TEE is registered and **enabled** by default
 
 ### Step 4: Verify Registration
 ```bash
