@@ -6,6 +6,8 @@ KEYRING="test"
 KEYALGO="eth_secp256k1"
 LOGLEVEL="info"
 BASEFEE=10000000
+MIN_GAS_PRICE_WEI="${MIN_GAS_PRICE_WEI:-1000000}"
+MIN_TIP_WEI="${MIN_TIP_WEI:-1000000}"
 BASEDIR="${BASEDIR:-"$HOME/.og-evm-devnet"}"
 
 NODE_NUMBER="${NODE_NUMBER:-}"
@@ -366,8 +368,9 @@ start_validator() {
   START_ARGS=(
     --pruning nothing
     --log_level "$LOGLEVEL"
-    --minimum-gas-prices=0ogwei
-    --evm.min-tip=0
+    --minimum-gas-prices="${MIN_GAS_PRICE_WEI}ogwei"
+    --evm.min-tip="$MIN_TIP_WEI"
+    --evm.mempool.price-limit="$MIN_GAS_PRICE_WEI"
     --home "$HOME_DIR"
     --json-rpc.api eth,txpool,personal,net,debug,web3
     --chain-id "$CHAINID"
