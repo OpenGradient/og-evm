@@ -18,7 +18,10 @@ import (
 )
 
 func govAuthority() string {
-	return authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	return sdk.MustBech32ifyAddressBytes(
+		sdk.GetConfig().GetBech32AccountAddrPrefix(),
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+	)
 }
 
 func TestUpdateParams_InvalidAuthority(t *testing.T) {
@@ -320,7 +323,7 @@ func TestFundPool_WrongDenom(t *testing.T) {
 	td := newMockedTestData(t)
 	srv := keeper.NewMsgServerImpl(td.keeper)
 
-	depositor := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	depositor := govAuthority()
 
 	_, err := srv.FundPool(td.ctx, &types.MsgFundPool{
 		Depositor: depositor,

@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -75,13 +76,17 @@ func (k Keeper) CallEVMWithData(
 	if err != nil {
 		return nil, err
 	}
+	gasLimit, err := evmCallGasLimit(gasCap)
+	if err != nil {
+		return nil, err
+	}
 
 	msg := core.Message{
 		From:       from,
 		To:         contract,
 		Nonce:      nonce,
 		Value:      big.NewInt(0),
-		GasLimit:   config.DefaultGasCap,
+		GasLimit:   gasLimit,
 		GasPrice:   big.NewInt(0),
 		GasTipCap:  big.NewInt(0),
 		GasFeeCap:  big.NewInt(0),
@@ -102,4 +107,69 @@ func (k Keeper) CallEVMWithData(
 	ctx.GasMeter().ConsumeGas(res.GasUsed, "apply evm message")
 
 	return res, nil
+}
+
+// CallEVMSystemWithData performs a bounded system EVM call. State changes are
+// committed only when the VM execution succeeds.
+func (k Keeper) CallEVMSystemWithData(
+	ctx sdk.Context,
+	from common.Address,
+	contract common.Address,
+	data []byte,
+	gasLimit uint64,
+) (_ *types.MsgEthereumTxResponse, err error) {
+	ctx, span := ctx.StartSpan(tracer, "CallEVMSystemWithData", trace.WithAttributes(
+		attribute.String("from", from.Hex()),
+		attribute.String("contract", contract.Hex()),
+		attribute.Int("data_size", len(data)),
+		attribute.String("gas_limit", fmt.Sprintf("%d", gasLimit)),
+	))
+	defer func() { evmtrace.EndSpanErr(span, err) }()
+	if gasLimit == 0 {
+		return nil, fmt.Errorf("system EVM gas limit must be greater than zero")
+	}
+	cachedCtx, commit := ctx.CacheContext()
+	fromAcc := sdk.AccAddress(from.Bytes())
+	if !k.accountKeeper.HasAccount(cachedCtx, fromAcc) {
+		k.accountKeeper.SetAccount(cachedCtx, k.accountKeeper.NewAccountWithAddress(cachedCtx, fromAcc))
+	}
+	nonce, err := k.accountKeeper.GetSequence(cachedCtx, fromAcc)
+	if err != nil {
+		return nil, err
+	}
+	to := contract
+	msg := core.Message{
+		From:       from,
+		To:         &to,
+		Nonce:      nonce,
+		Value:      big.NewInt(0),
+		GasLimit:   gasLimit,
+		GasPrice:   big.NewInt(0),
+		GasTipCap:  big.NewInt(0),
+		GasFeeCap:  big.NewInt(0),
+		Data:       data,
+		AccessList: ethtypes.AccessList{},
+	}
+	res, err := k.ApplyMessage(cachedCtx, msg, nil, true, true)
+	if err != nil {
+		return res, err
+	}
+	if res.Failed() {
+		return res, errorsmod.Wrap(types.ErrVMExecution, res.VmError)
+	}
+	commit()
+	return res, nil
+}
+
+func evmCallGasLimit(gasCap *big.Int) (uint64, error) {
+	if gasCap == nil {
+		return config.DefaultGasCap, nil
+	}
+	if gasCap.Sign() <= 0 {
+		return 0, fmt.Errorf("gas cap must be greater than zero")
+	}
+	if !gasCap.IsUint64() {
+		return 0, fmt.Errorf("gas cap overflows uint64: %s", gasCap)
+	}
+	return gasCap.Uint64(), nil
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
@@ -34,7 +35,7 @@ func (suite *MsgsTestSuite) TestMsgUpdateValidateBasic() {
 		{
 			"pass - valid msg",
 			&MsgUpdateParams{
-				Authority: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+				Authority: govAuthority(),
 				Params:    DefaultParams(),
 			},
 			true,
@@ -51,4 +52,11 @@ func (suite *MsgsTestSuite) TestMsgUpdateValidateBasic() {
 			}
 		})
 	}
+}
+
+func govAuthority() string {
+	return sdk.MustBech32ifyAddressBytes(
+		sdk.GetConfig().GetBech32AccountAddrPrefix(),
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+	)
 }

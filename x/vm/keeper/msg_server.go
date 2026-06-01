@@ -22,10 +22,10 @@ import (
 )
 
 var (
-	vmMeter        = otel.Meter("evm/x/vm/keeper")
-	ethTxCounter   metric.Int64Counter
-	ethGasCounter  metric.Float64Counter
-	ethGasRatio    metric.Float64Gauge
+	vmMeter       = otel.Meter("evm/x/vm/keeper")
+	ethTxCounter  metric.Int64Counter
+	ethGasCounter metric.Float64Counter
+	ethGasRatio   metric.Float64Gauge
 )
 
 func init() {
@@ -131,8 +131,12 @@ func (k *Keeper) UpdateParams(goCtx context.Context, req *types.MsgUpdateParams)
 	))
 	defer func() { evmtrace.EndSpanErr(span, err) }()
 
-	if k.authority.String() != req.Authority {
-		return nil, errorsmod.Wrapf(govtypes.ErrInvalidSigner, "invalid authority, expected %s, got %s", k.authority.String(), req.Authority)
+	authority, err := k.accountKeeper.AddressCodec().BytesToString(k.authority)
+	if err != nil {
+		return nil, err
+	}
+	if authority != req.Authority {
+		return nil, errorsmod.Wrapf(govtypes.ErrInvalidSigner, "invalid authority, expected %s, got %s", authority, req.Authority)
 	}
 
 	if err := k.SetParams(ctx, req.Params); err != nil {
@@ -154,8 +158,12 @@ func (k *Keeper) RegisterPreinstalls(goCtx context.Context, req *types.MsgRegist
 		attribute.String("authority", req.Authority),
 	))
 	defer func() { evmtrace.EndSpanErr(span, err) }()
-	if k.authority.String() != req.Authority {
-		return nil, errorsmod.Wrapf(govtypes.ErrInvalidSigner, "invalid authority, expected %s, got %s", k.authority.String(), req.Authority)
+	authority, err := k.accountKeeper.AddressCodec().BytesToString(k.authority)
+	if err != nil {
+		return nil, err
+	}
+	if authority != req.Authority {
+		return nil, errorsmod.Wrapf(govtypes.ErrInvalidSigner, "invalid authority, expected %s, got %s", authority, req.Authority)
 	}
 
 	if err := k.AddPreinstalls(ctx, req.Preinstalls); err != nil {

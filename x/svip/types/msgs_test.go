@@ -22,7 +22,7 @@ func TestMsgsTestSuite(t *testing.T) {
 }
 
 func (suite *MsgsTestSuite) TestMsgUpdateParamsValidateBasic() {
-	govAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	govAddr := govAuthority()
 
 	testCases := []struct {
 		name    string
@@ -59,7 +59,7 @@ func (suite *MsgsTestSuite) TestMsgUpdateParamsValidateBasic() {
 }
 
 func (suite *MsgsTestSuite) TestMsgActivateValidateBasic() {
-	govAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	govAddr := govAuthority()
 
 	testCases := []struct {
 		name    string
@@ -83,7 +83,7 @@ func (suite *MsgsTestSuite) TestMsgActivateValidateBasic() {
 }
 
 func (suite *MsgsTestSuite) TestMsgReactivateValidateBasic() {
-	govAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	govAddr := govAuthority()
 
 	testCases := []struct {
 		name    string
@@ -107,7 +107,7 @@ func (suite *MsgsTestSuite) TestMsgReactivateValidateBasic() {
 }
 
 func (suite *MsgsTestSuite) TestMsgPauseValidateBasic() {
-	govAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	govAddr := govAuthority()
 
 	testCases := []struct {
 		name    string
@@ -131,7 +131,7 @@ func (suite *MsgsTestSuite) TestMsgPauseValidateBasic() {
 }
 
 func (suite *MsgsTestSuite) TestMsgFundPoolValidateBasic() {
-	validAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	validAddr := govAuthority()
 
 	testCases := []struct {
 		name    string
@@ -182,4 +182,11 @@ func (suite *MsgsTestSuite) TestMsgFundPoolValidateBasic() {
 			}
 		})
 	}
+}
+
+func govAuthority() string {
+	return sdk.MustBech32ifyAddressBytes(
+		sdk.GetConfig().GetBech32AccountAddrPrefix(),
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+	)
 }
