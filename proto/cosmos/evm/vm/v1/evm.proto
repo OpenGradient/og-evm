@@ -37,10 +37,27 @@ message Params {
   repeated string active_static_precompiles = 9;
   uint64 history_serve_window = 10;
   ExtendedDenomOptions extended_denom_options = 11;
+  // scheduler defines an optional bounded EndBlock EVM call used for
+  // contract-owned maintenance such as vault settlement.
+  EVMSchedulerParams scheduler = 12
+      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
 }
 
 message ExtendedDenomOptions {
   string extended_denom = 1;
+}
+
+message EVMSchedulerParams {
+  // enabled controls whether EndBlock attempts the configured call.
+  bool enabled = 1;
+  // target_contract is the EVM contract called with poke(uint256).
+  string target_contract = 2;
+  // gas_cap is the EVM gas limit for the scheduler call.
+  uint64 gas_cap = 3;
+  // max_ops is passed as the poke(uint256) argument.
+  uint32 max_ops = 4;
+  // cadence_blocks runs the call only when block_height % cadence_blocks == 0.
+  uint64 cadence_blocks = 5;
 }
 
 // AccessControl defines the permission policy of the EVM
