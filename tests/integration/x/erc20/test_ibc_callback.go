@@ -11,6 +11,7 @@ import (
 	"github.com/cosmos/evm/contracts"
 	"github.com/cosmos/evm/crypto/ethsecp256k1"
 	"github.com/cosmos/evm/testutil"
+	testutils "github.com/cosmos/evm/testutil/integration/evm/utils"
 	"github.com/cosmos/evm/utils"
 	"github.com/cosmos/evm/x/erc20/keeper"
 	"github.com/cosmos/evm/x/erc20/types"
@@ -34,17 +35,18 @@ var erc20Denom = "erc20:0xdac17f958d2ee523a2206206994597c13d831ec7"
 
 func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 	var ctx sdk.Context
+	bech32Prefix := sdk.GetConfig().GetBech32AccountAddrPrefix()
 	// secp256k1 account
 	secpPk := secp256k1.GenPrivKey()
 	secpAddr := sdk.AccAddress(secpPk.PubKey().Address())
-	secpAddrCosmos := sdk.MustBech32ifyAddressBytes(sdk.Bech32MainPrefix, secpAddr)
+	secpAddrBech32 := sdk.MustBech32ifyAddressBytes(bech32Prefix, secpAddr)
 
 	// ethsecp256k1 account
 	ethPk, err := ethsecp256k1.GenerateKey()
 	s.Require().Nil(err)
 	ethsecpAddr := sdk.AccAddress(ethPk.PubKey().Address())
 	ethsecpAddrEvmos := sdk.AccAddress(ethPk.PubKey().Address()).String()
-	ethsecpAddrCosmos := sdk.MustBech32ifyAddressBytes(sdk.Bech32MainPrefix, ethsecpAddr)
+	ethsecpAddrBech32 := sdk.MustBech32ifyAddressBytes(bech32Prefix, ethsecpAddr)
 
 	// Setup Cosmos <=> Cosmos EVM IBC relayer
 	sourceChannel := "channel-292"
@@ -91,7 +93,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 		{
 			name: "no-op - erc20 module param disabled",
 			malleate: func() {
-				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", ethsecpAddrEvmos, ethsecpAddrCosmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", ethsecpAddrEvmos, ethsecpAddrBech32, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 1, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 			},
@@ -105,7 +107,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 		{
 			name: "success - invalid sender (no '1')",
 			malleate: func() {
-				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", "evmos", ethsecpAddrCosmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", "evmos", ethsecpAddrBech32, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 100, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 			},
@@ -118,7 +120,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 		{
 			name: "success - invalid sender (bad address)",
 			malleate: func() {
-				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", "badba1sv9m0g7ycejwr3s369km58h5qe7xj77hvcxrms", ethsecpAddrCosmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", "badba1sv9m0g7ycejwr3s369km58h5qe7xj77hvcxrms", ethsecpAddrBech32, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 100, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 			},
@@ -145,7 +147,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 			name: "no-op - receiver is module account",
 			malleate: func() {
 				secpAddr = s.network.App.GetAccountKeeper().GetModuleAccount(ctx, "erc20").GetAddress()
-				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", secpAddrCosmos, secpAddr.String(), "")
+				transfer := transfertypes.NewFungibleTokenPacketData(registeredDenom, "100", secpAddrBech32, secpAddr.String(), "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 100, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 			},
@@ -163,7 +165,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 				bondDenom, err := s.network.App.GetStakingKeeper().BondDenom(ctx)
 				s.Require().NoError(err)
 				prefixedDenom := transfertypes.NewDenom(bondDenom, hop).Path()
-				transfer := transfertypes.NewFungibleTokenPacketData(prefixedDenom, "100", secpAddrCosmos, ethsecpAddrEvmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(prefixedDenom, "100", secpAddrBech32, ethsecpAddrEvmos, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 1, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 			},
@@ -176,7 +178,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 		{
 			name: "no-op - pair is not registered",
 			malleate: func() {
-				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrCosmos, ethsecpAddrEvmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrBech32, ethsecpAddrEvmos, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 1, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 			},
@@ -189,7 +191,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 		{
 			name: "error - pair is not registered but erc20 registered",
 			malleate: func() {
-				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrCosmos, ethsecpAddrEvmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrBech32, ethsecpAddrEvmos, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 1, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 				collidedAddr, err := utils.GetIBCDenomAddress(transfertypes.NewDenom(erc20Denom, hop).IBCDenom())
@@ -206,7 +208,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 		{
 			name: "error - pair is not registered but denom registered",
 			malleate: func() {
-				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrCosmos, ethsecpAddrEvmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrBech32, ethsecpAddrEvmos, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 1, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 				collidedDenom := transfertypes.NewDenom(erc20Denom, hop).IBCDenom()
@@ -222,7 +224,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 		{
 			name: "error - pair is not registered but address has code",
 			malleate: func() {
-				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrCosmos, ethsecpAddrEvmos, "")
+				transfer := transfertypes.NewFungibleTokenPacketData(erc20Denom, "100", secpAddrBech32, ethsecpAddrEvmos, "")
 				bz := transfertypes.ModuleCdc.MustMarshalJSON(&transfer)
 				packet = channeltypes.NewPacket(bz, 1, transfertypes.PortID, sourceChannel, transfertypes.PortID, cosmosEVMChannel, timeoutHeight, 0)
 				collidedAddr, err := utils.GetIBCDenomAddress(transfertypes.NewDenom(erc20Denom, hop).IBCDenom())
@@ -326,7 +328,7 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 
 			if tc.disableTokenPair {
 				_, err := s.network.App.GetErc20Keeper().ToggleConversion(ctx, &types.MsgToggleConversion{
-					Authority: authtypes.NewModuleAddress("gov").String(),
+					Authority: testutils.GovAuthority(),
 					Token:     pair.Denom,
 				})
 				s.Require().NoError(err)
@@ -359,7 +361,10 @@ func (s *KeeperTestSuite) TestOnRecvPacketRegistered() {
 
 func (s *KeeperTestSuite) TestConvertCoinToERC20FromPacket() {
 	var ctx sdk.Context
-	senderAddr := "cosmos1x2w87cvt5mqjncav4lxy8yfreynn273x34qlwy"
+	senderAddr := sdk.MustBech32ifyAddressBytes(
+		sdk.GetConfig().GetBech32AccountAddrPrefix(),
+		common.HexToAddress("0x329c175fa757b5d5d40187d4eb1e1efc62f12959").Bytes(),
+	)
 
 	baseDenom, err := sdk.GetBaseDenom()
 	s.Require().NoError(err)

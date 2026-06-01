@@ -57,6 +57,10 @@ func (s *PrecompileTestSuite) SetupTest() {
 	if err != nil {
 		panic(err)
 	}
+	govAddress := sdk.MustBech32ifyAddressBytes(
+		sdk.GetConfig().GetBech32AccountAddrPrefix(),
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+	)
 	prop := &govv1.Proposal{
 		Id:              1,
 		Status:          govv1.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
@@ -99,7 +103,7 @@ func (s *PrecompileTestSuite) SetupTest() {
 
 	bankGen := banktypes.DefaultGenesisState()
 	bankGen.Balances = []banktypes.Balance{{
-		Address: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+		Address: govAddress,
 		Coins:   sdk.NewCoins(sdk.NewCoin(testconstants.ExampleAttoDenom, math.NewInt(200))),
 	}}
 	govGen := govv1.DefaultGenesisState()

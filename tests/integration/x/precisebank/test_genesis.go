@@ -99,7 +99,10 @@ func (s *GenesisTestSuite) TestInitGenesis() {
 				},
 				sdkmath.ZeroInt(),
 			),
-			"failed to validate precisebank genesis state: invalid balances: duplicate address cosmos1qyfkm2y3",
+			fmt.Sprintf(
+				"failed to validate precisebank genesis state: invalid balances: duplicate address %s",
+				sdk.AccAddress{1}.String(),
+			),
 		},
 		{
 			"invalid - module balance insufficient",

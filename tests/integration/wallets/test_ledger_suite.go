@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/cosmos/evm/testutil/constants"
@@ -75,6 +76,8 @@ func (suite *LedgerTestSuite) newPubKey(pk string) (res cryptotypes.PubKey) {
 
 func (suite *LedgerTestSuite) getMockTxAmino() []byte {
 	whitespaceRegex := regexp.MustCompile(`\s+`)
+	fromAddress := bech32LedgerAddress("0x1111111111111111111111111111111111111111")
+	toAddress := bech32LedgerAddress("0x2222222222222222222222222222222222222222")
 	tmp := whitespaceRegex.ReplaceAllString(fmt.Sprintf(
 		`{
 			"account_number": "0",
@@ -88,12 +91,12 @@ func (suite *LedgerTestSuite) getMockTxAmino() []byte {
 				"type":"cosmos-sdk/MsgSend",
 				"value":{
 					"amount":[{"amount":"150","denom":"atom"}],
-					"from_address":"og1cml96vmptgw99syqrrz8az79xer2pcgpum8mp7",
-					"to_address":"og1jcltmuhplrdcwp7stlr4hlhlhgd4htqhgdvy48"
+					"from_address":"%s",
+					"to_address":"%s"
 				}
 			}],
 			"sequence":"6"
-		}`, constants.ExampleChainID.ChainID),
+		}`, constants.ExampleChainID.ChainID, fromAddress, toAddress),
 		"",
 	)
 
@@ -105,8 +108,8 @@ func (suite *LedgerTestSuite) getMockTxProtobuf() []byte {
 
 	memo := "memo"
 	msg := banktypes.NewMsgSend(
-		sdk.MustAccAddressFromBech32("og1cml96vmptgw99syqrrz8az79xer2pcgpum8mp7"),
-		sdk.MustAccAddressFromBech32("og1jcltmuhplrdcwp7stlr4hlhlhgd4htqhgdvy48"),
+		ledgerAccAddress("0x1111111111111111111111111111111111111111"),
+		ledgerAccAddress("0x2222222222222222222222222222222222222222"),
 		[]sdk.Coin{
 			{
 				Denom:  "atom",
@@ -163,4 +166,12 @@ func (suite *LedgerTestSuite) getMockTxProtobuf() []byte {
 	suite.Require().NoError(err)
 
 	return signBytes
+}
+
+func ledgerAccAddress(hexAddress string) sdk.AccAddress {
+	return common.HexToAddress(hexAddress).Bytes()
+}
+
+func bech32LedgerAddress(hexAddress string) string {
+	return sdk.MustBech32ifyAddressBytes(sdk.GetConfig().GetBech32AccountAddrPrefix(), ledgerAccAddress(hexAddress))
 }

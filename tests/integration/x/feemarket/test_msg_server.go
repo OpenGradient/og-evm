@@ -2,11 +2,10 @@ package feemarket
 
 import (
 	"github.com/cosmos/evm/testutil/integration/evm/network"
+	testutils "github.com/cosmos/evm/testutil/integration/evm/utils"
 	"github.com/cosmos/evm/x/feemarket/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
 func (s *KeeperTestSuite) TestUpdateParams() {
@@ -28,7 +27,7 @@ func (s *KeeperTestSuite) TestUpdateParams() {
 		{
 			name: "pass - valid Update msg",
 			request: &types.MsgUpdateParams{
-				Authority: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+				Authority: testutils.GovAuthority(),
 				Params:    types.DefaultParams(),
 			},
 			expectErr: false,

@@ -693,7 +693,7 @@ func (s *KeeperTestSuite) TestUpdateParams() {
 		{
 			name: "pass - valid Update msg",
 			request: &types.MsgUpdateParams{
-				Authority: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+				Authority: utils.GovAuthority(),
 				Params:    types.DefaultParams(),
 			},
 			expectErr: false,
