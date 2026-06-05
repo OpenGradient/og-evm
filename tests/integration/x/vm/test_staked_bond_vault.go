@@ -16,6 +16,7 @@ import (
 
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 var zeroAddress = common.Address{}
@@ -44,15 +45,15 @@ func (s *KeeperTestSuite) TestStakedBondVaultLiquidRedeemLifecycle() {
 	requestID := requestOut[0].(*big.Int)
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
-	s.Require().ErrorContains(err, "not claimable")
+	s.Require().ErrorContains(err, "CLAIMABLE")
 
 	s.Require().NoError(s.Network.NextBlock())
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, other)
-	s.Require().ErrorContains(err, "wrong receiver")
+	s.Require().ErrorContains(err, "PAYOUT")
 	s.Require().NoError(s.Network.NextBlock())
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "claimRedeem", requestID, zeroAddress)
@@ -100,11 +101,11 @@ func (s *KeeperTestSuite) TestStakedBondVaultRejectsInvalidAndPausedActions() {
 	s.Require().Zero(s.vaultBig(vault, "maxMint", owner).Sign())
 	s.Require().Zero(s.vaultBig(vault, "maxWithdraw", owner).Sign())
 	s.Require().Zero(s.vaultBig(vault, "maxRedeem", owner).Sign())
-	expectVaultError(big.NewInt(0), "depositNative", "zero assets", owner)
-	expectVaultError(depositAmount, "depositNative", "receiver zero", zeroAddress)
+	expectVaultError(big.NewInt(0), "depositNative", "MIN", owner)
+	expectVaultError(depositAmount, "depositNative", "RECEIVER", zeroAddress)
 	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setPaused", true, false, false)
 	s.Require().NoError(err)
-	expectVaultError(depositAmount, "depositNative", "deposits paused", owner)
+	expectVaultError(depositAmount, "depositNative", "D_PAUSED", owner)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setPaused", false, false, false)
 	s.Require().NoError(err)
 
@@ -112,15 +113,15 @@ func (s *KeeperTestSuite) TestStakedBondVaultRejectsInvalidAndPausedActions() {
 	s.Require().NoError(err)
 	expectVaultFailure(nil, "deposit", big.NewInt(0), owner)
 	expectVaultFailure(nil, "mint", big.NewInt(0), owner)
-	expectVaultError(nil, "withdraw", "use requestRedeem", depositAmount, owner, owner)
-	expectVaultError(nil, "redeem", "use requestRedeem", depositAmount, owner, owner)
-	expectVaultError(nil, "requestRedeem", "zero shares", big.NewInt(0), owner, owner)
-	expectVaultError(nil, "requestRedeem", "receiver zero", depositAmount, zeroAddress, owner)
-	expectVaultError(nil, "requestRedeem", "owner zero", depositAmount, owner, zeroAddress)
+	expectVaultError(nil, "withdraw", "REDEEM", depositAmount, owner, owner)
+	expectVaultError(nil, "redeem", "REDEEM", depositAmount, owner, owner)
+	expectVaultError(nil, "requestRedeem", "SHARES", big.NewInt(0), owner, owner)
+	expectVaultError(nil, "requestRedeem", "RECEIVER", depositAmount, zeroAddress, owner)
+	expectVaultError(nil, "requestRedeem", "OWNER", depositAmount, owner, zeroAddress)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setPaused", false, true, false)
 	s.Require().NoError(err)
-	expectVaultError(nil, "requestRedeem", "withdrawals paused", depositAmount, owner, owner)
-	expectVaultError(nil, "claimRedeem", "unknown request", big.NewInt(999), zeroAddress)
+	expectVaultError(nil, "requestRedeem", "W_PAUSED", depositAmount, owner, owner)
+	expectVaultError(nil, "claimRedeem", "REQUEST", big.NewInt(999), zeroAddress)
 }
 
 func (s *KeeperTestSuite) TestStakedBondVaultRejectsValueBearingNonNativeCalls() {
@@ -151,13 +152,12 @@ func (s *KeeperTestSuite) TestStakedBondVaultRejectsValueBearingNonNativeCalls()
 	expectValueRejected("poke", big.NewInt(1))
 	expectValueRejected("syncDelegations")
 	expectValueRejected("setPaused", false, false, false)
-	expectValueRejected("setValidators", []string{}, []uint16{})
+	expectValueRejected("setValidatorPolicy", uint8(1))
 	expectValueRejected("approve", spender, big.NewInt(1))
 	expectValueRejected("increaseAllowance", spender, big.NewInt(1))
 	expectValueRejected("decreaseAllowance", spender, big.NewInt(0))
 	expectValueRejected("transfer", spender, big.NewInt(1))
 	expectValueRejected("transferFrom", owner, spender, big.NewInt(1))
-	expectValueRejected("permit", owner, spender, big.NewInt(0), big.NewInt(0), uint8(27), zeroRole, zeroRole)
 	expectValueRejected("grantRole", zeroRole, spender)
 	expectValueRejected("revokeRole", zeroRole, spender)
 	expectValueRejected("renounceRole", zeroRole, owner)
@@ -183,7 +183,6 @@ func (s *KeeperTestSuite) TestStakedBondVaultRejectsUnauthorizedAdminActions() {
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 
 	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "setPaused", true, true, true)
 	s.Require().Error(err)
@@ -192,10 +191,10 @@ func (s *KeeperTestSuite) TestStakedBondVaultRejectsUnauthorizedAdminActions() {
 	s.Require().False(s.vaultBool(vault, "withdrawalsPaused"))
 	s.Require().False(s.vaultBool(vault, "pokePaused"))
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "setValidators", []string{val}, []uint16{10_000})
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "setValidatorPolicy", uint8(1))
 	s.Require().Error(err)
 	s.Require().NoError(s.Network.NextBlock())
-	s.Require().Zero(s.vaultBig(vault, "validatorCount").Sign())
+	s.Require().Equal(0, big.NewInt(8).Cmp(s.vaultBig(vault, "targetValidatorCount")))
 }
 
 func (s *KeeperTestSuite) TestStakedBondVaultSetPausedTogglesExactFlags() {
@@ -235,10 +234,10 @@ func (s *KeeperTestSuite) TestStakedBondVaultApprovedRedeemClaimPaysFixedReceive
 	s.Require().NoError(err)
 	requestID := requestOut[0].(*big.Int)
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, owner)
-	s.Require().ErrorContains(err, "wrong receiver")
+	s.Require().ErrorContains(err, "PAYOUT")
 	s.Require().NoError(s.Network.NextBlock())
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "claimRedeem", requestID, zeroAddress)
@@ -272,7 +271,7 @@ func (s *KeeperTestSuite) TestStakedBondVaultMultiRequestBatchPaysResidualAndPru
 	s.Require().NoError(err)
 	otherRequestID := requestOut[0].(*big.Int)
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "claimRedeem", otherRequestID, zeroAddress)
 	s.Require().NoError(err)
@@ -297,7 +296,6 @@ func (s *KeeperTestSuite) TestStakedBondVaultDirectWrappedDonationBeforeFirstDep
 	owner := s.Keyring.GetAddr(1)
 	donation := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e18))
 	depositAmount := big.NewInt(1e18)
-	expectedPayout := big.NewInt(0).Add(donation, depositAmount)
 
 	_, err := s.executeWERC20Tx(s.Keyring.GetPrivKey(0), nil, "transfer", vault, donation)
 	s.Require().NoError(err)
@@ -309,39 +307,36 @@ func (s *KeeperTestSuite) TestStakedBondVaultDirectWrappedDonationBeforeFirstDep
 	s.Require().NoError(err)
 	shares := depositOut[0].(*big.Int)
 	s.Require().Equal(0, depositAmount.Cmp(shares))
-	s.Require().Equal(0, expectedPayout.Cmp(s.vaultBig(vault, "totalAssets")))
+	s.Require().Equal(0, depositAmount.Cmp(s.vaultBig(vault, "totalAssets")))
 
 	requestRes, err := s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "requestRedeem", shares, owner, owner)
 	s.Require().NoError(err)
 	requestOut, err := contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
 	s.Require().NoError(err)
 	requestID := requestOut[0].(*big.Int)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "claimRedeem", requestID, zeroAddress)
 	s.Require().NoError(err)
 
 	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
 	s.Require().Zero(s.vaultBig(vault, "totalAssets").Sign())
-	s.Require().True(s.werc20Balance(vault).Cmp(donation) <= 0)
+	s.Require().Equal(0, donation.Cmp(s.werc20Balance(vault)))
 }
 
 func (s *KeeperTestSuite) TestStakedBondVaultDoesNotStakeOrphanDonationWithoutShares() {
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 	donation := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e18))
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
-	s.Require().NoError(err)
-	_, err = s.executeWERC20Tx(s.Keyring.GetPrivKey(0), nil, "transfer", vault, donation)
+	_, err := s.executeWERC20Tx(s.Keyring.GetPrivKey(0), nil, "transfer", vault, donation)
 	s.Require().NoError(err)
 	s.Require().Equal(0, donation.Cmp(s.werc20Balance(vault)))
 	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
 	s.Require().Zero(s.vaultBig(vault, "totalAssets").Sign())
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 	s.Require().Zero(s.vaultBig(vault, "totalDelegated").Sign())
 	s.Require().Equal(0, donation.Cmp(s.werc20Balance(vault)))
@@ -351,162 +346,107 @@ func (s *KeeperTestSuite) TestStakedBondVaultRejectsBadValidatorConfiguration() 
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 
-	_, err := s.executeVaultTx(
-		s.Keyring.GetPrivKey(0),
-		vault,
-		nil,
-		"setValidators",
-		[]string{val, val},
-		[]uint16{5_000, 5_000},
-	)
-	s.Require().ErrorContains(err, "duplicate validator")
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(0))
+	s.Require().ErrorContains(err, "COUNT")
 	s.Require().NoError(s.Network.NextBlock())
 
-	_, err = s.executeVaultTx(
-		s.Keyring.GetPrivKey(0),
-		vault,
-		nil,
-		"setValidators",
-		[]string{val},
-		[]uint16{9_999},
-	)
-	s.Require().ErrorContains(err, "bad weights")
-	s.Require().NoError(s.Network.NextBlock())
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(33))
+	s.Require().ErrorContains(err, "COUNT")
+}
 
-	_, err = s.executeVaultTx(
-		s.Keyring.GetPrivKey(0),
-		vault,
-		nil,
-		"setValidators",
-		[]string{val},
-		[]uint16{},
-	)
-	s.Require().ErrorContains(err, "length mismatch")
-	s.Require().NoError(s.Network.NextBlock())
+func (s *KeeperTestSuite) TestStakedBondVaultSetValidatorPolicyStoresTargetCount() {
+	s.SetupTest()
 
-	_, err = s.executeVaultTx(
-		s.Keyring.GetPrivKey(0),
-		vault,
-		nil,
-		"setValidators",
-		[]string{""},
-		[]uint16{10_000},
-	)
-	s.Require().ErrorContains(err, "empty validator")
-	s.Require().NoError(s.Network.NextBlock())
+	vault := s.deployStakedBondVault()
 
-	_, err = s.executeVaultTx(
-		s.Keyring.GetPrivKey(0),
-		vault,
-		nil,
-		"setValidators",
-		[]string{val},
-		[]uint16{0},
-	)
-	s.Require().ErrorContains(err, "zero weight")
-	s.Require().NoError(s.Network.NextBlock())
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(1))
+	s.Require().NoError(err)
+	s.Require().Equal(0, big.NewInt(1).Cmp(s.vaultBig(vault, "targetValidatorCount")))
+	s.Require().Zero(s.vaultBig(vault, "validatorCount").Sign())
+}
 
-	operatorAddresses := make([]string, 33)
-	weights := make([]uint16, 33)
-	for i := range operatorAddresses {
-		operatorAddresses[i] = val
-		weights[i] = 1
+func (s *KeeperTestSuite) TestStakedBondVaultPokeAutoSelectsBondedValidators() {
+	s.SetupTest()
+
+	vault := s.deployStakedBondVault()
+
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(3))
+	s.Require().NoError(err)
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+	s.Require().NoError(err)
+	s.Require().Equal(0, big.NewInt(3).Cmp(s.vaultBig(vault, "selectedValidatorCount")))
+	s.Require().Equal(0, big.NewInt(3).Cmp(s.vaultBig(vault, "validatorCount")))
+
+	for i := int64(0); i < 3; i++ {
+		res, err := s.callVaultWithData(vault, "validators", false, big.NewInt(i))
+		s.Require().NoError(err)
+		out, err := contracts.StakedBondVaultContract.ABI.Unpack("validators", res.Ret)
+		s.Require().NoError(err)
+		s.Require().NotEmpty(out[0].(string))
+		s.Require().Positive(out[1].(*big.Int).Sign())
+		s.Require().Zero(out[2].(*big.Int).Sign())
+		s.Require().True(out[3].(bool))
 	}
-	_, err = s.executeVaultTx(
-		s.Keyring.GetPrivKey(0),
-		vault,
-		nil,
-		"setValidators",
-		operatorAddresses,
-		weights,
-	)
-	s.Require().ErrorContains(err, "too many validators")
 }
 
-func (s *KeeperTestSuite) TestStakedBondVaultSetValidatorsStoresExactConfig() {
+func (s *KeeperTestSuite) TestStakedBondVaultStakeIdleAcrossAutomaticallySelectedValidators() {
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
-
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
-	s.Require().NoError(err)
-	s.Require().Equal(0, big.NewInt(1).Cmp(s.vaultBig(vault, "validatorCount")))
-
-	res, err := s.callVaultWithData(vault, "validators", false, big.NewInt(0))
-	s.Require().NoError(err)
-	out, err := contracts.StakedBondVaultContract.ABI.Unpack("validators", res.Ret)
-	s.Require().NoError(err)
-	s.Require().Equal(val, out[0].(string))
-	s.Require().Equal(uint16(10_000), out[1].(uint16))
-	s.Require().Zero(out[2].(*big.Int).Sign())
-}
-
-func (s *KeeperTestSuite) TestStakedBondVaultStakeIdleSplitsAcrossValidatorsWithRemainder() {
-	s.SetupTest()
-
-	vault := s.deployStakedBondVault()
-	vals := s.Network.GetValidators()
 	owner := s.Keyring.GetAddr(0)
 	depositAmount := big.NewInt(0).Mul(big.NewInt(10_001), big.NewInt(1e18))
-	operatorAddresses := []string{
-		vals[0].OperatorAddress,
-		vals[1].OperatorAddress,
-		vals[2].OperatorAddress,
-	}
-	weights := []uint16{3_333, 3_333, 3_334}
-	expectedFirst := big.NewInt(0).Div(big.NewInt(0).Mul(depositAmount, big.NewInt(3_333)), big.NewInt(10_000))
-	expectedSecond := big.NewInt(0).Set(expectedFirst)
-	expectedThird := big.NewInt(0).Sub(big.NewInt(0).Sub(depositAmount, expectedFirst), expectedSecond)
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", operatorAddresses, weights)
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(3))
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.stakeVaultIdle(vault, depositAmount)
 
-	for i, expected := range []*big.Int{expectedFirst, expectedSecond, expectedThird} {
+	delegatedAcrossSelected := big.NewInt(0)
+	for i := int64(0); i < 3; i++ {
 		res, err := s.callVaultWithData(vault, "validators", false, big.NewInt(int64(i)))
 		s.Require().NoError(err)
 		out, err := contracts.StakedBondVaultContract.ABI.Unpack("validators", res.Ret)
 		s.Require().NoError(err)
-		s.Require().Equal(operatorAddresses[i], out[0].(string))
-		s.Require().Equal(weights[i], out[1].(uint16))
-		s.Require().Equal(0, expected.Cmp(out[2].(*big.Int)))
+		s.Require().NotEmpty(out[0].(string))
+		s.Require().Positive(out[1].(*big.Int).Sign())
+		s.Require().Positive(out[2].(*big.Int).Sign())
+		s.Require().True(out[3].(bool))
+		delegatedAcrossSelected.Add(delegatedAcrossSelected, out[2].(*big.Int))
 	}
-	s.Require().Equal(0, depositAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
+	s.requireVaultDelegatedClose(vault, depositAmount)
+	s.Require().Equal(0, depositAmount.Cmp(delegatedAcrossSelected))
 }
 
-func (s *KeeperTestSuite) TestStakedBondVaultStakesAndBlocksValidatorUpdatesWhileDelegated() {
+func (s *KeeperTestSuite) TestStakedBondVaultCanUpdateValidatorPolicyWhileDelegated() {
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 	depositAmount := big.NewInt(0).Mul(big.NewInt(3), big.NewInt(1e18))
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(3))
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", s.Keyring.GetAddr(0))
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.stakeVaultIdle(vault, depositAmount)
 
 	delegated := s.vaultBig(vault, "totalDelegated")
 	s.Require().Positive(delegated.Sign())
 	s.Require().Equal(0, delegated.Cmp(s.vaultBig(vault, "liveDelegatedAssets")))
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{}, []uint16{})
-	s.Require().ErrorContains(err, "delegations active")
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(1))
+	s.Require().NoError(err)
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+	s.Require().NoError(err)
+	s.Require().Equal(0, big.NewInt(1).Cmp(s.vaultBig(vault, "selectedValidatorCount")))
+	s.Require().Equal(0, delegated.Cmp(s.vaultBig(vault, "totalDelegated")))
 }
 
 func (s *KeeperTestSuite) TestStakedBondVaultPokeRecordsBoundedWork() {
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 	depositAmount := big.NewInt(1e18)
 
 	res, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(0))
@@ -520,13 +460,11 @@ func (s *KeeperTestSuite) TestStakedBondVaultPokeRecordsBoundedWork() {
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setPaused", false, false, true)
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(1))
-	s.Require().ErrorContains(err, "poke paused")
+	s.Require().ErrorContains(err, "P_PAUSED")
 	s.Require().NoError(s.Network.NextBlock())
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setPaused", false, false, false)
 	s.Require().NoError(err)
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
-	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", s.Keyring.GetAddr(0))
 	s.Require().NoError(err)
 
@@ -537,24 +475,21 @@ func (s *KeeperTestSuite) TestStakedBondVaultPokeRecordsBoundedWork() {
 	s.Require().Equal(0, big.NewInt(1).Cmp(out[0].(*big.Int)))
 	s.Require().Equal(0, big.NewInt(1).Cmp(s.vaultBig(vault, "pokeCount")))
 	s.Require().Equal(0, big.NewInt(1).Cmp(s.vaultBig(vault, "lastPokeOps")))
-	s.Require().Equal(0, depositAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
+	s.Require().Positive(s.vaultBig(vault, "selectedValidatorCount").Sign())
+	s.stakeVaultIdle(vault, depositAmount)
 }
 
 func (s *KeeperTestSuite) TestStakedBondVaultStakedRedeemLifecycle() {
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 	owner := s.Keyring.GetAddr(0)
 	depositAmount := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e18))
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
-	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
-	s.Require().Equal(0, depositAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
+	s.stakeVaultIdle(vault, depositAmount)
+	s.requireVaultDelegatedClose(vault, depositAmount)
 
 	requestRes, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "requestRedeem", depositAmount, owner, owner)
 	s.Require().NoError(err)
@@ -562,26 +497,19 @@ func (s *KeeperTestSuite) TestStakedBondVaultStakedRedeemLifecycle() {
 	s.Require().NoError(err)
 	requestID := requestOut[0].(*big.Int)
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
-	s.Require().Equal(0, depositAmount.Cmp(s.vaultBig(vault, "totalWithdrawalUnbonding")))
+	s.requireVaultUnbondingClose(vault, depositAmount)
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
-	s.Require().ErrorContains(err, "not claimable")
+	s.Require().ErrorContains(err, "CLAIMABLE")
 	s.Require().NoError(s.Network.NextBlock())
 
-	maturity := s.vaultBatchMaturity(vault, 1)
-	wait := time.Unix(maturity, 0).Sub(s.Network.GetContext().BlockTime()) + time.Second
-	if wait > 0 {
-		s.Require().NoError(s.Network.NextBlockAfter(wait))
-	}
-
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.waitAndSettleVaultBatch(vault, 1)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
-	s.Require().ErrorContains(err, "unknown request")
+	s.Require().ErrorContains(err, "REQUEST")
 	s.Require().NoError(s.Network.NextBlock())
 
 	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
@@ -593,19 +521,15 @@ func (s *KeeperTestSuite) TestStakedBondVaultMixedLiquidAndStakedRedeemLifecycle
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 	owner := s.Keyring.GetAddr(0)
 	stakedAmount := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e18))
 	liquidAmount := big.NewInt(1e18)
 	totalAmount := big.NewInt(0).Add(stakedAmount, liquidAmount)
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, stakedAmount, "depositNative", owner)
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, stakedAmount, "depositNative", owner)
-	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
-	s.Require().Equal(0, stakedAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
+	s.stakeVaultIdle(vault, stakedAmount)
+	s.requireVaultDelegatedClose(vault, stakedAmount)
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, liquidAmount, "depositNative", owner)
 	s.Require().NoError(err)
@@ -615,23 +539,16 @@ func (s *KeeperTestSuite) TestStakedBondVaultMixedLiquidAndStakedRedeemLifecycle
 	s.Require().NoError(err)
 	requestID := requestOut[0].(*big.Int)
 
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
-	s.Require().Equal(0, stakedAmount.Cmp(s.vaultBig(vault, "totalWithdrawalUnbonding")))
+	s.requireVaultUnbondingClose(vault, stakedAmount)
 	s.Require().Zero(s.vaultBig(vault, "totalDelegated").Sign())
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
-	s.Require().ErrorContains(err, "not claimable")
+	s.Require().ErrorContains(err, "CLAIMABLE")
 	s.Require().NoError(s.Network.NextBlock())
 
-	maturity := s.vaultBatchMaturity(vault, 1)
-	wait := time.Unix(maturity, 0).Sub(s.Network.GetContext().BlockTime()) + time.Second
-	if wait > 0 {
-		s.Require().NoError(s.Network.NextBlockAfter(wait))
-	}
-
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.waitAndSettleVaultBatch(vault, 1)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
 	s.Require().NoError(err)
 
@@ -644,28 +561,24 @@ func (s *KeeperTestSuite) TestStakedBondVaultPendingUnbondingDoesNotSkipSettleme
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 	owner := s.Keyring.GetAddr(0)
 	other := s.Keyring.GetAddr(1)
 	stakedAmount := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e18))
 	liquidAmount := big.NewInt(1e18)
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, stakedAmount, "depositNative", owner)
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, stakedAmount, "depositNative", owner)
-	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
-	s.Require().Equal(0, stakedAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
+	s.stakeVaultIdle(vault, stakedAmount)
+	s.requireVaultDelegatedClose(vault, stakedAmount)
 
 	requestRes, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "requestRedeem", stakedAmount, owner, owner)
 	s.Require().NoError(err)
 	requestOut, err := contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
 	s.Require().NoError(err)
 	stakedRequestID := requestOut[0].(*big.Int)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
-	s.Require().Equal(0, stakedAmount.Cmp(s.vaultBig(vault, "totalWithdrawalUnbonding")))
+	s.requireVaultUnbondingClose(vault, stakedAmount)
 	s.Require().Equal(0, big.NewInt(1).Cmp(s.vaultBig(vault, "nextSettlementBatchId")))
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, liquidAmount, "depositNative", other)
@@ -675,23 +588,16 @@ func (s *KeeperTestSuite) TestStakedBondVaultPendingUnbondingDoesNotSkipSettleme
 	requestOut, err = contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
 	s.Require().NoError(err)
 	liquidRequestID := requestOut[0].(*big.Int)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 	s.Require().Equal(0, big.NewInt(1).Cmp(s.vaultBig(vault, "nextSettlementBatchId")))
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "claimRedeem", liquidRequestID, zeroAddress)
 	s.Require().NoError(err)
 
-	maturity := s.vaultBatchMaturity(vault, 1)
-	wait := time.Unix(maturity, 0).Sub(s.Network.GetContext().BlockTime()) + time.Second
-	if wait > 0 {
-		s.Require().NoError(s.Network.NextBlockAfter(wait))
-	}
-
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.waitAndSettleVaultBatch(vault, 1)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", stakedRequestID, zeroAddress)
 	s.Require().NoError(err)
 	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
@@ -702,49 +608,36 @@ func (s *KeeperTestSuite) TestStakedBondVaultDepositDuringPendingUnbondingCanSta
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	val := s.Network.GetValidators()[0].OperatorAddress
 	owner := s.Keyring.GetAddr(0)
 	other := s.Keyring.GetAddr(1)
 	ownerAmount := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e18))
 	otherAmount := big.NewInt(1e18)
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{val}, []uint16{10_000})
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, ownerAmount, "depositNative", owner)
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, ownerAmount, "depositNative", owner)
-	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
-	s.Require().Equal(0, ownerAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
+	s.stakeVaultIdle(vault, ownerAmount)
+	s.requireVaultDelegatedClose(vault, ownerAmount)
 
 	requestRes, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "requestRedeem", ownerAmount, owner, owner)
 	s.Require().NoError(err)
 	requestOut, err := contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
 	s.Require().NoError(err)
 	ownerRequestID := requestOut[0].(*big.Int)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
-	s.Require().Equal(0, ownerAmount.Cmp(s.vaultBig(vault, "totalWithdrawalUnbonding")))
+	s.requireVaultUnbondingClose(vault, ownerAmount)
 	s.Require().Zero(s.vaultBig(vault, "totalDelegated").Sign())
 
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, otherAmount, "depositNative", other)
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
-	s.Require().Equal(0, otherAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
-	s.Require().Equal(0, ownerAmount.Cmp(s.vaultBig(vault, "totalWithdrawalUnbonding")))
+	s.stakeVaultIdle(vault, otherAmount)
+	s.requireVaultUnbondingClose(vault, ownerAmount)
 
-	maturity := s.vaultBatchMaturity(vault, 1)
-	wait := time.Unix(maturity, 0).Sub(s.Network.GetContext().BlockTime()) + time.Second
-	if wait > 0 {
-		s.Require().NoError(s.Network.NextBlockAfter(wait))
-	}
-
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.waitAndSettleVaultBatch(vault, 1)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", ownerRequestID, zeroAddress)
 	s.Require().NoError(err)
 	s.Require().Zero(s.vaultBig(vault, "totalWithdrawalUnbonding").Sign())
-	s.Require().Equal(0, otherAmount.Cmp(s.vaultBig(vault, "totalDelegated")))
+	s.requireVaultDelegatedClose(vault, otherAmount)
 
 	otherShares := s.vaultBig(vault, "balanceOf", other)
 	requestRes, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "requestRedeem", otherShares, other, other)
@@ -752,37 +645,54 @@ func (s *KeeperTestSuite) TestStakedBondVaultDepositDuringPendingUnbondingCanSta
 	requestOut, err = contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
 	s.Require().NoError(err)
 	otherRequestID := requestOut[0].(*big.Int)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 
-	maturity = s.vaultBatchMaturity(vault, 2)
-	wait = time.Unix(maturity, 0).Sub(s.Network.GetContext().BlockTime()) + time.Second
-	if wait > 0 {
-		s.Require().NoError(s.Network.NextBlockAfter(wait))
-	}
-
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.waitAndSettleVaultBatch(vault, 2)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "claimRedeem", otherRequestID, zeroAddress)
 	s.Require().NoError(err)
 	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
 	s.Require().Zero(s.vaultBig(vault, "totalWithdrawalUnbonding").Sign())
 }
 
+func (s *KeeperTestSuite) TestStakedBondVaultSkipsValidatorAtUnbondingEntryCap() {
+	s.SetupTest()
+
+	vault := s.deployStakedBondVault()
+	owner := s.Keyring.GetAddr(0)
+	depositAmount := big.NewInt(0).Mul(big.NewInt(5), big.NewInt(1e18))
+	requestShares := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e15))
+
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(2))
+	s.Require().NoError(err)
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
+	s.Require().NoError(err)
+	s.stakeVaultIdle(vault, depositAmount)
+
+	for i := 0; i < 8; i++ {
+		_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "requestRedeem", requestShares, owner, owner)
+		s.Require().NoError(err)
+		_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+		s.Require().NoError(err)
+	}
+
+	expectedUnbonding := big.NewInt(0).Mul(requestShares, big.NewInt(8))
+	s.requireVaultUnbondingClose(vault, expectedUnbonding)
+}
+
 func (s *KeeperTestSuite) TestStakedBondVaultSlashedStakeCanRedeemRemainingAssets() {
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	validator := s.Network.GetValidators()[0]
 	owner := s.Keyring.GetAddr(0)
 	depositAmount := big.NewInt(0).Mul(big.NewInt(3), big.NewInt(1e18))
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{validator.OperatorAddress}, []uint16{10_000})
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(1))
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.stakeVaultIdle(vault, depositAmount)
+	validator := s.selectedVaultSDKValidator(vault)
 	beforeSlash := s.vaultBig(vault, "liveDelegatedAssets")
 	s.Require().Positive(beforeSlash.Sign())
 
@@ -807,20 +717,13 @@ func (s *KeeperTestSuite) TestStakedBondVaultSlashedStakeCanRedeemRemainingAsset
 	requestOut, err := contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
 	s.Require().NoError(err)
 	requestID := requestOut[0].(*big.Int)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
 	s.Require().NoError(err)
 	unbonding := s.vaultBig(vault, "totalWithdrawalUnbonding")
 	s.Require().Positive(unbonding.Sign())
 	s.Require().True(unbonding.Cmp(depositAmount) <= 0)
 
-	maturity := s.vaultBatchMaturity(vault, 1)
-	wait := time.Unix(maturity, 0).Sub(s.Network.GetContext().BlockTime()) + time.Second
-	if wait > 0 {
-		s.Require().NoError(s.Network.NextBlockAfter(wait))
-	}
-
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.waitAndSettleVaultBatch(vault, 1)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
 	s.Require().NoError(err)
 	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
@@ -832,15 +735,14 @@ func (s *KeeperTestSuite) TestStakedBondVaultSlashSyncUpdatesCachedDelegations()
 	s.SetupTest()
 
 	vault := s.deployStakedBondVault()
-	validator := s.Network.GetValidators()[0]
 	depositAmount := big.NewInt(0).Mul(big.NewInt(3), big.NewInt(1e18))
 
-	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidators", []string{validator.OperatorAddress}, []uint16{10_000})
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(1))
 	s.Require().NoError(err)
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", s.Keyring.GetAddr(0))
 	s.Require().NoError(err)
-	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(4))
-	s.Require().NoError(err)
+	s.stakeVaultIdle(vault, depositAmount)
+	validator := s.selectedVaultSDKValidator(vault)
 
 	before := s.vaultBig(vault, "liveDelegatedAssets")
 	s.Require().Positive(before.Sign())
@@ -864,6 +766,59 @@ func (s *KeeperTestSuite) TestStakedBondVaultSlashSyncUpdatesCachedDelegations()
 	_, err = s.callVaultWithData(vault, "syncDelegations", true)
 	s.Require().NoError(err)
 	s.Require().Equal(0, after.Cmp(s.vaultBig(vault, "totalDelegated")))
+}
+
+func (s *KeeperTestSuite) stakeVaultIdle(vault common.Address, expectedDelegated *big.Int) {
+	for i := 0; i < 24 && s.vaultBig(vault, "totalDelegated").Cmp(expectedDelegated) < 0; i++ {
+		_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+		s.Require().NoError(err)
+	}
+	s.requireVaultDelegatedClose(vault, expectedDelegated)
+}
+
+func (s *KeeperTestSuite) requireVaultDelegatedClose(vault common.Address, expectedDelegated *big.Int) {
+	delegated := s.vaultBig(vault, "totalDelegated")
+	idle := s.vaultBig(vault, "totalIdleLiquid")
+	s.Require().True(delegated.Cmp(expectedDelegated) <= 0)
+	dust := big.NewInt(0).Sub(expectedDelegated, delegated)
+	s.Require().True(dust.Cmp(big.NewInt(1e15)) < 0, "delegation dust %s exceeds minimum operation size", dust.String())
+	s.Require().Equal(0, dust.Cmp(idle))
+}
+
+func (s *KeeperTestSuite) requireVaultUnbondingClose(vault common.Address, expectedUnbonding *big.Int) {
+	unbonding := s.vaultBig(vault, "totalWithdrawalUnbonding")
+	s.Require().True(unbonding.Cmp(expectedUnbonding) <= 0)
+	dust := big.NewInt(0).Sub(expectedUnbonding, unbonding)
+	s.Require().True(dust.Cmp(big.NewInt(1e15)) < 0, "unbonding dust %s exceeds minimum operation size", dust.String())
+}
+
+func (s *KeeperTestSuite) waitAndSettleVaultBatch(vault common.Address, batchID uint64) {
+	maturity := s.vaultBatchMaturity(vault, batchID)
+	wait := time.Unix(maturity, 0).Sub(s.Network.GetContext().BlockTime()) + time.Second
+	if wait > 0 {
+		s.Require().NoError(s.Network.NextBlockAfter(wait))
+	}
+
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+	s.Require().NoError(err)
+	s.Require().NoError(s.Network.NextBlock())
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+	s.Require().NoError(err)
+}
+
+func (s *KeeperTestSuite) selectedVaultSDKValidator(vault common.Address) stakingtypes.Validator {
+	res, err := s.callVaultWithData(vault, "validators", false, big.NewInt(0))
+	s.Require().NoError(err)
+	out, err := contracts.StakedBondVaultContract.ABI.Unpack("validators", res.Ret)
+	s.Require().NoError(err)
+	operatorAddress := sdk.ValAddress(common.HexToAddress(out[0].(string)).Bytes()).String()
+	for _, validator := range s.Network.GetValidators() {
+		if validator.OperatorAddress == operatorAddress {
+			return validator
+		}
+	}
+	s.T().Fatalf("selected validator %s not found", operatorAddress)
+	return stakingtypes.Validator{}
 }
 
 func (s *KeeperTestSuite) deployStakedBondVault() common.Address {
@@ -976,6 +931,8 @@ func (s *KeeperTestSuite) vaultBig(vault common.Address, method string, args ...
 		return value
 	case uint64:
 		return new(big.Int).SetUint64(value)
+	case uint8:
+		return big.NewInt(int64(value))
 	default:
 		s.T().Fatalf("unexpected numeric type %T", value)
 		return nil
