@@ -2,6 +2,7 @@ package vm
 
 import (
 	"math/big"
+	"strings"
 
 	"github.com/cosmos/evm/contracts"
 	testcontracts "github.com/cosmos/evm/precompiles/testutil/contracts"
@@ -90,4 +91,31 @@ func (s *KeeperTestSuite) TestEVMSchedulerRevertDoesNotHaltBlock() {
 	out, err := counter.ABI.Unpack("getCounter", res.Ret)
 	s.Require().NoError(err)
 	s.Require().Equal(0, big.NewInt(0).Cmp(out[0].(*big.Int)))
+}
+
+func (s *KeeperTestSuite) TestEVMSchedulerCorruptParamsDoNotHaltBlock() {
+	s.SetupTest()
+
+	ctx := s.Network.GetContext()
+	store := ctx.KVStore(s.Network.App.GetKey(evmtypes.StoreKey))
+	store.Set(evmtypes.KeyPrefixParams, []byte{0xff})
+
+	s.Require().NotPanics(func() {
+		s.Network.App.GetEVMKeeper().RunScheduler(ctx)
+	})
+
+	attrs := map[string]string{}
+	for _, event := range ctx.EventManager().Events() {
+		if event.Type != "evm_scheduler" {
+			continue
+		}
+		for _, attr := range event.Attributes {
+			attrs[attr.Key] = attr.Value
+		}
+	}
+
+	s.Require().Equal("", attrs["target_contract"])
+	s.Require().Equal("false", attrs["success"])
+	s.Require().Equal("0", attrs["gas_used"])
+	s.Require().True(strings.Contains(attrs["error"], "panic"), "events: %v", ctx.EventManager().Events())
 }

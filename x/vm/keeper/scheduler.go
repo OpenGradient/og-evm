@@ -36,17 +36,20 @@ func shouldRunScheduler(ctx sdk.Context, params types.EVMSchedulerParams) bool {
 // RunScheduler performs the configured bounded EndBlock EVM call. It never
 // returns an error because scheduler failures must not halt consensus.
 func (k Keeper) RunScheduler(ctx sdk.Context) {
-	params := k.GetParams(ctx).Scheduler
-	if !shouldRunScheduler(ctx, params) {
-		return
-	}
+	targetContract := ""
 	defer func() {
 		if r := recover(); r != nil {
 			errText := fmt.Sprintf("panic: %v", r)
-			k.Logger(ctx).Error("evm scheduler panicked", "target", params.TargetContract, "err", errText)
-			k.emitSchedulerEvent(ctx, params.TargetContract, false, 0, "", errText)
+			k.Logger(ctx).Error("evm scheduler panicked", "target", targetContract, "err", errText)
+			k.emitSchedulerEvent(ctx, targetContract, false, 0, "", errText)
 		}
 	}()
+
+	params := k.GetParams(ctx).Scheduler
+	targetContract = params.TargetContract
+	if !shouldRunScheduler(ctx, params) {
+		return
+	}
 
 	moduleAddr := k.accountKeeper.GetModuleAddress(types.ModuleName)
 	if moduleAddr == nil {
