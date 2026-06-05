@@ -35,7 +35,6 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	consensustypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
 const TestPostProcessingEventType = "test_post_processing_event"
@@ -48,7 +47,7 @@ func (s *KeeperTestSuite) TestContextSetConsensusParams() {
 	consParams := res.Params
 	consParams.Block.MaxGas = maxGas
 	_, err = s.Network.App.GetConsensusParamsKeeper().UpdateParams(s.Network.GetContext(), &consensustypes.MsgUpdateParams{
-		Authority: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+		Authority: s.govAuthority(),
 		Block:     consParams.Block,
 		Evidence:  consParams.Evidence,
 		Validator: consParams.Validator,

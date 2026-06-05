@@ -261,7 +261,7 @@ func (suite *MsgsTestSuite) TestMsgUpdateValidateBasic() {
 		{
 			"pass - valid msg",
 			&types.MsgUpdateParams{
-				Authority: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+				Authority: govAuthority(),
 				Params:    types.DefaultParams(),
 			},
 			true,
@@ -278,4 +278,11 @@ func (suite *MsgsTestSuite) TestMsgUpdateValidateBasic() {
 			}
 		})
 	}
+}
+
+func govAuthority() string {
+	return sdk.MustBech32ifyAddressBytes(
+		sdk.GetConfig().GetBech32AccountAddrPrefix(),
+		authtypes.NewModuleAddress(govtypes.ModuleName),
+	)
 }

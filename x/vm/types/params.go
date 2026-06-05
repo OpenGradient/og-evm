@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"slices"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 
@@ -50,6 +51,12 @@ var (
 
 const DefaultHistoryServeWindow = 8192 // same as EIP-2935
 
+const (
+	DefaultSchedulerGasCap        uint64 = 5_000_000
+	DefaultSchedulerMaxOps        uint32 = 32
+	DefaultSchedulerCadenceBlocks uint64 = 1
+)
+
 // NewParams creates a new Params instance
 func NewParams(
 	extraEIPs []int64,
@@ -75,6 +82,13 @@ func DefaultParams() Params {
 		AccessControl:           DefaultAccessControl,
 		HistoryServeWindow:      DefaultHistoryServeWindow,
 		ExtendedDenomOptions:    &ExtendedDenomOptions{ExtendedDenom: sdk.DefaultBondDenom},
+		Scheduler: EVMSchedulerParams{
+			Enabled:        false,
+			TargetContract: "",
+			GasCap:         DefaultSchedulerGasCap,
+			MaxOps:         DefaultSchedulerMaxOps,
+			CadenceBlocks:  DefaultSchedulerCadenceBlocks,
+		},
 	}
 }
 
@@ -104,8 +118,33 @@ func (p Params) Validate() error {
 	if err := p.AccessControl.Validate(); err != nil {
 		return err
 	}
+	if err := p.Scheduler.Validate(); err != nil {
+		return err
+	}
 
 	return validateChannels(p.EVMChannels)
+}
+
+func (p EVMSchedulerParams) Validate() error {
+	if p.TargetContract != "" && !common.IsHexAddress(p.TargetContract) {
+		return fmt.Errorf("invalid scheduler target contract: %s", p.TargetContract)
+	}
+	if !p.Enabled {
+		return nil
+	}
+	if p.TargetContract == "" || common.HexToAddress(p.TargetContract) == (common.Address{}) {
+		return fmt.Errorf("scheduler target contract must be non-zero when enabled")
+	}
+	if p.GasCap == 0 {
+		return fmt.Errorf("scheduler gas cap must be greater than zero")
+	}
+	if p.MaxOps == 0 {
+		return fmt.Errorf("scheduler max ops must be greater than zero")
+	}
+	if p.CadenceBlocks == 0 {
+		return fmt.Errorf("scheduler cadence blocks must be greater than zero")
+	}
+	return nil
 }
 
 // EIPs returns the ExtraEIPS as a int slice

@@ -11,7 +11,6 @@ import (
 
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
@@ -22,8 +21,6 @@ type UpdateParamsInput struct {
 	Pk      cryptotypes.PrivKey
 	Params  interface{}
 }
-
-var authority = authtypes.NewModuleAddress(govtypes.ModuleName).String()
 
 // UpdateEvmParams helper function to update the EVM module parameters
 // It submits an update params proposal, votes for it, and waits till it passes
@@ -70,6 +67,8 @@ func updateModuleParams[T interface{}](input UpdateParamsInput, moduleName strin
 
 // createProposalMsg creates the module-specific update params message
 func createProposalMsg(params interface{}, name string) sdk.Msg {
+	authority := GovAuthority()
+
 	switch name {
 	case evmtypes.ModuleName:
 		return &evmtypes.MsgUpdateParams{Authority: authority, Params: params.(evmtypes.Params)}

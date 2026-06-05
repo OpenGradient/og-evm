@@ -19,9 +19,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
 func (suite *KeeperTestSuite) TestTransfer() {
@@ -34,7 +32,7 @@ func (suite *KeeperTestSuite) TestTransfer() {
 	mockChannelKeeper.On("GetNextSequenceSend", mock.Anything, mock.Anything, mock.Anything).Return(1, true)
 	mockChannelKeeper.On("GetChannel", mock.Anything, mock.Anything, mock.Anything).Return(channeltypes.Channel{Counterparty: channeltypes.NewCounterparty("transfer", "channel-1")}, true)
 	mockICS4Wrapper.On("SendPacket", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	authAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	authAddr := utils.GovAuthority()
 	receiver := sdk.AccAddress([]byte("receiver"))
 	chan0 := "channel-0"
 
@@ -376,7 +374,7 @@ func (suite *KeeperTestSuite) TestPrefixTrimming() {
 	mockChannelKeeper.On("GetNextSequenceSend", mock.Anything, mock.Anything, mock.Anything).Return(1, true)
 	mockChannelKeeper.On("GetChannel", mock.Anything, mock.Anything, mock.Anything).Return(channeltypes.Channel{Counterparty: channeltypes.NewCounterparty("transfer", "channel-1")}, true)
 	mockICS4Wrapper.On("SendPacket", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	authAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	authAddr := utils.GovAuthority()
 	receiver := sdk.AccAddress([]byte("receiver"))
 	chan0 := "channel-0"
 

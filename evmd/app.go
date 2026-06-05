@@ -298,7 +298,11 @@ func NewExampleApp(
 	app.ParamsKeeper.Subspace(poatypes.ModuleName).WithKeyTable(poatypes.ParamKeyTable())
 
 	// get authority address
-	authAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	accountAddressCodec := evmaddress.NewEvmCodec(sdk.GetConfig().GetBech32AccountAddrPrefix())
+	authAddr, err := accountAddressCodec.BytesToString(authtypes.NewModuleAddress(govtypes.ModuleName))
+	if err != nil {
+		panic(fmt.Errorf("failed to encode gov authority address: %w", err))
+	}
 
 	// set the BaseApp's parameter store
 	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
@@ -313,7 +317,7 @@ func NewExampleApp(
 	app.AccountKeeper = authkeeper.NewAccountKeeper(
 		appCodec, runtime.NewKVStoreService(keys[authtypes.StoreKey]),
 		authtypes.ProtoBaseAccount, evmconfig.GetMaccPerms(),
-		evmaddress.NewEvmCodec(sdk.GetConfig().GetBech32AccountAddrPrefix()),
+		accountAddressCodec,
 		sdk.GetConfig().GetBech32AccountAddrPrefix(),
 		authAddr,
 	)
@@ -334,7 +338,7 @@ func NewExampleApp(
 		EnabledSignModes:           enabledSignModes,
 		TextualCoinMetadataQueryFn: txmodule.NewBankKeeperCoinMetadataQueryFn(app.BankKeeper),
 	}
-	txConfig, err := authtx.NewTxConfigWithOptions(
+	txConfig, err = authtx.NewTxConfigWithOptions(
 		appCodec,
 		txConfigOpts,
 	)

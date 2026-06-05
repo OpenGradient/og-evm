@@ -33,11 +33,48 @@ func TestParamsValidate(t *testing.T) {
 			expPass: true,
 		},
 		{
+			name: "valid scheduler",
+			params: Params{
+				Scheduler: EVMSchedulerParams{
+					Enabled:        true,
+					TargetContract: "0x0000000000000000000000000000000000001000",
+					GasCap:         DefaultSchedulerGasCap,
+					MaxOps:         DefaultSchedulerMaxOps,
+					CadenceBlocks:  DefaultSchedulerCadenceBlocks,
+				},
+			},
+			expPass: true,
+		},
+		{
 			name: "invalid eip",
 			params: Params{
 				ExtraEIPs: []int64{1000000},
 			},
 			errContains: "EIP 1000000 is not activateable, valid EIPs are",
+		},
+		{
+			name: "enabled scheduler empty target",
+			params: Params{
+				Scheduler: EVMSchedulerParams{
+					Enabled:       true,
+					GasCap:        DefaultSchedulerGasCap,
+					MaxOps:        DefaultSchedulerMaxOps,
+					CadenceBlocks: DefaultSchedulerCadenceBlocks,
+				},
+			},
+			errContains: "scheduler target contract must be non-zero when enabled",
+		},
+		{
+			name: "enabled scheduler zero gas",
+			params: Params{
+				Scheduler: EVMSchedulerParams{
+					Enabled:        true,
+					TargetContract: "0x0000000000000000000000000000000000001000",
+					MaxOps:         DefaultSchedulerMaxOps,
+					CadenceBlocks:  DefaultSchedulerCadenceBlocks,
+				},
+			},
+			errContains: "scheduler gas cap must be greater than zero",
 		},
 		{
 			name: "unsorted precompiles",

@@ -304,11 +304,13 @@ func NewMsgRedelegate(args []interface{}, denom string, addrCdc address.Codec) (
 	if !ok {
 		return nil, common.Address{}, fmt.Errorf(cmn.ErrInvalidType, "validatorSrcAddress", "string", args[1])
 	}
+	validatorSrcAddress = normalizeValidatorAddressString(validatorSrcAddress)
 
 	validatorDstAddress, ok := args[2].(string)
 	if !ok {
 		return nil, common.Address{}, fmt.Errorf(cmn.ErrInvalidType, "validatorDstAddress", "string", args[2])
 	}
+	validatorDstAddress = normalizeValidatorAddressString(validatorDstAddress)
 
 	amount, ok := args[3].(*big.Int)
 	if !ok {
@@ -348,6 +350,7 @@ func NewMsgCancelUnbondingDelegation(args []interface{}, denom string, addrCdc a
 	if !ok {
 		return nil, common.Address{}, fmt.Errorf(cmn.ErrInvalidType, "validatorAddress", "string", args[1])
 	}
+	validatorAddress = normalizeValidatorAddressString(validatorAddress)
 
 	amount, ok := args[2].(*big.Int)
 	if !ok {
@@ -392,6 +395,7 @@ func NewDelegationRequest(args []interface{}, addrCdc address.Codec) (*stakingty
 	if !ok {
 		return nil, fmt.Errorf(cmn.ErrInvalidType, "validatorAddress", "string", args[1])
 	}
+	validatorAddress = normalizeValidatorAddressString(validatorAddress)
 
 	delegatorAddrStr, err := addrCdc.BytesToString(delegatorAddr.Bytes())
 	if err != nil {
@@ -458,6 +462,7 @@ func NewRedelegationRequest(args []interface{}) (*RedelegationRequest, error) {
 	if !ok {
 		return nil, fmt.Errorf(cmn.ErrInvalidType, "validatorSrcAddress", "string", args[1])
 	}
+	validatorSrcAddress = normalizeValidatorAddressString(validatorSrcAddress)
 
 	validatorSrcAddr, err := sdk.ValAddressFromBech32(validatorSrcAddress)
 	if err != nil {
@@ -468,6 +473,7 @@ func NewRedelegationRequest(args []interface{}) (*RedelegationRequest, error) {
 	if !ok {
 		return nil, fmt.Errorf(cmn.ErrInvalidType, "validatorDstAddress", "string", args[2])
 	}
+	validatorDstAddress = normalizeValidatorAddressString(validatorDstAddress)
 
 	validatorDstAddr, err := sdk.ValAddressFromBech32(validatorDstAddress)
 	if err != nil {
@@ -519,8 +525,8 @@ func NewRedelegationsRequest(method *abi.Method, args []interface{}, addrCdc add
 
 	return &stakingtypes.QueryRedelegationsRequest{
 		DelegatorAddr:    delegatorAddr, // bech32 formatted
-		SrcValidatorAddr: input.SrcValidatorAddress,
-		DstValidatorAddr: input.DstValidatorAddress,
+		SrcValidatorAddr: normalizeValidatorAddressString(input.SrcValidatorAddress),
+		DstValidatorAddr: normalizeValidatorAddressString(input.DstValidatorAddress),
 		Pagination:       &input.PageRequest,
 	}, nil
 }
@@ -835,6 +841,7 @@ func NewUnbondingDelegationRequest(args []interface{}, addrCdc address.Codec) (*
 	if !ok {
 		return nil, fmt.Errorf(cmn.ErrInvalidType, "validatorAddress", "string", args[1])
 	}
+	validatorAddress = normalizeValidatorAddressString(validatorAddress)
 
 	delegatorAddrStr, err := addrCdc.BytesToString(delegatorAddr.Bytes())
 	if err != nil {
@@ -861,6 +868,7 @@ func checkDelegationUndelegationArgs(args []interface{}) (common.Address, string
 	if !ok {
 		return common.Address{}, "", nil, fmt.Errorf(cmn.ErrInvalidType, "validatorAddress", "string", args[1])
 	}
+	validatorAddress = normalizeValidatorAddressString(validatorAddress)
 
 	amount, ok := args[2].(*big.Int)
 	if !ok {
@@ -868,6 +876,13 @@ func checkDelegationUndelegationArgs(args []interface{}) (common.Address, string
 	}
 
 	return delegatorAddr, validatorAddress, amount, nil
+}
+
+func normalizeValidatorAddressString(addr string) string {
+	if common.IsHexAddress(addr) {
+		return sdk.ValAddress(common.HexToAddress(addr).Bytes()).String()
+	}
+	return addr
 }
 
 // FormatConsensusPubkey format ConsensusPubkey into a base64 string

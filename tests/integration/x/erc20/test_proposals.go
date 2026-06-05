@@ -130,13 +130,13 @@ func (s *KeeperTestSuite) TestRegisterERC20() {
 			func() {
 				s.network.App.GetErc20Keeper().SetPermissionlessRegistration(ctx, false)
 			},
-			authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+			utils.GovAuthority(),
 			true,
 		},
 		{
 			"ok - governance, permissionless true",
 			func() {},
-			authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+			utils.GovAuthority(),
 			true,
 		},
 		{
@@ -299,7 +299,7 @@ func (s *KeeperTestSuite) TestToggleConverision() {
 				ctx = s.network.GetContext()
 				id = s.network.App.GetErc20Keeper().GetTokenPairID(ctx, contractAddr.String())
 				pair, _ = s.network.App.GetErc20Keeper().GetTokenPair(ctx, id)
-				res, err := s.network.App.GetErc20Keeper().ToggleConversion(ctx, &types.MsgToggleConversion{Authority: authtypes.NewModuleAddress("gov").String(), Token: contractAddr.String()})
+				res, err := s.network.App.GetErc20Keeper().ToggleConversion(ctx, &types.MsgToggleConversion{Authority: utils.GovAuthority(), Token: contractAddr.String()})
 				s.Require().NoError(err)
 				s.Require().NotNil(res)
 				pair, _ = s.network.App.GetErc20Keeper().GetTokenPair(ctx, id)
@@ -315,7 +315,7 @@ func (s *KeeperTestSuite) TestToggleConverision() {
 
 			tc.malleate()
 
-			_, err = s.network.App.GetErc20Keeper().ToggleConversion(ctx, &types.MsgToggleConversion{Authority: authtypes.NewModuleAddress("gov").String(), Token: contractAddr.String()})
+			_, err = s.network.App.GetErc20Keeper().ToggleConversion(ctx, &types.MsgToggleConversion{Authority: utils.GovAuthority(), Token: contractAddr.String()})
 			// Request the pair using the GetPairToken func to make sure that is updated on the db
 			pair, _ = s.network.App.GetErc20Keeper().GetTokenPair(ctx, id)
 			if tc.expPass {

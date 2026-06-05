@@ -12,7 +12,6 @@ import (
 	sdkmath "cosmossdk.io/math"
 
 	sdktypes "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
@@ -179,7 +178,7 @@ func (s *KeeperTestSuite) TestUpdateParams() {
 			name: "pass - valid Update msg",
 			getMsg: func() *types.MsgUpdateParams {
 				return &types.MsgUpdateParams{
-					Authority: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+					Authority: s.govAuthority(),
 					Params:    types.DefaultParams(),
 				}
 			},
@@ -222,7 +221,7 @@ func (s *KeeperTestSuite) TestRegisterPreinstalls() {
 			name: "pass - valid Update msg",
 			getMsg: func() *types.MsgRegisterPreinstalls {
 				return &types.MsgRegisterPreinstalls{
-					Authority: authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+					Authority: s.govAuthority(),
 					Preinstalls: []types.Preinstall{{
 						Name:    "Test1",
 						Address: "0xb364E75b1189DcbBF7f0C856456c1ba8e4d6481b",
@@ -236,7 +235,7 @@ func (s *KeeperTestSuite) TestRegisterPreinstalls() {
 			name: "fail - double registration",
 			getMsg: func() *types.MsgRegisterPreinstalls {
 				return &types.MsgRegisterPreinstalls{
-					Authority:   authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+					Authority:   s.govAuthority(),
 					Preinstalls: types.DefaultPreinstalls,
 				}
 			},

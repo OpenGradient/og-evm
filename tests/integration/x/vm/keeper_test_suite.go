@@ -18,6 +18,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
 
 type KeeperTestSuite struct {
@@ -42,6 +43,12 @@ func NewKeeperTestSuite(create network.CreateEvmApp, options ...network.ConfigOp
 		EnableFeemarket: false,
 		EnableLondonHF:  true,
 	}
+}
+
+func (s *KeeperTestSuite) govAuthority() string {
+	authority, err := s.Network.App.GetAccountKeeper().AddressCodec().BytesToString(authtypes.NewModuleAddress(govtypes.ModuleName))
+	s.Require().NoError(err)
+	return authority
 }
 
 func (s *KeeperTestSuite) SetupTest() {

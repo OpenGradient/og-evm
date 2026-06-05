@@ -12,7 +12,6 @@ import (
 	errorsmod "cosmossdk.io/errors"
 
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 // ERC20RegistrationData is the necessary data to provide in order to register an ERC20 token.
@@ -58,7 +57,7 @@ func RegisterERC20(tf factory.TxFactory, network network.Network, data ERC20Regi
 	}
 
 	proposal := erc20types.MsgRegisterERC20{
-		Signer:         authtypes.NewModuleAddress("gov").String(),
+		Signer:         GovAuthority(),
 		Erc20Addresses: data.Addresses,
 	}
 
@@ -96,7 +95,7 @@ func RegisterERC20(tf factory.TxFactory, network network.Network, data ERC20Regi
 // submitting a governance proposal and having it pass.
 func ToggleTokenConversion(tf factory.TxFactory, network network.Network, privKey cryptotypes.PrivKey, token string) error {
 	proposal := erc20types.MsgToggleConversion{
-		Authority: authtypes.NewModuleAddress("gov").String(),
+		Authority: GovAuthority(),
 		Token:     token,
 	}
 
