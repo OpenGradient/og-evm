@@ -1,0 +1,34 @@
+# OG-EVM Mainnet Foundation Multisig
+#
+# Foundation holds 0 OPG on L1 at genesis. The full canonical 1B OPG supply lives
+# as ERC-20 on Base; the Foundation bridges to L1 on demand. This template still
+# records the multisig spec because:
+#   - the bridge ceremony post-launch transfers OPG to this address on L1
+#   - the multisig threshold + members are part of the public launch record
+#
+# How to create the multisig key (off-chain, BEFORE genesis):
+#   evmd keys add foundation-multisig \
+#     --multisig <pubkey1>,<pubkey2>,...,<pubkeyN> \
+#     --multisig-threshold M \
+#     --keyring-backend file
+# This produces a deterministic og1... address derived from the threshold + members.
+#
+# Field semantics:
+#   address             bech32 og1... address of the multisig
+#   multisig_threshold  M from M-of-N (must be a positive integer)
+#   multisig_members    bech32 addresses of the N members (for traceability only;
+#                       genesis.sh does not use them)
+#   allocation_opg      L1 genesis OPG to seat in this address. Defaults to 0
+#                       (Foundation bridges in post-launch). Override only if the
+#                       team explicitly wants L1 starting liquidity.
+
+foundation:
+  address: "og1REPLACE_FOUNDATION_MULTISIG_ADDRESS_HERE"
+  multisig_threshold: 0     # e.g. 3
+  multisig_members:         # bech32 og1... member addresses, recorded for traceability
+    - "og1REPLACE_member_1"
+    - "og1REPLACE_member_2"
+    - "og1REPLACE_member_3"
+    - "og1REPLACE_member_4"
+    - "og1REPLACE_member_5"
+  allocation_opg: 0
