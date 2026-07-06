@@ -1,54 +1,40 @@
 package keeper
 
 import (
-	"fmt"
-	"math"
-
 	sdkmath "cosmossdk.io/math"
 )
 
-// CalculateBlockReward returns how many tokens (in base denom units) to
-// distribute for this block using exponential decay.
+// CalculateBlockReward computes this block's reward with discrete geometric decay in
+// fixed-point arithmetic, so the result is identical on every node.
 //
-// poolAtActivation — token balance when SVIP was activated (base denom)
-// totalElapsedSec  — seconds since SVIP activation
-// blockDeltaSec    — seconds since the previous block
+// The curve is tracked as a scheduled remaining pool S. Given the per-second decay factor
+// d (precomputed as 0.5^(1/halfLife)) and a delta of dt seconds:
 //
-// Exponential decay formula:
+//	S_new  = S * d^dt
+//	reward = S - S_new = S * (1 - d^dt)
 //
-//	R₀ = (ln2 / half_life) × poolAtActivation
-//	rate(t) = R₀ × e^(-λ × t)
-//	blockReward = rate(t) × blockDelta
+// Because the steps multiply, N blocks decay S by d^(sum of deltas) exactly the same as one
+// block of the summed delta would, so there is no dependence on absolute time and no
+// per-block requantization. The reward truncates to integer base units so we never
+// over-distribute. Returns the reward and the new scheduled remaining.
 func CalculateBlockReward(
-	halfLifeSeconds int64,
-	poolAtActivation sdkmath.Int,
-	totalElapsedSec float64,
-	blockDeltaSec float64,
-) sdkmath.Int {
-	if poolAtActivation.IsZero() || blockDeltaSec <= 0 || totalElapsedSec < 0 {
-		return sdkmath.ZeroInt()
+	scheduledRemaining sdkmath.LegacyDec,
+	decayFactor sdkmath.LegacyDec,
+	blockDeltaSec int64,
+) (reward sdkmath.Int, newScheduledRemaining sdkmath.LegacyDec) {
+	// No decay for a non-positive delta, missing/degenerate state, or a factor >= 1.
+	if blockDeltaSec <= 0 ||
+		scheduledRemaining.IsNil() || !scheduledRemaining.IsPositive() ||
+		decayFactor.IsNil() || !decayFactor.IsPositive() || decayFactor.GTE(sdkmath.LegacyOneDec()) {
+		if scheduledRemaining.IsNil() {
+			scheduledRemaining = sdkmath.LegacyZeroDec()
+		}
+		return sdkmath.ZeroInt(), scheduledRemaining
 	}
 
-	halfLifeSec := float64(halfLifeSeconds)
-	if halfLifeSec <= 0 {
-		return sdkmath.ZeroInt()
-	}
-
-	lambda := math.Log(2) / halfLifeSec
-	poolFloat := poolAtActivation.ToLegacyDec().MustFloat64()
-	initialRate := lambda * poolFloat                              // tokens per second at t=0
-	currentRate := initialRate * math.Exp(-lambda*totalElapsedSec) // tokens/sec now
-	blockReward := currentRate * blockDeltaSec
-
-	if blockReward <= 0 {
-		return sdkmath.ZeroInt()
-	}
-
-	// Truncate to integer — we never over-distribute.
-	rewardStr := fmt.Sprintf("%.0f", math.Floor(blockReward))
-	reward, ok := sdkmath.NewIntFromString(rewardStr)
-	if !ok {
-		return sdkmath.ZeroInt()
-	}
-	return reward
+	// d^dt via LegacyDec.Power (exponentiation by squaring on big.Int), identical on every node.
+	factor := decayFactor.Power(uint64(blockDeltaSec))
+	newScheduledRemaining = scheduledRemaining.Mul(factor)
+	reward = scheduledRemaining.Sub(newScheduledRemaining).TruncateInt()
+	return reward, newScheduledRemaining
 }

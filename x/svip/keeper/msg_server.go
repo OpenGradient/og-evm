@@ -41,20 +41,32 @@ func (s msgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdateParam
 	}
 
 	if s.GetActivated(ctx) && current.HalfLifeSeconds > 0 && msg.Params.HalfLifeSeconds > 0 {
-		// Reject if half_life changes by more than 50%
-		oldHL := float64(current.HalfLifeSeconds)
-		newHL := float64(msg.Params.HalfLifeSeconds)
-		ratio := newHL / oldHL
-		if ratio < 0.5 || ratio > 1.5 {
+		// Reject a half-life change of more than 50% in either direction. The division form
+		// avoids the int64 overflow the cross-multiplied 2*newHL vs 3*oldHL form can hit.
+		oldHL := current.HalfLifeSeconds
+		newHL := msg.Params.HalfLifeSeconds
+		if newHL < oldHL/2 || newHL > oldHL+oldHL/2 {
 			return nil, types.ErrHalfLifeChange
 		}
 	}
-	if msg.Params.HalfLifeSeconds > 0 && msg.Params.HalfLifeSeconds < 31536000 {
-		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, "half_life_seconds must be >= 1 year (31536000s)")
+	if msg.Params.HalfLifeSeconds > 0 &&
+		(msg.Params.HalfLifeSeconds < types.MinHalfLifeSeconds || msg.Params.HalfLifeSeconds > types.MaxHalfLifeSeconds) {
+		return nil, errorsmod.Wrapf(govtypes.ErrInvalidProposalMsg,
+			"half_life_seconds must be within [%d, %d]", types.MinHalfLifeSeconds, types.MaxHalfLifeSeconds)
 	}
 
 	if err := s.SetParams(ctx, msg.Params); err != nil {
 		return nil, err
+	}
+
+	// If activated, recompute the decay factor for the new half-life. The scheduled
+	// remaining S stays as it is, so the curve continues from its current level at the new rate.
+	if s.GetActivated(ctx) && msg.Params.HalfLifeSeconds > 0 {
+		d, err := ComputeDecayFactor(msg.Params.HalfLifeSeconds)
+		if err != nil {
+			return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, err.Error())
+		}
+		s.SetDecayFactor(ctx, d)
 	}
 	return &types.MsgUpdateParamsResponse{}, nil
 }
@@ -82,7 +94,12 @@ func (s msgServer) Activate(goCtx context.Context, msg *types.MsgActivate) (*typ
 	}
 	s.SetPoolBalanceAtActivation(ctx, poolBalance)
 
-	// Clean any stale pause state before activating (defense-in-depth).
+	// Seed the decay curve: S starts at the pool balance, d from the half-life.
+	if err := s.initDecayCurve(ctx, params.HalfLifeSeconds, poolBalance); err != nil {
+		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, err.Error())
+	}
+
+	// Clear any stale pause state before activating.
 	s.SetPaused(ctx, false)
 	s.SetTotalPausedSeconds(ctx, 0)
 
@@ -111,7 +128,7 @@ func (s msgServer) Reactivate(goCtx context.Context, msg *types.MsgReactivate) (
 		return nil, types.ErrNotYetActivated
 	}
 
-	// Defense-in-depth: ensure half_life is valid before restarting the curve.
+	// Make sure half_life is valid before restarting the curve.
 	params := s.GetParams(ctx)
 	if params.HalfLifeSeconds <= 0 {
 		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, "half_life_seconds must be set before reactivation")
@@ -125,6 +142,11 @@ func (s msgServer) Reactivate(goCtx context.Context, msg *types.MsgReactivate) (
 	s.SetPoolBalanceAtActivation(ctx, poolBalance)
 	s.SetActivationTime(ctx, ctx.BlockTime())
 	s.SetLastBlockTime(ctx, ctx.BlockTime())
+
+	// Restart the decay curve from scratch: S back to the pool balance, d from the half-life.
+	if err := s.initDecayCurve(ctx, params.HalfLifeSeconds, poolBalance); err != nil {
+		return nil, errorsmod.Wrap(govtypes.ErrInvalidProposalMsg, err.Error())
+	}
 
 	// Reset cumulative counters for the new curve
 	s.SetTotalDistributed(ctx, sdkmath.ZeroInt())
@@ -156,10 +178,12 @@ func (s msgServer) Pause(goCtx context.Context, msg *types.MsgPause) (*types.Msg
 	wasPaused := s.GetPaused(ctx)
 	s.SetPaused(ctx, msg.Paused)
 
-	// On unpause: accumulate paused duration + reset LastBlockTime
+	// On unpause, move the block anchor to now so the paused gap is left out of the next
+	// block's decay; the curve S is unchanged across a pause. The paused-seconds counter is
+	// tracked for observability only.
 	if wasPaused && !msg.Paused {
 		lastBlock := s.GetLastBlockTime(ctx)
-		pausedGap := int64(ctx.BlockTime().Sub(lastBlock).Seconds())
+		pausedGap := ctx.BlockTime().Unix() - lastBlock.Unix()
 		if pausedGap > 0 {
 			s.SetTotalPausedSeconds(ctx, s.GetTotalPausedSeconds(ctx)+pausedGap)
 		}

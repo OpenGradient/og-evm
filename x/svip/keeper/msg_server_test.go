@@ -92,7 +92,18 @@ func TestUpdateParams_HalfLifeMinimum(t *testing.T) {
 		Authority: govAuthority(),
 		Params:    types.Params{HalfLifeSeconds: 1000}, // < 1 year
 	})
-	require.ErrorContains(t, err, "half_life_seconds must be >= 1 year")
+	require.ErrorContains(t, err, "half_life_seconds must be within")
+}
+
+func TestUpdateParams_HalfLifeMaximum(t *testing.T) {
+	td := newMockedTestData(t)
+	srv := keeper.NewMsgServerImpl(td.keeper)
+
+	_, err := srv.UpdateParams(td.ctx, &types.MsgUpdateParams{
+		Authority: govAuthority(),
+		Params:    types.Params{HalfLifeSeconds: types.MaxHalfLifeSeconds + 1},
+	})
+	require.ErrorContains(t, err, "half_life_seconds must be within")
 }
 
 func TestUpdateParams_HappyPath(t *testing.T) {
@@ -400,15 +411,25 @@ func TestBeginBlock_AfterPauseUnpause(t *testing.T) {
 	err = td.keeper.BeginBlock(ctxPost)
 	require.NoError(t, err)
 
-	// 6. Verify the exact reward distributed matches elapsed=105s (not halfLife+105s)
-	correctReward := keeper.CalculateBlockReward(halfLife, poolBalance, 105, 5)
-	buggyReward := keeper.CalculateBlockReward(halfLife, poolBalance, float64(halfLife)+105, 5)
+	// 6. Check the pause did not decay the curve. The post-unpause 5s block should use the
+	// scheduled remaining from the pre-pause block (s1, the curve after the first 100s block),
+	// not one that decayed through the full half-life of the pause.
+	d, err := keeper.ComputeDecayFactor(halfLife)
+	require.NoError(t, err)
+	s0 := sdkmath.LegacyNewDecFromInt(poolBalance)
+	_, s1 := keeper.CalculateBlockReward(s0, d, 100) // curve after the first 100s block
+	correctReward, _ := keeper.CalculateBlockReward(s1, d, 5)
+
+	// Counterfactual: if the paused gap had decayed the curve by a half-life, S would be about
+	// half of s1 and the same 5s block would pay roughly half as much.
+	_, sBuggy := keeper.CalculateBlockReward(s1, d, halfLife)
+	buggyReward, _ := keeper.CalculateBlockReward(sBuggy, d, 5)
 
 	expectedTotal := step2Reward.Add(correctReward)
 	require.Equal(t, expectedTotal, td.keeper.GetTotalDistributed(ctxPost),
-		"total distributed should match correct elapsed, not buggy elapsed")
+		"total distributed should reflect the undecayed curve across the pause")
 
-	// Sanity: correct reward must be ~2x buggy reward after 1 half-life pause
+	// Sanity: correct reward must be ~2x the buggy (decayed-through-pause) reward.
 	require.True(t, correctReward.GT(buggyReward),
 		"correct reward (%s) should be ~2x buggy reward (%s)", correctReward, buggyReward)
 }

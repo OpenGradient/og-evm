@@ -1,7 +1,6 @@
 package keeper_test
 
 import (
-	"math"
 	"testing"
 
 	"github.com/cosmos/evm/x/svip/keeper"
@@ -10,144 +9,144 @@ import (
 	sdkmath "cosmossdk.io/math"
 )
 
-func TestCalculateBlockReward(t *testing.T) {
-	halfLife := int64(31536000) // 1 year in seconds
-	pool := sdkmath.NewInt(1_000_000_000_000)
+const oneYear = int64(31536000)
 
-	testCases := []struct {
-		name            string
-		halfLifeSeconds int64
-		poolAtActivation sdkmath.Int
-		totalElapsedSec float64
-		blockDeltaSec   float64
-		expectZero      bool
+// mustDecayFactor is a test helper for the per-second decay factor.
+func mustDecayFactor(t *testing.T, halfLife int64) sdkmath.LegacyDec {
+	t.Helper()
+	d, err := keeper.ComputeDecayFactor(halfLife)
+	require.NoError(t, err)
+	return d
+}
+
+func TestComputeDecayFactor(t *testing.T) {
+	// Non-positive half-life is an error, not a panic.
+	_, err := keeper.ComputeDecayFactor(0)
+	require.Error(t, err)
+	_, err = keeper.ComputeDecayFactor(-1)
+	require.Error(t, err)
+
+	// d must be in (0,1) and very close to 1 for a 1-year half-life.
+	d := mustDecayFactor(t, oneYear)
+	require.True(t, d.IsPositive())
+	require.True(t, d.LT(sdkmath.LegacyOneDec()))
+	require.True(t, d.GT(sdkmath.LegacyMustNewDecFromStr("0.9999")))
+
+	// d^halfLife should equal ~0.5 (the defining property).
+	half := d.Power(uint64(oneYear))
+	require.InDelta(t, 0.5, half.MustFloat64(), 1e-6)
+}
+
+func TestCalculateBlockReward_Guards(t *testing.T) {
+	d := mustDecayFactor(t, oneYear)
+	pool := sdkmath.LegacyNewDec(1_000_000_000_000)
+
+	cases := []struct {
+		name  string
+		s     sdkmath.LegacyDec
+		d     sdkmath.LegacyDec
+		delta int64
 	}{
-		{
-			name:            "zero pool balance",
-			halfLifeSeconds: halfLife,
-			poolAtActivation: sdkmath.ZeroInt(),
-			totalElapsedSec: 100,
-			blockDeltaSec:   5,
-			expectZero:      true,
-		},
-		{
-			name:            "zero block delta",
-			halfLifeSeconds: halfLife,
-			poolAtActivation: pool,
-			totalElapsedSec: 100,
-			blockDeltaSec:   0,
-			expectZero:      true,
-		},
-		{
-			name:            "negative block delta",
-			halfLifeSeconds: halfLife,
-			poolAtActivation: pool,
-			totalElapsedSec: 100,
-			blockDeltaSec:   -5,
-			expectZero:      true,
-		},
-		{
-			name:            "negative elapsed",
-			halfLifeSeconds: halfLife,
-			poolAtActivation: pool,
-			totalElapsedSec: -100,
-			blockDeltaSec:   5,
-			expectZero:      true,
-		},
-		{
-			name:            "zero half_life",
-			halfLifeSeconds: 0,
-			poolAtActivation: pool,
-			totalElapsedSec: 100,
-			blockDeltaSec:   5,
-			expectZero:      true,
-		},
-		{
-			name:            "negative half_life",
-			halfLifeSeconds: -1,
-			poolAtActivation: pool,
-			totalElapsedSec: 100,
-			blockDeltaSec:   5,
-			expectZero:      true,
-		},
-		{
-			name:            "normal case - first block",
-			halfLifeSeconds: halfLife,
-			poolAtActivation: pool,
-			totalElapsedSec: 5,
-			blockDeltaSec:   5,
-			expectZero:      false,
-		},
-		{
-			name:            "normal case - mid life",
-			halfLifeSeconds: halfLife,
-			poolAtActivation: pool,
-			totalElapsedSec: 1000,
-			blockDeltaSec:   5,
-			expectZero:      false,
-		},
+		{"zero scheduled remaining", sdkmath.LegacyZeroDec(), d, 5},
+		{"zero delta", pool, d, 0},
+		{"negative delta", pool, d, -5},
+		{"decay factor >= 1", pool, sdkmath.LegacyOneDec(), 5},
+		{"zero decay factor", pool, sdkmath.LegacyZeroDec(), 5},
 	}
-
-	for _, tc := range testCases {
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reward := keeper.CalculateBlockReward(
-				tc.halfLifeSeconds,
-				tc.poolAtActivation,
-				tc.totalElapsedSec,
-				tc.blockDeltaSec,
-			)
-			if tc.expectZero {
-				require.True(t, reward.IsZero(), "expected zero reward, got %s", reward)
-			} else {
-				require.True(t, reward.IsPositive(), "expected positive reward, got %s", reward)
-			}
+			reward, newS := keeper.CalculateBlockReward(tc.s, tc.d, tc.delta)
+			require.True(t, reward.IsZero(), "expected zero reward, got %s", reward)
+			require.True(t, newS.Equal(tc.s), "scheduled remaining must be unchanged on a guarded call")
 		})
 	}
 }
 
-func TestCalculateBlockReward_HalfLifeDecay(t *testing.T) {
-	halfLife := int64(31536000)
-	pool := sdkmath.NewInt(1_000_000_000_000_000) // large pool for precision
-	blockDelta := float64(5)
+func TestCalculateBlockReward_Normal(t *testing.T) {
+	d := mustDecayFactor(t, oneYear)
+	s := sdkmath.LegacyNewDec(1_000_000_000_000_000)
 
-	// Reward at t=0
-	r0 := keeper.CalculateBlockReward(halfLife, pool, blockDelta, blockDelta)
-	require.True(t, r0.IsPositive())
-
-	// Reward at t=halfLife
-	rHalf := keeper.CalculateBlockReward(halfLife, pool, float64(halfLife), blockDelta)
-	require.True(t, rHalf.IsPositive())
-
-	// After one half-life, the rate should be ~half of the initial rate.
-	// Allow 5% tolerance for truncation.
-	r0Float := r0.ToLegacyDec().MustFloat64()
-	rHalfFloat := rHalf.ToLegacyDec().MustFloat64()
-	ratio := rHalfFloat / r0Float
-	require.InDelta(t, 0.5, ratio, 0.05, "reward after one half-life should be ~50%% of initial, got ratio %f", ratio)
+	reward, newS := keeper.CalculateBlockReward(s, d, 5)
+	require.True(t, reward.IsPositive(), "expected positive reward")
+	require.True(t, newS.LT(s), "scheduled remaining must decrease")
+	// Reward equals the exact curve decrease (truncated).
+	require.Equal(t, s.Sub(newS).TruncateInt().String(), reward.String())
 }
 
-func TestCalculateBlockReward_VeryLargeElapsed(t *testing.T) {
-	halfLife := int64(31536000)
-	pool := sdkmath.NewInt(1_000_000_000_000)
+// TestCalculateBlockReward_HalfLifeDecay: after one half-life the per-block rate is ~50%.
+func TestCalculateBlockReward_HalfLifeDecay(t *testing.T) {
+	d := mustDecayFactor(t, oneYear)
+	s0 := sdkmath.LegacyNewDec(1_000_000_000_000_000)
 
-	// After 100 half-lives, reward should be effectively zero
-	elapsed := float64(halfLife) * 100
-	reward := keeper.CalculateBlockReward(halfLife, pool, elapsed, 5)
+	r0, _ := keeper.CalculateBlockReward(s0, d, 5)
+
+	// Advance the curve by exactly one half-life, which halves S: S = S * d^halfLife.
+	sHalf := s0.Mul(d.Power(uint64(oneYear)))
+	rHalf, _ := keeper.CalculateBlockReward(sHalf, d, 5)
+
+	require.True(t, r0.IsPositive() && rHalf.IsPositive())
+	ratio := rHalf.ToLegacyDec().Quo(r0.ToLegacyDec()).MustFloat64()
+	require.InDelta(t, 0.5, ratio, 0.01, "per-block rate after one half-life should be ~50%%, got %f", ratio)
+}
+
+// TestCalculateBlockReward_Telescoping: N one-second steps leave S about where a single
+// N-second step would.
+func TestCalculateBlockReward_Telescoping(t *testing.T) {
+	d := mustDecayFactor(t, oneYear)
+	start := sdkmath.LegacyNewDec(1_000_000_000_000_000)
+
+	const n = 600
+	// Incremental: n blocks of 1 second.
+	sInc := start
+	for range n {
+		_, sInc = keeper.CalculateBlockReward(sInc, d, 1)
+	}
+	// Single step of n seconds.
+	_, sOne := keeper.CalculateBlockReward(start, d, n)
+
+	rel := sInc.Sub(sOne).Abs().Quo(sOne).MustFloat64()
+	require.Less(t, rel, 1e-9, "telescoping drift too large: %g", rel)
+}
+
+// TestCalculateBlockReward_VeryLargeElapsed: after 100 half-lives, reward truncates to zero.
+func TestCalculateBlockReward_VeryLargeElapsed(t *testing.T) {
+	d := mustDecayFactor(t, oneYear)
+	pool := sdkmath.LegacyNewDec(1_000_000_000_000)
+
+	// Decay 100 half-lives, then take a block.
+	s := pool.Mul(d.Power(uint64(oneYear * 100)))
+	reward, _ := keeper.CalculateBlockReward(s, d, 5)
 	require.True(t, reward.IsZero(), "reward after 100 half-lives should be zero, got %s", reward)
 }
 
+// TestCalculateBlockReward_Monotonic: rewards decrease as the curve advances.
 func TestCalculateBlockReward_Monotonic(t *testing.T) {
-	halfLife := int64(31536000)
-	pool := sdkmath.NewInt(1_000_000_000_000_000)
-	blockDelta := float64(5)
+	d := mustDecayFactor(t, oneYear)
+	s := sdkmath.LegacyNewDec(1_000_000_000_000_000)
 
-	// Rewards should decrease monotonically over time
 	var prev sdkmath.Int
-	for elapsed := float64(0); elapsed < float64(halfLife)*3; elapsed += float64(halfLife) / 10 {
-		r := keeper.CalculateBlockReward(halfLife, pool, math.Max(elapsed, blockDelta), blockDelta)
+	for range 30 {
+		var r sdkmath.Int
+		r, s = keeper.CalculateBlockReward(s, d, oneYear/10)
 		if !prev.IsNil() && prev.IsPositive() && r.IsPositive() {
-			require.True(t, r.LTE(prev), "reward should decrease: at elapsed=%f got %s > prev %s", elapsed, r, prev)
+			require.True(t, r.LTE(prev), "reward should decrease monotonically: got %s > prev %s", r, prev)
 		}
 		prev = r
 	}
+}
+
+// TestCalculateBlockReward_HugePool: no panic / overflow for an enormous pool.
+func TestCalculateBlockReward_HugePool(t *testing.T) {
+	d := mustDecayFactor(t, oneYear)
+	// 1e9 tokens * 1e18 = 1e27 base units.
+	huge, ok := sdkmath.NewIntFromString("1000000000000000000000000000")
+	require.True(t, ok)
+	s := sdkmath.LegacyNewDecFromInt(huge)
+
+	require.NotPanics(t, func() {
+		reward, newS := keeper.CalculateBlockReward(s, d, 6)
+		require.True(t, reward.IsPositive())
+		require.True(t, reward.LT(huge))
+		require.True(t, newS.LT(s))
+	})
 }

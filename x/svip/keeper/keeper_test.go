@@ -199,12 +199,18 @@ func TestBeginBlock_Distributes(t *testing.T) {
 	td.keeper.SetLastBlockTime(td.ctx, activationTime.Add(95*time.Second))
 	td.keeper.SetPoolBalanceAtActivation(td.ctx, poolBalance)
 
-	// Set block time to 100s after activation
+	// Seed the decay curve: S starts at the pool balance, d from the half-life.
+	decayFactor, err := keeper.ComputeDecayFactor(halfLife)
+	require.NoError(t, err)
+	td.keeper.SetDecayFactor(td.ctx, decayFactor)
+	td.keeper.SetScheduledRemaining(td.ctx, sdkmath.LegacyNewDecFromInt(poolBalance))
+
+	// Set block time to 100s after activation (5s block delta since last block).
 	blockTime := activationTime.Add(100 * time.Second)
 	ctx := td.ctx.WithBlockTime(blockTime)
 
-	// Calculate expected reward
-	reward := keeper.CalculateBlockReward(halfLife, poolBalance, 100, 5)
+	// Calculate expected reward for the 5-second delta.
+	reward, _ := keeper.CalculateBlockReward(sdkmath.LegacyNewDecFromInt(poolBalance), decayFactor, 5)
 	require.True(t, reward.IsPositive())
 
 	moduleAddr := authtypes.NewModuleAddress(types.ModuleName)
@@ -223,11 +229,12 @@ func TestBeginBlock_Distributes(t *testing.T) {
 	// Mock: GetBalance for post-distribution event (pool_remaining)
 	td.bk.On("GetBalance", ctx, moduleAddr, denom).Return(sdk.NewCoin(denom, poolBalance.Sub(reward)))
 
-	err := td.keeper.BeginBlock(ctx)
+	err = td.keeper.BeginBlock(ctx)
 	require.NoError(t, err)
 
 	// Verify bookkeeping
 	require.Equal(t, reward, td.keeper.GetTotalDistributed(ctx))
+	// Anchor advances by exactly the whole-second delta (95s + 5s = 100s = blockTime).
 	require.Equal(t, blockTime, td.keeper.GetLastBlockTime(ctx).UTC())
 
 	td.bk.AssertCalled(t, "SendCoinsFromModuleToModule",
@@ -253,6 +260,13 @@ func TestBeginBlock_CapsAtPoolBalance(t *testing.T) {
 	td.keeper.SetLastBlockTime(td.ctx, activationTime.Add(95*time.Second))
 	td.keeper.SetPoolBalanceAtActivation(td.ctx, poolAtActivation)
 
+	// Initialize the decay curve so a (large) reward is computed, then capped at the
+	// tiny live balance.
+	decayFactor, err := keeper.ComputeDecayFactor(halfLife)
+	require.NoError(t, err)
+	td.keeper.SetDecayFactor(td.ctx, decayFactor)
+	td.keeper.SetScheduledRemaining(td.ctx, sdkmath.LegacyNewDecFromInt(poolAtActivation))
+
 	blockTime := activationTime.Add(100 * time.Second)
 	ctx := td.ctx.WithBlockTime(blockTime)
 
@@ -268,7 +282,7 @@ func TestBeginBlock_CapsAtPoolBalance(t *testing.T) {
 		sdk.NewCoins(sdk.NewCoin(denom, tinyBalance)),
 	).Return(nil)
 
-	err := td.keeper.BeginBlock(ctx)
+	err = td.keeper.BeginBlock(ctx)
 	require.NoError(t, err)
 
 	require.Equal(t, tinyBalance, td.keeper.GetTotalDistributed(ctx))
