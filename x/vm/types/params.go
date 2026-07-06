@@ -125,6 +125,19 @@ func (p Params) Validate() error {
 	return validateChannels(p.EVMChannels)
 }
 
+const (
+	// SchedulerPokeStepCount mirrors StakedBondVault.POKE_STEP_COUNT: the number of steps in a
+	// single poke. MaxOps has to be at least this, or the final steps (undelegation resume,
+	// staking) get starved.
+	SchedulerPokeStepCount = 7
+	// MaxSchedulerGasCap caps the per-block scheduler compute. The poke runs on its own meter
+	// but still spends wall-clock EndBlock time, so a mis-set gas cap shouldn't be able to hurt
+	// block liveness.
+	MaxSchedulerGasCap = 100_000_000
+	// MaxSchedulerOps is an upper bound on the poke op count.
+	MaxSchedulerOps = 256
+)
+
 func (p EVMSchedulerParams) Validate() error {
 	if p.TargetContract != "" && !common.IsHexAddress(p.TargetContract) {
 		return fmt.Errorf("invalid scheduler target contract: %s", p.TargetContract)
@@ -138,8 +151,14 @@ func (p EVMSchedulerParams) Validate() error {
 	if p.GasCap == 0 {
 		return fmt.Errorf("scheduler gas cap must be greater than zero")
 	}
-	if p.MaxOps == 0 {
-		return fmt.Errorf("scheduler max ops must be greater than zero")
+	if p.GasCap > MaxSchedulerGasCap {
+		return fmt.Errorf("scheduler gas cap %d exceeds maximum %d", p.GasCap, MaxSchedulerGasCap)
+	}
+	if p.MaxOps < SchedulerPokeStepCount {
+		return fmt.Errorf("scheduler max ops must be >= %d (poke step count)", SchedulerPokeStepCount)
+	}
+	if p.MaxOps > MaxSchedulerOps {
+		return fmt.Errorf("scheduler max ops %d exceeds maximum %d", p.MaxOps, MaxSchedulerOps)
 	}
 	if p.CadenceBlocks == 0 {
 		return fmt.Errorf("scheduler cadence blocks must be greater than zero")

@@ -80,6 +80,26 @@ func (_m *AccountKeeper) GetModuleAddress(moduleName string) cosmos_sdktypes.Acc
 	return r0
 }
 
+// GetModuleAccount provides a mock function with given fields: ctx, moduleName
+func (_m *AccountKeeper) GetModuleAccount(ctx context.Context, moduleName string) cosmos_sdktypes.ModuleAccountI {
+	ret := _m.Called(ctx, moduleName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetModuleAccount")
+	}
+
+	var r0 cosmos_sdktypes.ModuleAccountI
+	if rf, ok := ret.Get(0).(func(context.Context, string) cosmos_sdktypes.ModuleAccountI); ok {
+		r0 = rf(ctx, moduleName)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(cosmos_sdktypes.ModuleAccountI)
+		}
+	}
+
+	return r0
+}
+
 // GetParams provides a mock function with given fields: ctx
 func (_m *AccountKeeper) GetParams(ctx context.Context) authtypes.Params {
 	ret := _m.Called(ctx)
