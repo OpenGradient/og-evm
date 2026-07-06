@@ -503,6 +503,9 @@ func NewExampleApp(
 			app.GovKeeper,
 			app.SlashingKeeper,
 			appCodec,
+			// PoA staking guard: only the configured community-pool vault may delegate via
+			// the staking precompile; validator creation and unjail are blocked.
+			precompiletypes.WithStakingGuard(app.stakingGuardAllowlist),
 		),
 	)
 
@@ -847,12 +850,26 @@ func (app *EVMD) setAnteHandler(txConfig client.TxConfig, maxGasWanted uint64) {
 		MaxTxGasWanted:         maxGasWanted,
 		DynamicFeeChecker:      true,
 		PendingTxListener:      app.onPendingTx,
+		StakingGuardAllowlist:  app.stakingGuardAllowlist,
 	}
 	if err := options.Validate(); err != nil {
 		panic(err)
 	}
 
 	app.SetAnteHandler(evmante.NewAnteHandler(options))
+}
+
+// stakingGuardAllowlist implements stakingguard.StakingPolicyFunc. Enforcement kicks in once
+// the community-pool vault is configured as the EVM scheduler's target contract. From then on
+// only that vault may use the staking precompile's delegation family, and validator creation
+// and unjail are blocked. Before the vault is set (default or test genesis) the guard stays
+// off. The vendored PoA ante blocks Cosmos-path delegation on its own regardless.
+func (app *EVMD) stakingGuardAllowlist(ctx sdk.Context) (allowed []sdk.AccAddress, enforced bool) {
+	target := app.EVMKeeper.GetParams(ctx).Scheduler.TargetContract
+	if target == "" || !common.IsHexAddress(target) {
+		return nil, false
+	}
+	return []sdk.AccAddress{sdk.AccAddress(common.HexToAddress(target).Bytes())}, true
 }
 
 func (app *EVMD) onPendingTx(hash common.Hash) {

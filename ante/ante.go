@@ -2,6 +2,7 @@ package ante
 
 import (
 	anteinterfaces "github.com/cosmos/evm/ante/interfaces"
+	"github.com/cosmos/evm/stakingguard"
 	ibckeeper "github.com/cosmos/ibc-go/v10/modules/core/keeper"
 
 	errorsmod "cosmossdk.io/errors"
@@ -33,6 +34,10 @@ type HandlerOptions struct {
 	// use dynamic fee checker or the cosmos-sdk default one for native transactions
 	DynamicFeeChecker bool
 	PendingTxListener PendingTxListener
+	// StakingGuardAllowlist, when set, turns on the PoA staking-guard ante decorator for the
+	// Cosmos/authz path. It blocks validator creation and unjail, limits the delegation family
+	// to the allowlisted vault, and recurses into authz.MsgExec.
+	StakingGuardAllowlist stakingguard.StakingPolicyFunc
 }
 
 // Validate checks if the keepers are defined
