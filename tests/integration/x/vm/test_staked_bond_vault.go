@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/cosmos/evm/contracts"
+	stakingprecompile "github.com/cosmos/evm/precompiles/staking"
 	testconstants "github.com/cosmos/evm/testutil/constants"
 	"github.com/cosmos/evm/testutil/types"
 	erc20types "github.com/cosmos/evm/x/erc20/types"
@@ -194,7 +195,217 @@ func (s *KeeperTestSuite) TestStakedBondVaultRejectsUnauthorizedAdminActions() {
 	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "setValidatorPolicy", uint8(1))
 	s.Require().Error(err)
 	s.Require().NoError(s.Network.NextBlock())
-	s.Require().Equal(0, big.NewInt(8).Cmp(s.vaultBig(vault, "targetValidatorCount")))
+	// Default targetValidatorCount now covers the full active set (MAX_VALIDATORS=32) so stake
+	// spreads across all validators; the rejected setValidatorPolicy(1) should not have changed it.
+	s.Require().Equal(0, big.NewInt(32).Cmp(s.vaultBig(vault, "targetValidatorCount")))
+}
+
+// TestStakedBondVaultSettleWorksWhilePokePaused checks that pausing the scheduler (pokePaused)
+// doesn't strand withdrawals: the permissionless settle() runs settlement on its own.
+func (s *KeeperTestSuite) TestStakedBondVaultSettleWorksWhilePokePaused() {
+	s.SetupTest()
+	vault := s.deployStakedBondVault()
+	owner := s.Keyring.GetAddr(0)
+	depositAmount := big.NewInt(0).Mul(big.NewInt(5), big.NewInt(1e18))
+
+	depositRes, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
+	s.Require().NoError(err)
+	depositOut, err := contracts.StakedBondVaultContract.ABI.Unpack("depositNative", depositRes.Ret)
+	s.Require().NoError(err)
+	shares := depositOut[0].(*big.Int)
+
+	requestRes, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "requestRedeem", shares, owner, owner)
+	s.Require().NoError(err)
+	requestOut, err := contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
+	s.Require().NoError(err)
+	requestID := requestOut[0].(*big.Int)
+
+	// Pause the scheduler poke.
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setPaused", false, false, true)
+	s.Require().NoError(err)
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+	s.Require().Error(err, "poke must revert while pokePaused")
+	s.Require().NoError(s.Network.NextBlock())
+
+	// settle() bypasses pokePaused and makes the batch claimable.
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "settle", big.NewInt(6))
+	s.Require().NoError(err)
+	s.Require().NoError(s.Network.NextBlock())
+
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
+	s.Require().NoError(err, "claims must succeed even while the scheduler is paused")
+	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
+}
+
+// TestStakedBondVaultPokeStepIsSelfOnly checks that pokeStep is only callable by the contract
+// itself, through the internal self-call, and never externally.
+func (s *KeeperTestSuite) TestStakedBondVaultPokeStepIsSelfOnly() {
+	s.SetupTest()
+	vault := s.deployStakedBondVault()
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "pokeStep", uint8(1))
+	s.Require().Error(err, "external pokeStep call must revert (SELF)")
+}
+
+// TestStakedBondVaultPerRecipientPayouts checks that two redeemers in one batch each receive
+// assets in proportion to their shares (3:2), not just a correct combined total.
+func (s *KeeperTestSuite) TestStakedBondVaultPerRecipientPayouts() {
+	s.SetupTest()
+	vault := s.deployStakedBondVault()
+	ownerA := s.Keyring.GetAddr(0)
+	ownerB := s.Keyring.GetAddr(1)
+	amountA := big.NewInt(0).Mul(big.NewInt(3), big.NewInt(1e18))
+	amountB := big.NewInt(0).Mul(big.NewInt(2), big.NewInt(1e18))
+
+	depA, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, amountA, "depositNative", ownerA)
+	s.Require().NoError(err)
+	sharesA := s.unpackBig(depA, "depositNative")
+	depB, err := s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, amountB, "depositNative", ownerB)
+	s.Require().NoError(err)
+	sharesB := s.unpackBig(depB, "depositNative")
+
+	reqA, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "requestRedeem", sharesA, ownerA, ownerA)
+	s.Require().NoError(err)
+	idA := s.unpackBig(reqA, "requestRedeem")
+	reqB, err := s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "requestRedeem", sharesB, ownerB, ownerB)
+	s.Require().NoError(err)
+	idB := s.unpackBig(reqB, "requestRedeem")
+
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "settle", big.NewInt(6))
+	s.Require().NoError(err)
+	s.Require().NoError(s.Network.NextBlock())
+
+	claimA, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", idA, zeroAddress)
+	s.Require().NoError(err)
+	payoutA := s.unpackBig(claimA, "claimRedeem")
+	claimB, err := s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "claimRedeem", idB, zeroAddress)
+	s.Require().NoError(err)
+	payoutB := s.unpackBig(claimB, "claimRedeem")
+
+	// Each redeemer gets their own deposit back (liquid batch, 1:1 NAV); the payouts aren't swapped.
+	s.Require().Equal(0, payoutA.Cmp(amountA), "ownerA payout %s != %s", payoutA, amountA)
+	s.Require().Equal(0, payoutB.Cmp(amountB), "ownerB payout %s != %s", payoutB, amountB)
+}
+
+func (s *KeeperTestSuite) unpackBig(res *evmtypes.MsgEthereumTxResponse, method string) *big.Int {
+	out, err := contracts.StakedBondVaultContract.ABI.Unpack(method, res.Ret)
+	s.Require().NoError(err)
+	return out[0].(*big.Int)
+}
+
+// TestStakedBondVaultDepositPricedAfterSlash checks that once a slash pushes NAV below
+// totalSupply, a fresh deposit is priced at the diverged share price (more shares per token)
+// rather than a naive 1:1.
+func (s *KeeperTestSuite) TestStakedBondVaultDepositPricedAfterSlash() {
+	s.SetupTest()
+	vault := s.deployStakedBondVault()
+	owner := s.Keyring.GetAddr(0)
+	depositAmount := big.NewInt(0).Mul(big.NewInt(4), big.NewInt(1e18))
+
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(1))
+	s.Require().NoError(err)
+	dep1, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
+	s.Require().NoError(err)
+	shares1 := s.unpackBig(dep1, "depositNative")
+	s.Require().Equal(0, shares1.Cmp(depositAmount), "first deposit is 1:1")
+	s.stakeVaultIdle(vault, depositAmount)
+
+	// Slash the sole validator 50%, so NAV halves while supply stays the same.
+	validator := s.selectedVaultSDKValidator(vault)
+	consAddr, err := validator.GetConsAddr()
+	s.Require().NoError(err)
+	powerReduction := s.Network.App.GetStakingKeeper().PowerReduction(s.Network.GetContext())
+	power := validator.GetConsensusPower(powerReduction)
+	_, err = s.Network.App.GetStakingKeeper().Slash(
+		s.Network.GetContext(), sdk.ConsAddress(consAddr),
+		s.Network.GetContext().BlockHeight(), power, sdkmath.LegacyNewDecWithPrec(5, 1))
+	s.Require().NoError(err)
+
+	// NAV should have dropped below supply now that the slash is visible, so share price < 1.
+	navAfter := s.vaultBig(vault, "totalAssets")
+	s.Require().True(navAfter.Cmp(depositAmount) < 0, "slash should reduce NAV: %s !< %s", navAfter, depositAmount)
+
+	// ERC4626 pricing should reflect the diverged NAV: a fresh deposit is quoted more shares
+	// than tokens (share price < 1), not a naive 1:1.
+	quoted := s.vaultBig(vault, "convertToShares", depositAmount)
+	s.Require().True(quoted.Cmp(depositAmount) > 0, "post-slash deposit must be priced >1:1, got %s shares for %s", quoted, depositAmount)
+}
+
+// TestStakedBondVaultSlashBufferReservesIdle checks that with a non-zero slash buffer the vault
+// keeps roughly bufferBps of NAV idle (un-delegated) instead of staking everything.
+func (s *KeeperTestSuite) TestStakedBondVaultSlashBufferReservesIdle() {
+	s.SetupTest()
+
+	vault := s.deployStakedBondVault()
+	owner := s.Keyring.GetAddr(0)
+	depositAmount := big.NewInt(0).Mul(big.NewInt(1000), big.NewInt(1e18))
+
+	// 5% slash-exposure buffer.
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setSlashBufferBps", big.NewInt(500))
+	s.Require().NoError(err)
+	s.Require().Equal(0, big.NewInt(500).Cmp(s.vaultBig(vault, "slashBufferBps")))
+
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
+	s.Require().NoError(err)
+	for i := 0; i < 24; i++ {
+		_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+		s.Require().NoError(err)
+	}
+
+	idle := s.vaultBig(vault, "totalIdleLiquid")
+	delegated := s.vaultBig(vault, "totalDelegated")
+	nav := new(big.Int).Add(idle, delegated)
+	expectedBuffer := new(big.Int).Div(new(big.Int).Mul(nav, big.NewInt(500)), big.NewInt(10000))
+
+	// The buffer is never staked, so idle >= buffer; staking converges close to it.
+	s.Require().True(idle.Cmp(expectedBuffer) >= 0, "idle %s below buffer %s", idle, expectedBuffer)
+	overBuffer := new(big.Int).Sub(idle, expectedBuffer)
+	s.Require().True(overBuffer.Cmp(big.NewInt(1e18)) < 0, "idle %s far above buffer %s", idle, expectedBuffer)
+	s.Require().True(delegated.Cmp(nav) < 0, "buffer must leave some NAV un-delegated")
+}
+
+// TestStakedBondVaultVoteAbstainAccessControl checks that only the operator may call
+// voteAbstain, and that it tolerates ids with no live proposal (each id's failure is swallowed).
+func (s *KeeperTestSuite) TestStakedBondVaultVoteAbstainAccessControl() {
+	s.SetupTest()
+	vault := s.deployStakedBondVault()
+
+	// Non-operator is rejected.
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(1), vault, nil, "voteAbstain", []uint64{1})
+	s.Require().Error(err)
+
+	// The operator call succeeds even when the proposal id isn't in a voting period; each id's
+	// failure is swallowed so a stale id can't fail the whole call.
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "voteAbstain", []uint64{1})
+	s.Require().NoError(err)
+}
+
+// TestStakingGuardBlocksNonVaultDelegationViaPrecompile checks the PoA staking guard on the
+// EVM path: a non-allowlisted EOA can't delegate through the staking precompile, so the
+// validator set can't be captured from the EVM.
+func (s *KeeperTestSuite) TestStakingGuardBlocksNonVaultDelegationViaPrecompile() {
+	s.SetupTest()
+
+	// Deploy the vault so the scheduler target (the guard's allowlist) is populated.
+	s.deployStakedBondVault()
+
+	vals := s.Network.GetValidators()
+	s.Require().NotEmpty(vals)
+	valoper := vals[0].OperatorAddress
+
+	// A non-vault EOA (keyring[1]) attempts to delegate via the staking precompile.
+	stranger := s.Keyring.GetAddr(1)
+	stakingAddr := common.HexToAddress(evmtypes.StakingPrecompileAddress)
+	_, err := s.Factory.ExecuteContractCall(
+		s.Keyring.GetPrivKey(1),
+		evmtypes.EvmTxArgs{To: &stakingAddr, GasLimit: 2_000_000},
+		types.CallArgs{
+			ContractABI: stakingprecompile.ABI,
+			MethodName:  "delegate",
+			Args:        []interface{}{stranger, valoper, big.NewInt(1e18)},
+		},
+	)
+	s.Require().Error(err, "non-vault delegation via the staking precompile must be rejected by the PoA guard")
+	s.Require().NoError(s.Network.NextBlock())
 }
 
 func (s *KeeperTestSuite) TestStakedBondVaultSetPausedTogglesExactFlags() {
@@ -416,7 +627,10 @@ func (s *KeeperTestSuite) TestStakedBondVaultStakeIdleAcrossAutomaticallySelecte
 		delegatedAcrossSelected.Add(delegatedAcrossSelected, out[2].(*big.Int))
 	}
 	s.requireVaultDelegatedClose(vault, depositAmount)
-	s.Require().Equal(0, depositAmount.Cmp(delegatedAcrossSelected))
+	// Equal-spread across the 3 selected validators covers ~the full deposit; a small
+	// rounding dust (< MIN_OPERATION_ASSETS) may remain idle under the per-validator cap.
+	dust := new(big.Int).Sub(depositAmount, delegatedAcrossSelected)
+	s.Require().True(dust.Sign() >= 0 && dust.Cmp(big.NewInt(1e15)) < 0, "unexpected spread shortfall: %s", dust)
 }
 
 func (s *KeeperTestSuite) TestStakedBondVaultCanUpdateValidatorPolicyWhileDelegated() {
@@ -731,6 +945,54 @@ func (s *KeeperTestSuite) TestStakedBondVaultSlashedStakeCanRedeemRemainingAsset
 	s.Require().Zero(s.vaultBig(vault, "totalWithdrawalUnbonding").Sign())
 }
 
+// TestStakedBondVaultFullySlashedBatchStillClaimable checks that a withdrawal batch whose
+// unbonding proceeds are entirely slashed away is still marked claimable, settled at its
+// liquid portion, instead of being stranded.
+func (s *KeeperTestSuite) TestStakedBondVaultFullySlashedBatchStillClaimable() {
+	s.SetupTest()
+
+	vault := s.deployStakedBondVault()
+	owner := s.Keyring.GetAddr(0)
+	depositAmount := big.NewInt(0).Mul(big.NewInt(3), big.NewInt(1e18))
+
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setValidatorPolicy", uint8(1))
+	s.Require().NoError(err)
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, depositAmount, "depositNative", owner)
+	s.Require().NoError(err)
+	s.stakeVaultIdle(vault, depositAmount)
+
+	// Request full redemption and undelegate it.
+	requestRes, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "requestRedeem", depositAmount, owner, owner)
+	s.Require().NoError(err)
+	requestOut, err := contracts.StakedBondVaultContract.ABI.Unpack("requestRedeem", requestRes.Ret)
+	s.Require().NoError(err)
+	requestID := requestOut[0].(*big.Int)
+	validator := s.selectedVaultSDKValidator(vault)
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "poke", big.NewInt(6))
+	s.Require().NoError(err)
+
+	// Slash the validator 100% while the batch is unbonding, so proceeds go to zero.
+	consAddr, err := validator.GetConsAddr()
+	s.Require().NoError(err)
+	powerReduction := s.Network.App.GetStakingKeeper().PowerReduction(s.Network.GetContext())
+	power := validator.GetConsensusPower(powerReduction)
+	_, err = s.Network.App.GetStakingKeeper().Slash(
+		s.Network.GetContext(),
+		sdk.ConsAddress(consAddr),
+		s.Network.GetContext().BlockHeight(),
+		power,
+		sdkmath.LegacyOneDec(),
+	)
+	s.Require().NoError(err)
+
+	// Settle and claim: the batch should be claimable, not stranded, despite the total loss.
+	s.waitAndSettleVaultBatch(vault, 1)
+	_, err = s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "claimRedeem", requestID, zeroAddress)
+	s.Require().NoError(err, "fully-slashed batch must still be claimable, not permanently stranded")
+	s.Require().Zero(s.vaultBig(vault, "totalSupply").Sign())
+	s.Require().Zero(s.vaultBig(vault, "totalWithdrawalUnbonding").Sign())
+}
+
 func (s *KeeperTestSuite) TestStakedBondVaultSlashSyncUpdatesCachedDelegations() {
 	s.SetupTest()
 
@@ -827,11 +1089,27 @@ func (s *KeeperTestSuite) deployStakedBondVault() common.Address {
 		s.Keyring.GetPrivKey(0),
 		evmtypes.EvmTxArgs{GasLimit: 8_000_000},
 		types.ContractDeploymentData{
-			Contract:        contracts.StakedBondVaultContract,
-			ConstructorArgs: []interface{}{admin, "Staked Bond", "stBOND"},
+			Contract: contracts.StakedBondVaultContract,
+			// The test genesis registers the native ERC20 at WEVMOSContractMainnet (0xD494...),
+			// so the vault's asset points there; production and local deploys use 0xEeee...EEeE.
+			ConstructorArgs: []interface{}{admin, common.HexToAddress(testconstants.WEVMOSContractMainnet), "Staked Bond", "stBOND"},
 		},
 	)
 	s.Require().NoError(err)
+
+	// Authorize the deployed vault as the sole staking-guard delegator by pointing the EVM
+	// scheduler's target contract at it, mirroring the production deploy step. The deploy tx
+	// above ran in the live finalize-block state without committing, so write the param into
+	// that same state (via a context over it) and let the NextBlock below commit the deploy and
+	// the param together. Otherwise the guard fails closed and rejects the vault's own
+	// delegations during later poke txs.
+	baseApp := s.Network.App.GetBaseApp()
+	liveCtx := baseApp.NewContextLegacy(false, s.Network.GetContext().BlockHeader())
+	evmKeeper := s.Network.App.GetEVMKeeper()
+	params := evmKeeper.GetParams(liveCtx)
+	params.Scheduler.TargetContract = vault.Hex()
+	s.Require().NoError(evmKeeper.SetParams(liveCtx, params))
+
 	s.Require().NoError(s.Network.NextBlock())
 	return vault
 }
