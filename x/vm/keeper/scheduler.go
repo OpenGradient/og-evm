@@ -37,6 +37,12 @@ func shouldRunScheduler(ctx sdk.Context, params types.EVMSchedulerParams) bool {
 // returns an error because scheduler failures must not halt consensus.
 func (k Keeper) RunScheduler(ctx sdk.Context) {
 	targetContract := ""
+	// Recovering here stays deterministic: the EVM system call runs in a CacheContext that
+	// commits only on success (see CallEVMSystemWithData), so a caught panic drops the same
+	// uncommitted state on every node. The only thing touched on the live ctx before the call
+	// is the idempotent module-account creation below, which is also deterministic. Note that
+	// recover() does not make a nondeterministic computation safe: the reward math it drives
+	// still has to be integer/fixed-point (see x/svip).
 	defer func() {
 		if r := recover(); r != nil {
 			errText := fmt.Sprintf("panic: %v", r)
@@ -51,11 +57,17 @@ func (k Keeper) RunScheduler(ctx sdk.Context) {
 		return
 	}
 
-	moduleAddr := k.accountKeeper.GetModuleAddress(types.ModuleName)
-	if moduleAddr == nil {
+	// Create the EVM module account as a real ModuleAccount on the live ctx (not the call's
+	// cache context) so it survives even if the poke panics later. The system call below moves
+	// native value through precisebank mint/burn, which needs a genuine ModuleAccount at this
+	// address; a plain BaseAccount (what CallEVMSystemWithData used to auto-create) would break
+	// those invariants.
+	moduleAcc := k.accountKeeper.GetModuleAccount(ctx, types.ModuleName)
+	if moduleAcc == nil {
 		k.emitSchedulerEvent(ctx, params.TargetContract, false, 0, "", "evm module account not found")
 		return
 	}
+	moduleAddr := moduleAcc.GetAddress()
 
 	target := common.HexToAddress(params.TargetContract)
 	res, err := k.CallEVMSystemWithData(

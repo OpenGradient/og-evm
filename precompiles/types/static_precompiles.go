@@ -20,6 +20,7 @@ import (
 	slashingprecompile "github.com/cosmos/evm/precompiles/slashing"
 	stakingprecompile "github.com/cosmos/evm/precompiles/staking"
 	teeprecompile "github.com/cosmos/evm/precompiles/tee"
+	"github.com/cosmos/evm/stakingguard"
 
 	erc20Keeper "github.com/cosmos/evm/x/erc20/keeper"
 	transferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
@@ -29,7 +30,9 @@ import (
 	distributionkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	govkeeper "github.com/cosmos/cosmos-sdk/x/gov/keeper"
 	slashingkeeper "github.com/cosmos/cosmos-sdk/x/slashing/keeper"
+	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 type StaticPrecompiles map[common.Address]vm.PrecompiledContract
@@ -68,9 +71,16 @@ func (s StaticPrecompiles) WithStakingPrecompile(
 		opt(&options)
 	}
 
+	var stakingMsgServer stakingtypes.MsgServer = stakingkeeper.NewMsgServerImpl(&stakingKeeper)
+	if options.StakingGuardAllowlist != nil {
+		// Guard the EVM path: only the allowlisted vault may delegate, and validator creation
+		// is blocked. Gov onboarding goes through the module's own router, not this server.
+		stakingMsgServer = stakingguard.NewStakingMsgServer(stakingMsgServer, options.StakingGuardAllowlist)
+	}
+
 	stakingPrecompile := stakingprecompile.NewPrecompile(
 		stakingKeeper,
-		stakingkeeper.NewMsgServerImpl(&stakingKeeper),
+		stakingMsgServer,
 		stakingkeeper.NewQuerier(&stakingKeeper),
 		bankKeeper,
 		options.AddressCodec,
@@ -176,9 +186,15 @@ func (s StaticPrecompiles) WithSlashingPrecompile(
 		opt(&options)
 	}
 
+	var slashingMsgServer slashingtypes.MsgServer = slashingkeeper.NewMsgServerImpl(slashingKeeper)
+	if options.StakingGuardAllowlist != nil {
+		// Guard the EVM path: the slashing precompile's MsgUnjail is blocked on this PoA chain.
+		slashingMsgServer = stakingguard.NewSlashingMsgServer(slashingMsgServer, options.StakingGuardAllowlist)
+	}
+
 	slashingPrecompile := slashingprecompile.NewPrecompile(
 		slashingKeeper,
-		slashingkeeper.NewMsgServerImpl(slashingKeeper),
+		slashingMsgServer,
 		bankKeeper,
 		options.ValidatorAddrCodec,
 		options.ConsensusAddrCodec,

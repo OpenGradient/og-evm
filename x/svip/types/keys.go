@@ -16,6 +16,8 @@ const (
 	prefixTotalPausedSeconds
 	prefixActivated
 	prefixPaused
+	prefixScheduledRemaining
+	prefixDecayFactor
 )
 
 var (
@@ -27,4 +29,10 @@ var (
 	TotalPausedSecondsKey      = []byte{prefixTotalPausedSeconds}
 	ActivatedKey               = []byte{prefixActivated}
 	PausedKey                  = []byte{prefixPaused}
+	// ScheduledRemainingKey stores the remaining pool on the decay curve (LegacyDec),
+	// stepped forward each block as S = S * d^dt.
+	ScheduledRemainingKey = []byte{prefixScheduledRemaining}
+	// DecayFactorKey stores the per-second decay factor d (LegacyDec), recomputed only at
+	// (re)activation and when the half-life changes.
+	DecayFactorKey = []byte{prefixDecayFactor}
 )

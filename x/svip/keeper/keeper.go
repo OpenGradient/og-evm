@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cosmos/evm/x/svip/types"
@@ -209,10 +210,82 @@ func (k Keeper) SetPaused(ctx sdk.Context, paused bool) {
 	store.Delete(types.PausedKey)
 }
 
+// getDec reads a LegacyDec from the store at key. An absent value returns zero; a value that
+// won't unmarshal returns the error for the caller to handle. The block path reads this every
+// block and skips emission on error rather than halting the chain.
+func (k Keeper) getDec(ctx sdk.Context, key []byte) (sdkmath.LegacyDec, error) {
+	bz := ctx.KVStore(k.storeKey).Get(key)
+	if bz == nil {
+		return sdkmath.LegacyZeroDec(), nil
+	}
+	var d sdkmath.LegacyDec
+	if err := d.Unmarshal(bz); err != nil {
+		return sdkmath.LegacyZeroDec(), err
+	}
+	return d, nil
+}
+
+// setDec stores a LegacyDec at key.
+func (k Keeper) setDec(ctx sdk.Context, key []byte, d sdkmath.LegacyDec) {
+	bz, err := d.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	ctx.KVStore(k.storeKey).Set(key, bz)
+}
+
+// GetScheduledRemaining returns the scheduled remaining pool S on the decay curve.
+func (k Keeper) GetScheduledRemaining(ctx sdk.Context) (sdkmath.LegacyDec, error) {
+	return k.getDec(ctx, types.ScheduledRemainingKey)
+}
+
+// SetScheduledRemaining stores the scheduled remaining pool S.
+func (k Keeper) SetScheduledRemaining(ctx sdk.Context, s sdkmath.LegacyDec) {
+	k.setDec(ctx, types.ScheduledRemainingKey, s)
+}
+
+// GetDecayFactor returns the per-second decay factor d.
+func (k Keeper) GetDecayFactor(ctx sdk.Context) (sdkmath.LegacyDec, error) {
+	return k.getDec(ctx, types.DecayFactorKey)
+}
+
+// SetDecayFactor stores the per-second decay factor d.
+func (k Keeper) SetDecayFactor(ctx sdk.Context, d sdkmath.LegacyDec) {
+	k.setDec(ctx, types.DecayFactorKey, d)
+}
+
+// ComputeDecayFactor returns the per-second decay factor d = 0.5^(1/halfLife), the
+// halfLife-th root of 0.5. It uses LegacyDec.ApproxRoot (big.Int arithmetic) so the result
+// is the same on every architecture. Call it only outside the block path, at activation or
+// on a param change, since ApproxRoot is comparatively expensive.
+func ComputeDecayFactor(halfLifeSeconds int64) (sdkmath.LegacyDec, error) {
+	if halfLifeSeconds <= 0 {
+		return sdkmath.LegacyZeroDec(), fmt.Errorf("half_life_seconds must be positive: %d", halfLifeSeconds)
+	}
+	return sdkmath.LegacyMustNewDecFromStr("0.5").ApproxRoot(uint64(halfLifeSeconds))
+}
+
+// initDecayCurve seeds the decay-curve state at (re)activation: the decay factor d and the
+// scheduled remaining pool S, which starts at the full pool balance.
+func (k Keeper) initDecayCurve(ctx sdk.Context, halfLifeSeconds int64, pool sdkmath.Int) error {
+	d, err := ComputeDecayFactor(halfLifeSeconds)
+	if err != nil {
+		return err
+	}
+	k.SetDecayFactor(ctx, d)
+	k.SetScheduledRemaining(ctx, sdkmath.LegacyNewDecFromInt(pool))
+	return nil
+}
+
 // getPoolBalance reads the live pool balance from x/bank (not from custom state).
 func (k Keeper) getPoolBalance(ctx sdk.Context) sdkmath.Int {
 	moduleAddr := k.ak.GetModuleAddress(types.ModuleName)
 	return k.bk.GetBalance(ctx, moduleAddr, k.getDenom(ctx)).Amount
+}
+
+// GetLivePoolBalance exposes the live x/bank pool balance for genesis re-anchoring.
+func (k Keeper) GetLivePoolBalance(ctx sdk.Context) sdkmath.Int {
+	return k.getPoolBalance(ctx)
 }
 
 // getDenom returns the native denom at runtime via the EVM module's global config.

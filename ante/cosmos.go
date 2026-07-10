@@ -3,6 +3,7 @@ package ante
 import (
 	cosmosante "github.com/cosmos/evm/ante/cosmos"
 	evmante "github.com/cosmos/evm/ante/evm"
+	"github.com/cosmos/evm/stakingguard"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
 	ibcante "github.com/cosmos/ibc-go/v10/modules/core/ante"
 	poaante "github.com/xrplevm/node/v10/x/poa/ante"
@@ -42,5 +43,9 @@ func newCosmosAnteHandler(ctx sdk.Context, options HandlerOptions) sdk.AnteHandl
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
 		poaante.NewPoaDecorator(),
+		// PoA staking guard: blocks MsgCreateValidator and MsgUnjail, limits the delegation
+		// family to the allowlisted vault, and recurses into authz.MsgExec. The vendored PoA
+		// decorator above handles neither validator management nor authz unwrapping.
+		stakingguard.NewDecorator(options.StakingGuardAllowlist),
 	)
 }

@@ -4,8 +4,10 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/cosmos/evm/contracts"
-	testcontracts "github.com/cosmos/evm/precompiles/testutil/contracts"
+	testconstants "github.com/cosmos/evm/testutil/constants"
 	testutiltypes "github.com/cosmos/evm/testutil/types"
 	erc20types "github.com/cosmos/evm/x/erc20/types"
 	evmtypes "github.com/cosmos/evm/x/vm/types"
@@ -20,7 +22,7 @@ func (s *KeeperTestSuite) TestEVMSchedulerPokesConfiguredVault() {
 		evmtypes.EvmTxArgs{},
 		testutiltypes.ContractDeploymentData{
 			Contract:        contracts.StakedBondVaultContract,
-			ConstructorArgs: []interface{}{admin, "Staked Bond", "stBOND"},
+			ConstructorArgs: []interface{}{admin, common.HexToAddress(testconstants.WEVMOSContractMainnet), "Staked Bond", "stBOND"},
 		},
 	)
 	s.Require().NoError(err)
@@ -31,7 +33,7 @@ func (s *KeeperTestSuite) TestEVMSchedulerPokesConfiguredVault() {
 		Enabled:        true,
 		TargetContract: vaultAddr.Hex(),
 		GasCap:         1_000_000,
-		MaxOps:         7,
+		MaxOps:         evmtypes.SchedulerPokeStepCount,
 		CadenceBlocks:  1,
 	}
 	s.Require().NoError(s.Network.App.GetEVMKeeper().SetParams(s.Network.GetContext(), params))
@@ -53,44 +55,49 @@ func (s *KeeperTestSuite) TestEVMSchedulerPokesConfiguredVault() {
 	s.Require().Equal(0, big.NewInt(1).Cmp(out[0].(*big.Int)), "events: %v", s.Network.GetContext().EventManager().Events())
 }
 
+// TestEVMSchedulerRevertDoesNotHaltBlock exercises an actual reverting poke: the vault is
+// deployed with its poke paused, so the scheduler's poke(uint256) call reverts. The scheduler
+// should catch that revert, emit success=false, and leave the vault's pokeCount untouched,
+// without halting the block.
 func (s *KeeperTestSuite) TestEVMSchedulerRevertDoesNotHaltBlock() {
 	s.SetupTest()
 
-	counter, err := testcontracts.LoadCounterContract()
-	s.Require().NoError(err)
-	counterAddr, err := s.Factory.DeployContract(
-		s.Keyring.GetPrivKey(0),
-		evmtypes.EvmTxArgs{},
-		testutiltypes.ContractDeploymentData{Contract: counter},
-	)
-	s.Require().NoError(err)
-	s.Require().NoError(s.Network.NextBlock())
+	vault := s.deployStakedBondVault()
 
-	params := s.Network.App.GetEVMKeeper().GetParams(s.Network.GetContext())
+	// Pause the vault's poke so any scheduler poke reverts with "P_PAUSED".
+	_, err := s.executeVaultTx(s.Keyring.GetPrivKey(0), vault, nil, "setPaused", false, false, true)
+	s.Require().NoError(err)
+
+	ctx := s.Network.GetContext()
+	params := s.Network.App.GetEVMKeeper().GetParams(ctx)
 	params.Scheduler = evmtypes.EVMSchedulerParams{
 		Enabled:        true,
-		TargetContract: counterAddr.Hex(),
-		GasCap:         500_000,
-		MaxOps:         1,
+		TargetContract: vault.Hex(),
+		GasCap:         1_000_000,
+		MaxOps:         evmtypes.SchedulerPokeStepCount,
 		CadenceBlocks:  1,
 	}
-	s.Require().NoError(s.Network.App.GetEVMKeeper().SetParams(s.Network.GetContext(), params))
-	s.Network.App.GetEVMKeeper().RunScheduler(s.Network.GetContext())
+	s.Require().NoError(s.Network.App.GetEVMKeeper().SetParams(ctx, params))
 
-	data, err := counter.ABI.Pack("getCounter")
-	s.Require().NoError(err)
-	res, err := s.Network.App.GetEVMKeeper().CallEVMWithData(
-		s.Network.GetContext(),
-		erc20types.ModuleAddress,
-		&counterAddr,
-		data,
-		false,
-		nil,
-	)
-	s.Require().NoError(err)
-	out, err := counter.ABI.Unpack("getCounter", res.Ret)
-	s.Require().NoError(err)
-	s.Require().Equal(0, big.NewInt(0).Cmp(out[0].(*big.Int)))
+	// The poke reverts inside RunScheduler; it should be caught rather than halting the block.
+	s.Require().NotPanics(func() {
+		s.Network.App.GetEVMKeeper().RunScheduler(ctx)
+	})
+
+	// The scheduler should have recorded a failed poke.
+	attrs := map[string]string{}
+	for _, event := range ctx.EventManager().Events() {
+		if event.Type != "evm_scheduler" {
+			continue
+		}
+		for _, attr := range event.Attributes {
+			attrs[attr.Key] = attr.Value
+		}
+	}
+	s.Require().Equal("false", attrs["success"], "events: %v", ctx.EventManager().Events())
+
+	// pokeCount should still be 0, since the reverting poke committed nothing.
+	s.Require().Zero(s.vaultBig(vault, "pokeCount").Sign())
 }
 
 func (s *KeeperTestSuite) TestEVMSchedulerCorruptParamsDoNotHaltBlock() {

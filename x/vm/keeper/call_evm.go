@@ -130,9 +130,12 @@ func (k Keeper) CallEVMSystemWithData(
 	}
 	cachedCtx, commit := ctx.CacheContext()
 	fromAcc := sdk.AccAddress(from.Bytes())
-	if !k.accountKeeper.HasAccount(cachedCtx, fromAcc) {
-		k.accountKeeper.SetAccount(cachedCtx, k.accountKeeper.NewAccountWithAddress(cachedCtx, fromAcc))
-	}
+	// The caller is responsible for ensuring the `from` account already exists; the scheduler
+	// creates the EVM module account as a real ModuleAccount on the live ctx. We don't
+	// auto-create it here on purpose: putting a plain BaseAccount at a module address would
+	// break the module-account invariants precisebank relies on for mint/burn. A missing
+	// account just falls through to the error below, which the scheduler handles without
+	// halting.
 	nonce, err := k.accountKeeper.GetSequence(cachedCtx, fromAcc)
 	if err != nil {
 		return nil, err

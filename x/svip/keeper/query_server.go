@@ -36,17 +36,15 @@ func (s queryServer) PoolState(goCtx context.Context, _ *types.QueryPoolStateReq
 	moduleAddr := s.ak.GetModuleAddress(types.ModuleName)
 	balance := s.bk.GetBalance(ctx, moduleAddr, denom)
 
-	var currentRate math.LegacyDec
+	currentRate := math.LegacyZeroDec()
 	if activated && !paused {
-		params := s.GetParams(ctx)
-		totalPausedSec := float64(s.GetTotalPausedSeconds(ctx))
-		elapsed := ctx.BlockTime().Sub(s.GetActivationTime(ctx)).Seconds() - totalPausedSec
-		poolAtAct := s.GetPoolBalanceAtActivation(ctx)
-		// Calculate tokens per second at current time
-		reward := CalculateBlockReward(params.HalfLifeSeconds, poolAtAct, elapsed, 1.0)
-		currentRate = math.LegacyNewDecFromInt(reward)
-	} else {
-		currentRate = math.LegacyZeroDec()
+		// Per-second emission on the current curve: S * (1 - d).
+		scheduledRemaining, err := s.GetScheduledRemaining(ctx)
+		decayFactor, err2 := s.GetDecayFactor(ctx)
+		if err == nil && err2 == nil &&
+			scheduledRemaining.IsPositive() && decayFactor.IsPositive() && decayFactor.LT(math.LegacyOneDec()) {
+			currentRate = scheduledRemaining.Sub(scheduledRemaining.Mul(decayFactor))
+		}
 	}
 
 	return &types.QueryPoolStateResponse{

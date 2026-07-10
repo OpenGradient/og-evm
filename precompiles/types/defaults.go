@@ -7,6 +7,7 @@ import (
 	evmaddress "github.com/cosmos/evm/encoding/address"
 	ibcutils "github.com/cosmos/evm/ibc"
 	cmn "github.com/cosmos/evm/precompiles/common"
+	"github.com/cosmos/evm/stakingguard"
 	erc20Keeper "github.com/cosmos/evm/x/erc20/keeper"
 	transferkeeper "github.com/cosmos/evm/x/ibc/transfer/keeper"
 	channelkeeper "github.com/cosmos/ibc-go/v10/modules/core/04-channel/keeper"
@@ -28,6 +29,10 @@ type Optionals struct {
 	AddressCodec       address.Codec // used by gov/staking
 	ValidatorAddrCodec address.Codec // used by slashing
 	ConsensusAddrCodec address.Codec // used by slashing
+	// StakingGuardAllowlist, when set, applies the PoA staking policy to the staking and
+	// slashing precompiles: only allowlisted delegators may delegate, and validator creation
+	// and unjail are blocked. A nil value (the default) leaves the precompiles unguarded.
+	StakingGuardAllowlist stakingguard.StakingPolicyFunc
 }
 
 func defaultOptionals() Optionals {
@@ -55,6 +60,14 @@ func WithValidatorAddrCodec(codec address.Codec) Option {
 func WithConsensusAddrCodec(codec address.Codec) Option {
 	return func(opts *Optionals) {
 		opts.ConsensusAddrCodec = codec
+	}
+}
+
+// WithStakingGuard enables PoA staking enforcement on the staking and slashing
+// precompiles using the given allowlist (read from live state at call time).
+func WithStakingGuard(allowed stakingguard.StakingPolicyFunc) Option {
+	return func(opts *Optionals) {
+		opts.StakingGuardAllowlist = allowed
 	}
 }
 
